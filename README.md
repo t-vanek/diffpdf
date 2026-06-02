@@ -197,7 +197,7 @@ Všechny aplikační cesty jsou pod prefixem **`/api/v1`**.
 | `GET`  | `/api/v1/jobs/{id}/artifacts/{**path}` | Stažení zvýrazněného diff-PDF. |
 | `GET`  | `/api/v1/discovery/shares` | Výpis nakonfigurovaných sdílení a jmen credential profilů. |
 | `POST` | `/api/v1/discovery/folder` | Probe složky — dostupnost + počet PDF + ukázka cest; volitelně ověří i scope (instance/projekt) a vrátí `ready`. |
-| `POST` | `/api/v1/discovery/preview` | Suchý běh párování old/new (bez porovnání). |
+| `POST` | `/api/v1/discovery/preview` | Suchý běh párování old/new (bez porovnání); volitelně ověří i scope a vrátí `ready`. |
 
 OpenAPI dokument je na `/openapi/v1.json`, interaktivní **Swagger UI** na `/swagger`.
 Chyby se vrací jako **`application/problem+json`** (RFC 9457 ProblemDetails).
@@ -410,10 +410,10 @@ curl -X POST http://localhost:8080/api/v1/discovery/preview \
 Discovery přijímá stejné odkazy na sdílení/profily jako dávka. Nedostupná cesta
 nebo neznámý alias vrátí `reachable: false` s důvodem v `error`, ne chybu 500.
 
-Když do `/discovery/folder` přidáš `businessInstanceKey` + `projectKey` (oba, nebo
-žádný), odpověď navíc nese `scope` s příznaky `businessInstanceExists` /
-`projectExists` a celkový `ready` (složka dostupná, obsahuje PDF a scope existuje)
-— jediný pre-flight check, než pošleš dávku.
+Když do `/discovery/folder` nebo `/discovery/preview` přidáš `businessInstanceKey`
++ `projectKey` (oba, nebo žádný), odpověď navíc nese `scope` s příznaky
+`businessInstanceExists` / `projectExists` a celkový `ready` (cesty dostupné,
+obsahují PDF a scope existuje) — jediný pre-flight check, než pošleš dávku.
 
 ### Business instance, projekty a struktura úložiště
 

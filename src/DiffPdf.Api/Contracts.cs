@@ -78,6 +78,28 @@ public sealed record PreviewPairingRequest
     public string SearchPattern { get; init; } = "*.pdf";
     public bool Recursive { get; init; } = true;
     public int SampleSize { get; init; } = 20;
+
+    /// <summary>
+    /// Optional business-instance key. When set (together with <see cref="ProjectKey"/>),
+    /// the dry-run also verifies the scope exists. Leave both null to skip the scope check.
+    /// </summary>
+    public string? BusinessInstanceKey { get; init; }
+
+    /// <summary>Optional project key under the business instance; validated alongside it.</summary>
+    public string? ProjectKey { get; init; }
+}
+
+/// <summary>A pairing dry-run enriched with an optional scope check and an overall readiness verdict.</summary>
+public sealed record PairingPreviewResult(ScopeCheck? Scope, PairingPreview Pairing)
+{
+    /// <summary>Whether the folders yielded at least one PDF to pair.</summary>
+    public bool HasPdfs => Pairing.Total > 0;
+
+    /// <summary>
+    /// True when the folders are reachable and contain PDFs, and — if a scope was
+    /// requested — the instance and project both exist. The "OK to submit a batch" signal.
+    /// </summary>
+    public bool Ready => Pairing.Reachable && HasPdfs && (Scope?.Ok ?? true);
 }
 
 /// <summary>Configured network: named shares and credential-profile names (never secrets).</summary>
