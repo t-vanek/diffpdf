@@ -15,11 +15,14 @@ public static class AuthSetup
     /// Wires OpenIddict as an embedded OAuth2 server (client-credentials flow) plus
     /// token validation, and makes every endpoint require a valid token by default.
     /// </summary>
-    public static void AddDiffPdfAuth(this IServiceCollection services, string postgresConnectionString, AuthOptions auth)
+    public static void AddDiffPdfAuth(this IServiceCollection services, string connectionString, bool useSqlServer, AuthOptions auth)
     {
         services.AddDbContext<AuthDbContext>(o =>
         {
-            o.UseNpgsql(postgresConnectionString);
+            if (useSqlServer)
+                o.UseSqlServer(connectionString);
+            else
+                o.UseNpgsql(connectionString);
             o.UseOpenIddict();
         });
 

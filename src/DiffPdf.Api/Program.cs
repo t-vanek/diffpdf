@@ -8,6 +8,7 @@ using DiffPdf.Messaging;
 using DiffPdf.Pdf.DependencyInjection;
 using DiffPdf.Persistence;
 using DiffPdf.Persistence.Postgres.DependencyInjection;
+using DiffPdf.Persistence.SqlServer.DependencyInjection;
 using DiffPdf.Worker.DependencyInjection;
 using Serilog;
 using Wolverine;
@@ -47,13 +48,26 @@ builder.Services.AddDiffPdf();
 builder.Services.AddDiffPdfWorker();
 
 string? postgres = builder.Configuration.GetConnectionString("Postgres");
+string? sqlServer = builder.Configuration.GetConnectionString("SqlServer");
 string? rabbit = builder.Configuration.GetConnectionString("RabbitMq");
 
-if (!string.IsNullOrWhiteSpace(postgres) && !string.IsNullOrWhiteSpace(rabbit))
+// SQL Server wins when both relational connection strings are configured.
+bool useSqlServer = !string.IsNullOrWhiteSpace(sqlServer);
+string? relational = useSqlServer ? sqlServer : postgres;
+
+if (!string.IsNullOrWhiteSpace(relational) && !string.IsNullOrWhiteSpace(rabbit))
 {
-    // Production / full stack: PostgreSQL source of truth + RabbitMQ transport via Wolverine.
-    builder.Services.AddPostgresPersistence(postgres);
-    builder.Host.UseWolverine(opts => opts.ConfigureDiffPdfMessaging(rabbit, postgres));
+    // Production / full stack: relational source of truth + RabbitMQ transport via Wolverine.
+    if (useSqlServer)
+    {
+        builder.Services.AddSqlServerPersistence(relational);
+        builder.Host.UseWolverine(opts => opts.ConfigureDiffPdfMessaging(rabbit, relational, DiffPdfDatabase.SqlServer));
+    }
+    else
+    {
+        builder.Services.AddPostgresPersistence(relational);
+        builder.Host.UseWolverine(opts => opts.ConfigureDiffPdfMessaging(rabbit, relational, DiffPdfDatabase.Postgres));
+    }
 }
 else
 {
@@ -75,11 +89,11 @@ builder.Services.AddHostedService<StaleTaskRecoveryService>();
 
 var auth = builder.Configuration.GetSection("Auth").Get<AuthOptions>() ?? new AuthOptions();
 builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection("Auth"));
-bool authEnabled = auth.Enabled && !string.IsNullOrWhiteSpace(postgres);
-if (auth.Enabled && string.IsNullOrWhiteSpace(postgres))
-    Log.Warning("Auth:Enabled is set but no PostgreSQL connection is configured — authentication is disabled.");
+bool authEnabled = auth.Enabled && !string.IsNullOrWhiteSpace(relational);
+if (auth.Enabled && string.IsNullOrWhiteSpace(relational))
+    Log.Warning("Auth:Enabled is set but no PostgreSQL/SQL Server connection is configured — authentication is disabled.");
 if (authEnabled)
-    builder.Services.AddDiffPdfAuth(postgres!, auth);
+    builder.Services.AddDiffPdfAuth(relational!, useSqlServer, auth);
 
 var app = builder.Build();
 

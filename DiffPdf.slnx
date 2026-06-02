@@ -5,6 +5,7 @@
     <Project Path="src/DiffPdf.Messaging/DiffPdf.Messaging.csproj" />
     <Project Path="src/DiffPdf.Pdf/DiffPdf.Pdf.csproj" />
     <Project Path="src/DiffPdf.Persistence.Postgres/DiffPdf.Persistence.Postgres.csproj" />
+    <Project Path="src/DiffPdf.Persistence.SqlServer/DiffPdf.Persistence.SqlServer.csproj" />
     <Project Path="src/DiffPdf.Persistence/DiffPdf.Persistence.csproj" />
     <Project Path="src/DiffPdf.Worker/DiffPdf.Worker.csproj" />
   </Folder>

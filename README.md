@@ -129,9 +129,27 @@ Principy:
   `Pdf:MaxConcurrentOperations`, default 4) omezí počet souběžných renderů napříč
   všemi joby/instancemi, aby paralelismus nevyčerpal CPU/RAM.
 
-Pokud jsou nastavené `ConnectionStrings:Postgres` a `ConnectionStrings:RabbitMq`,
-použije se plný stack; jinak API spadne zpět na in-memory úložiště a in-process
-Wolverine transport (jednoinstanční dev režim).
+Pokud jsou nastavené `ConnectionStrings:Postgres` (nebo `ConnectionStrings:SqlServer`)
+a `ConnectionStrings:RabbitMq`, použije se plný stack; jinak API spadne zpět na
+in-memory úložiště a in-process Wolverine transport (jednoinstanční dev režim).
+
+### Volba databáze (PostgreSQL nebo SQL Server)
+
+Zdroj pravdy běží buď na **PostgreSQL**, nebo na **Microsoft SQL Serveru** — vybírá
+se podle connection stringu:
+
+- `ConnectionStrings:SqlServer` → použije se SQL Server (má přednost, je-li nastaven).
+- jinak `ConnectionStrings:Postgres` → použije se PostgreSQL.
+
+Schéma (tabulky `business_instances`, `projects`, `jobs`, `file_pair_tasks`) se
+vytvoří idempotentně při startu pro oba providery; Wolverine si spravuje vlastní
+inbox/outbox tabulky v téže databázi. Stejná volba platí i pro OpenIddict (auth)
+— ten používá stejné připojení. Příklad pro SQL Server:
+
+```
+ConnectionStrings__SqlServer: Server=sqlserver,1433;Database=diffpdf;User Id=sa;Password=Your_password123;TrustServerCertificate=True
+ConnectionStrings__RabbitMq:  amqp://diffpdf:diffpdf@rabbitmq:5672/
+```
 
 ## Použité technologie a proč
 
@@ -140,8 +158,8 @@ Wolverine transport (jednoinstanční dev režim).
 - **Ghostscript** / **PDFium** — spolehlivý rendering stránek na obrázky pro pixelové porovnání.
 - **SkiaSharp** — rychlé porovnání bitmap a detekce prázdných stránek.
 - **PdfSharp** — generování zvýrazněného diff-PDF (rasterového i vektorového overlay).
-- **PostgreSQL** — perzistentní zdroj pravdy o stavu úloh s atomickými přechody.
-- **EF Core (Npgsql)** — typovaný přístup k databázi s optimistic concurrency.
+- **PostgreSQL / SQL Server** — perzistentní zdroj pravdy o stavu úloh s atomickými přechody (volitelný provider).
+- **EF Core (Npgsql / Microsoft.Data.SqlClient)** — typovaný přístup k databázi s optimistic concurrency.
 - **Mapperly** — rychlé source-generated mapování entit na doménové modely bez reflexe.
 - **RabbitMQ** — distribuovaný transport práce mezi API a workery.
 - **Wolverine** — orchestrace zpráv s durable inbox/outbox, retry a dead-letterem.
