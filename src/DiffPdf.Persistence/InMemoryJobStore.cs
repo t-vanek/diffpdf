@@ -124,7 +124,7 @@ public sealed class InMemoryJobStore : IJobStore
     {
         lock (_gate)
         {
-            if (!_jobs.TryGetValue(id, out var job) || job.Status is not (JobStatus.Queued or JobStatus.Running))
+            if (!_jobs.TryGetValue(id, out var job) || job.Status is not (JobStatus.Draft or JobStatus.Queued or JobStatus.Running))
                 return Task.FromResult<ComparisonJob?>(null);
 
             var cancelled = job with
@@ -138,6 +138,24 @@ public sealed class InMemoryJobStore : IJobStore
             };
             _jobs[id] = cancelled;
             return Task.FromResult<ComparisonJob?>(cancelled);
+        }
+    }
+
+    public Task<ComparisonJob?> EnqueueAsync(Guid id, CancellationToken ct = default)
+    {
+        lock (_gate)
+        {
+            if (!_jobs.TryGetValue(id, out var job) || job.Status != JobStatus.Draft)
+                return Task.FromResult<ComparisonJob?>(null);
+
+            var queued = job with
+            {
+                Status = JobStatus.Queued,
+                UpdatedAt = DateTimeOffset.UtcNow,
+                Version = job.Version + 1,
+            };
+            _jobs[id] = queued;
+            return Task.FromResult<ComparisonJob?>(queued);
         }
     }
 

@@ -74,4 +74,28 @@ public class InMemoryJobStoreTests
         Assert.Single(byInstance);
         Assert.Empty(other);
     }
+
+    [Fact]
+    public async Task Enqueue_MovesDraftToQueued_AndIsOneShot()
+    {
+        var store = new InMemoryJobStore();
+        var job = await store.CreateAsync(NewJob() with { Status = JobStatus.Draft });
+
+        var queued = await store.EnqueueAsync(job.Id);
+        Assert.NotNull(queued);
+        Assert.Equal(JobStatus.Queued, queued!.Status);
+
+        Assert.Null(await store.EnqueueAsync(job.Id)); // no longer Draft
+    }
+
+    [Fact]
+    public async Task Cancel_IsAllowedFromDraft()
+    {
+        var store = new InMemoryJobStore();
+        var job = await store.CreateAsync(NewJob() with { Status = JobStatus.Draft });
+
+        var cancelled = await store.CancelAsync(job.Id);
+        Assert.NotNull(cancelled);
+        Assert.Equal(JobStatus.Cancelled, cancelled!.Status);
+    }
 }
