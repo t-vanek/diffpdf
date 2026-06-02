@@ -50,6 +50,7 @@ else
     builder.Services.AddSingleton<IJobStore, InMemoryJobStore>();
     builder.Services.AddSingleton<IBusinessInstanceStore, InMemoryBusinessInstanceStore>();
     builder.Services.AddSingleton<IProjectStore, InMemoryProjectStore>();
+    builder.Services.AddScoped<IJobSubmissionService, SimpleJobSubmissionService>();
     builder.Host.UseWolverine(opts =>
     {
         opts.UseRuntimeCompilation();

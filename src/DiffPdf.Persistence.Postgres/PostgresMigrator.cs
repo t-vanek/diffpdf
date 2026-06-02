@@ -2,7 +2,10 @@ using Npgsql;
 
 namespace DiffPdf.Persistence.Postgres;
 
-/// <summary>Creates the schema if it does not yet exist. Idempotent.</summary>
+/// <summary>
+/// Creates the application schema if it does not yet exist (idempotent). The EF
+/// model maps to exactly these tables/columns; Wolverine manages its own tables.
+/// </summary>
 public static class PostgresMigrator
 {
     private const string Schema = """
@@ -13,8 +16,7 @@ public static class PostgresMigrator
             enabled boolean not null default true,
             created_at timestamptz not null default now(),
             updated_at timestamptz null,
-            version bigint not null default 1,
-            constraint ck_business_instances_key_not_empty check (length(trim(key)) > 0)
+            version bigint not null default 1
         );
 
         create table if not exists projects (
@@ -26,8 +28,7 @@ public static class PostgresMigrator
             created_at timestamptz not null default now(),
             updated_at timestamptz null,
             version bigint not null default 1,
-            constraint uq_projects_business_instance_key unique (business_instance_id, key),
-            constraint ck_projects_key_not_empty check (length(trim(key)) > 0)
+            constraint uq_projects_business_instance_key unique (business_instance_id, key)
         );
 
         create table if not exists jobs (
@@ -46,20 +47,18 @@ public static class PostgresMigrator
             error text null,
             version bigint not null default 1,
             locked_by text null,
-            locked_until timestamptz null,
-            constraint ck_jobs_status check (status in ('Queued','Running','Completed','Failed','Cancelled')),
-            constraint ck_jobs_processed_count_nonnegative check (processed_count >= 0),
-            constraint ck_jobs_total_count_nonnegative check (total_count >= 0)
+            locked_until timestamptz null
         );
 
         create index if not exists ix_jobs_business_project_created_at on jobs (business_instance_id, project_id, created_at desc);
         create index if not exists ix_jobs_status_created_at on jobs (status, created_at desc);
-        create index if not exists ix_jobs_locked_until on jobs (locked_until);
         """;
 
-    public static async Task MigrateAsync(NpgsqlDataSource dataSource, CancellationToken ct = default)
+    public static async Task MigrateAsync(string connectionString, CancellationToken ct = default)
     {
-        await using var cmd = dataSource.CreateCommand(Schema);
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(ct);
+        await using var cmd = new NpgsqlCommand(Schema, connection);
         await cmd.ExecuteNonQueryAsync(ct);
     }
 }

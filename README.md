@@ -58,7 +58,8 @@ DiffPdf.Pdf                 PdfPig text extraction, Ghostscript & PDFium rendere
                             highlight writer, network-share connectors.
 DiffPdf.Persistence         Job / business-instance / project store abstractions +
                             in-memory (dev) implementations.
-DiffPdf.Persistence.Postgres PostgreSQL stores (Npgsql) with optimistic concurrency.
+DiffPdf.Persistence.Postgres EF Core (Npgsql) stores with optimistic concurrency,
+                            Mapperly entity→domain mapping, transactional outbox.
 DiffPdf.Messaging           Wolverine handler + RabbitMQ wiring (RunBatchComparison).
 DiffPdf.Worker              Worker-side infrastructure (storage, worker identity, options).
 DiffPdf.Api                 ASP.NET Core Minimal API (Serilog, OpenAPI, endpoint groups).
@@ -78,9 +79,19 @@ backed by durable infrastructure rather than in-process state:
 - **Wolverine** orchestrates publish/consume with a PostgreSQL durable
   inbox/outbox, so the handler is safe under duplicate delivery: a redelivered
   message simply finds the job is no longer `Queued` and skips.
+- **Transactional outbox** — submitting a batch inserts the job and enqueues its
+  command in a single EF Core transaction (Wolverine `IDbContextOutbox`), so a
+  job can never exist without its message or vice versa.
+- **Retry classification** — transient failures (IO/network/broker) are retried
+  with cooldown then dead-lettered; permanent failures (bad request, missing
+  folder, corrupt input) are recorded as `Failed` and acknowledged, not retried.
 - The handler runs the comparison with bounded parallelism and writes
   version-checked progress; a completed job can never be overwritten by a late
   progress update.
+
+Persistence uses **EF Core** (Npgsql) with **Mapperly** for source-generated
+entity→domain mapping; atomic state transitions use `ExecuteUpdate` guarded by
+`status` + `version`.
 
 If `ConnectionStrings:Postgres` and `ConnectionStrings:RabbitMq` are configured
 the full stack is used; otherwise the API falls back to in-memory stores with an

@@ -1,6 +1,8 @@
 using DiffPdf.Messaging.Handlers;
 using DiffPdf.Messaging.Messages;
 using Wolverine;
+using Wolverine.EntityFrameworkCore;
+using Wolverine.ErrorHandling;
 using Wolverine.Postgresql;
 using Wolverine.RabbitMQ;
 
@@ -26,6 +28,13 @@ public static class DiffPdfWolverineConfiguration
         opts.Discovery.IncludeAssembly(typeof(RunBatchComparisonHandler).Assembly);
 
         opts.PersistMessagesWithPostgresql(postgresConnectionString);
+        opts.UseEntityFrameworkCoreTransactions();
+
+        // Transient failures (IO / network / broker blips) are retried with
+        // cooldown, then dead-lettered. Permanent failures are recorded by the
+        // handler and acknowledged, so they never bubble to this policy.
+        opts.Policies.OnException(ExceptionClassifier.IsTransient)
+            .RetryWithCooldown(TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10));
 
         opts.UseRabbitMq(new Uri(rabbitConnectionString))
             .AutoProvision();
