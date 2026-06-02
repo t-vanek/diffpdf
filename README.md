@@ -46,7 +46,12 @@ a chybové hlášky vyrenderované přímo do PDF.
   centrálně (`Network` v appsettings: credential profily + pojmenované aliasy
   `share:<jméno>`), nebo volitelně inline per složka (Windows `WNetAddConnection2`,
   Linux CIFS mount).
-- **Discovery režim** — suchý běh přes `/api/v1/discovery`: ověř dostupnost cesty,
+- **Síťové vyhledání serveru + klientské SDK** — server se ohlašuje na LAN přes UDP
+  (broadcast/multicast) a vystavuje `GET /api/v1/server-info`, takže .NET klienti
+  (např. WPF) ho najdou bez napevno zadané adresy. Knihovna `DiffPdf.Client`
+  přidává typovaný REST přístup, OAuth a živý progress (SignalR) pro vzdálené
+  ovládání serveru.
+- **Náhled dávky (dry-run)** — přes `/api/v1/discovery` ověř dostupnost cesty,
   počet PDF a párování old/new ještě než odešleš dávku.
 - **Asynchronní job API** — odeslání dávky, polling stavu, stažení reportu a
   artefaktů.
@@ -180,6 +185,7 @@ Všechny aplikační cesty jsou pod prefixem **`/api/v1`**.
 | `GET`  | `/health` | Liveness probe (anonymní). |
 | `POST` | `/connect/token` | OAuth2 token endpoint (client-credentials / authorization-code / refresh-token). |
 | `*` | `/connect/authorize`, `/connect/revocation`, `/connect/userinfo`, `/connect/logout` | OIDC endpointy (auth-code start, revoke, userinfo, end-session). |
+| `GET`  | `/api/v1/server-info` | Self-popis serveru (verze, base URL, hub, auth) pro klienty. |
 | `POST` | `/api/v1/business-instances` | Vytvoří business instanci (`Alfa`, `RNew`, …). |
 | `GET`  | `/api/v1/business-instances` | Výpis business instancí. |
 | `POST` | `/api/v1/business-instances/{key}/projects` | Vytvoří projekt pod instancí. |
@@ -380,7 +386,7 @@ Mechanismus připojení:
   service účtem. Aliasy a profily se vyhodnotí už při submitu, takže do úlohy se
   uloží konkrétní cesta; s `localMountPath` se navíc nepersistuje žádné heslo.
 
-#### Discovery režim (suchý běh)
+#### Náhled dávky / dry-run (`/api/v1/discovery`)
 
 Než odešleš (drahou) dávku, můžeš si ověřit dostupnost cest, credentialy a
 párování — bez jediného porovnání:
@@ -400,8 +406,39 @@ curl -X POST http://localhost:8080/api/v1/discovery/preview \
   -d '{ "oldFolder": "share:reports/baseline", "newFolder": "share:reports/build-123" }'
 ```
 
-Discovery přijímá stejné odkazy na sdílení/profily jako dávka. Nedostupná cesta
-nebo neznámý alias vrátí `reachable: false` s důvodem v `error`, ne chybu 500.
+Přijímá stejné odkazy na sdílení/profily jako dávka. Nedostupná cesta nebo
+neznámý alias vrátí `reachable: false` s důvodem v `error`, ne chybu 500.
+
+### Síťové vyhledání serveru + klientské SDK
+
+Aby šel server **najít v síti a ovládat vzdáleně** (např. z WPF klienta), ohlašuje
+se přes UDP a vystavuje self-popis:
+
+- **UDP responder** poslouchá na portu `Discovery:Port` (default `41234`) — odpovídá
+  na broadcast i multicast probe popisem serveru (jméno, base URL, port, verze,
+  zda je auth a jaké granty). Vypíná se přes `Discovery:Enabled=false`; za reverse
+  proxy / s pevným DNS nastav `Discovery:AdvertisedBaseUrl`.
+- **`GET /api/v1/server-info`** (anonymní) vrací tentýž popis přes HTTP — pro
+  klienta, který už base URL zná.
+
+Knihovna **`DiffPdf.Client`** (`src/DiffPdf.Client`, `net10.0`) pak server najde a
+ovládá: discovery, typovaný REST (OAuth, scope, dávky, polling, report, artefakty)
+a živý progress přes SignalR. Stručně:
+
+```csharp
+var server = await new DiffPdfDiscoveryClient().DiscoverFirstAsync(TimeSpan.FromSeconds(2));
+using var client = DiffPdfClient.ForServer(server!);
+await client.AuthenticateClientCredentialsAsync("diffpdf-ci", "diffpdf-secret", "diffpdf.api");
+
+await using var live = await client.ConnectLiveProgressAsync();
+live.ProgressReceived += p => /* aktualizuj UI */;
+
+var job = await client.SubmitBatchAsync(new BatchComparisonRequest { /* … */ });
+await live.JoinJobAsync(job.Id);
+var report = await client.GetReportAsync((await client.WaitForJobAsync(job.Id)).Id);
+```
+
+Plný příklad (vč. WPF) viz [`src/DiffPdf.Client/README.md`](src/DiffPdf.Client/README.md).
 
 ### Business instance, projekty a struktura úložiště
 

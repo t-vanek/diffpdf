@@ -1,8 +1,10 @@
 using System.Text.Json.Serialization;
 using DiffPdf.Api.Auth;
+using DiffPdf.Api.Discovery;
 using DiffPdf.Api.Endpoints;
 using DiffPdf.Api.Hubs;
 using DiffPdf.Core.Abstractions;
+using DiffPdf.Core.Discovery;
 using DiffPdf.Core.Network;
 using DiffPdf.Core.Storage;
 using DiffPdf.Messaging;
@@ -40,6 +42,14 @@ builder.Services.AddProblemDetails();
 builder.Services.Configure<StorageOptions>(builder.Configuration.GetSection("Storage"));
 builder.Services.Configure<PdfWorkLimiterOptions>(builder.Configuration.GetSection("Pdf"));
 builder.Services.Configure<NetworkOptions>(builder.Configuration.GetSection(NetworkOptions.SectionName));
+builder.Services.Configure<DiscoveryOptions>(builder.Configuration.GetSection(DiscoveryOptions.SectionName));
+
+// Network discovery: lets LAN clients find this server. The HTTP server-info
+// endpoint is always available; the UDP responder is opt-out via Discovery:Enabled.
+builder.Services.AddSingleton<IServerDescriptorProvider, ServerDescriptorProvider>();
+var discoveryOptions = builder.Configuration.GetSection(DiscoveryOptions.SectionName).Get<DiscoveryOptions>() ?? new DiscoveryOptions();
+if (discoveryOptions.Enabled)
+    builder.Services.AddHostedService<UdpDiscoveryResponder>();
 
 // SignalR realtime progress. Registering the publisher before AddDiffPdfWorker
 // means the worker's no-op fallback is not used.
@@ -126,6 +136,7 @@ api.MapScopeEndpoints();
 api.MapBatchEndpoints();
 api.MapJobEndpoints();
 api.MapDiscoveryEndpoints();
+api.MapServerInfoEndpoints();
 
 app.MapHub<JobsHub>("/hubs/jobs");
 

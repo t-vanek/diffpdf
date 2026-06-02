@@ -1,0 +1,21 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- SDK is documented at the API level; don't warn on self-describing DTO members. -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <Description>Client SDK for the diffpdf server: LAN discovery, typed REST access, OAuth and live (SignalR) job progress. Usable from WPF / any .NET app.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DiffPdf.Core\DiffPdf.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.8" />
+  </ItemGroup>
+
+</Project>
