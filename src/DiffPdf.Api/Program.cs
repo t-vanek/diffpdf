@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using DiffPdf.Api;
 using DiffPdf.Core.Abstractions;
+using DiffPdf.Core.Comparison;
 using DiffPdf.Core.Models;
 using DiffPdf.Pdf.DependencyInjection;
 using DiffPdf.Persistence;
@@ -72,9 +73,11 @@ app.MapPost("/api/batch", async (
     IComparisonJobQueue queue,
     CancellationToken ct) =>
 {
-    if (!Directory.Exists(request.OldFolder))
+    // Authenticated UNC shares are connected in the worker, so only validate
+    // existence up front for plain local / already-mounted paths.
+    if (request.OldFolderCredentials is null && !UncPath.IsUnc(request.OldFolder) && !Directory.Exists(request.OldFolder))
         return Results.BadRequest(new { error = $"Old folder not found: {request.OldFolder}" });
-    if (!Directory.Exists(request.NewFolder))
+    if (request.NewFolderCredentials is null && !UncPath.IsUnc(request.NewFolder) && !Directory.Exists(request.NewFolder))
         return Results.BadRequest(new { error = $"New folder not found: {request.NewFolder}" });
 
     var job = await jobStore.CreateAsync(request, ct);

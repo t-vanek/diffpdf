@@ -10,7 +10,10 @@ namespace DiffPdf.Core.Comparison;
 /// each pair in parallel (bounded). Unmatched files are reported as
 /// only-in-old / only-in-new.
 /// </summary>
-public sealed class BatchComparer(IComparisonEngine engine, ILogger<BatchComparer> logger) : IBatchComparer
+public sealed class BatchComparer(
+    IComparisonEngine engine,
+    INetworkShareConnector shareConnector,
+    ILogger<BatchComparer> logger) : IBatchComparer
 {
     public async Task<BatchComparisonReport> CompareAsync(
         BatchComparisonRequest request,
@@ -20,8 +23,12 @@ public sealed class BatchComparer(IComparisonEngine engine, ILogger<BatchCompare
     {
         var startedAt = DateTimeOffset.UtcNow;
 
-        var oldFiles = Index(request.OldFolder, request.SearchPattern, request.Recursive);
-        var newFiles = Index(request.NewFolder, request.SearchPattern, request.Recursive);
+        // Establish access to each folder (no-op for local / already-mounted paths).
+        using var oldShare = shareConnector.Connect(request.OldFolder, request.OldFolderCredentials);
+        using var newShare = shareConnector.Connect(request.NewFolder, request.NewFolderCredentials);
+
+        var oldFiles = Index(oldShare.Path, request.SearchPattern, request.Recursive);
+        var newFiles = Index(newShare.Path, request.SearchPattern, request.Recursive);
         var allKeys = oldFiles.Keys.Union(newFiles.Keys).OrderBy(k => k).ToList();
 
         var results = new ConcurrentBag<FilePairResult>();

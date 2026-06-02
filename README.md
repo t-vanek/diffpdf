@@ -40,6 +40,9 @@ blank pages, and error messages baked into the output.
   page number (`OLD p.3` / `NEW p.4`).
 - **Bulk folder comparison** — pairs files by relative path, runs in parallel,
   classifies each pair as `Identical` / `Differs` / `OnlyInOld` / `OnlyInNew` / `Error`.
+- **Network share folders** — compare local, mounted, or UNC (`\\server\share`)
+  folders; optional per-folder credentials authenticate the share (Windows
+  `WNetAddConnection2`, Linux CIFS mount).
 - **Async job API** — submit a batch, poll status, download the report and
   artifacts.
 
@@ -183,6 +186,31 @@ Add a `gate` to a batch request to turn the run into a pass/fail check. The
 ```
 
 A null limit means "no limit"; the report exposes `passed` and `gateViolations`.
+
+#### Network share folders
+
+`oldFolder` / `newFolder` may be local paths, OS-mounted shares, or UNC paths
+(`\\server\share\...` or `//server/share/...`). A share that needs
+authentication takes optional credentials per folder:
+
+```jsonc
+{
+  "oldFolder": "\\\\fileserver\\reports\\baseline",
+  "newFolder": "\\\\fileserver\\reports\\build-123",
+  "oldFolderCredentials": { "username": "svc_diff", "password": "…", "domain": "CORP" },
+  "newFolderCredentials": { "username": "svc_diff", "password": "…", "domain": "CORP" }
+}
+```
+
+- **Windows** connects the share with `WNetAddConnection2` (like `net use`, no
+  drive letter) and disconnects when the run finishes.
+- **Linux** mounts the share via CIFS to a temporary mount point and unmounts
+  after. This needs `cifs-utils` (bundled in the Docker image) and the
+  privilege to mount (run the container with `--privileged` or
+  `--cap-add SYS_ADMIN`).
+- Paths **without** credentials (local dirs, mapped drives, pre-mounted shares,
+  or UNC under the service account) are used as-is. Send credentials only over
+  HTTPS; they are never written to logs or comparison reports.
 
 ## Running
 

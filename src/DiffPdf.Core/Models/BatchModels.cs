@@ -18,6 +18,12 @@ public sealed record BatchComparisonRequest
 
     /// <summary>Optional pass/fail criteria for CI gating. Null = no gating.</summary>
     public BatchGate? Gate { get; init; }
+
+    /// <summary>Credentials for the old folder if it is an authenticated network share.</summary>
+    public NetworkCredentials? OldFolderCredentials { get; init; }
+
+    /// <summary>Credentials for the new folder if it is an authenticated network share.</summary>
+    public NetworkCredentials? NewFolderCredentials { get; init; }
 }
 
 /// <summary>

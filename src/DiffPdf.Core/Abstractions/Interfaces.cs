@@ -108,6 +108,24 @@ public interface IComparisonEngine
         CancellationToken ct = default);
 }
 
+/// <summary>An established (or pass-through) access to a folder. Dispose releases it.</summary>
+public sealed class NetworkShareConnection(string path, Action? onDispose = null) : IDisposable
+{
+    /// <summary>Local path to enumerate (the input path, or a temporary mount point).</summary>
+    public string Path { get; } = path;
+
+    public void Dispose() => onDispose?.Invoke();
+}
+
+/// <summary>
+/// Establishes access to a (possibly authenticated, possibly network) folder and
+/// returns the path to read from. A pass-through for local / already-mounted paths.
+/// </summary>
+public interface INetworkShareConnector
+{
+    NetworkShareConnection Connect(string folder, NetworkCredentials? credentials);
+}
+
 /// <summary>Compares whole folders of PDFs (old vs new).</summary>
 public interface IBatchComparer
 {

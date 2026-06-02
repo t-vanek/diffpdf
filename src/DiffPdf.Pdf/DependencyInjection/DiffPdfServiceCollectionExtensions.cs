@@ -1,5 +1,6 @@
 using DiffPdf.Core.Abstractions;
 using DiffPdf.Core.Comparison;
+using DiffPdf.Pdf.Network;
 using DiffPdf.Pdf.Rendering;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -29,6 +30,9 @@ public static class DiffPdfServiceCollectionExtensions
         services.AddSingleton<IContentErrorDetector, ContentErrorDetector>();
         services.AddSingleton<IComparisonEngine, ComparisonEngine>();
         services.AddSingleton<IBatchComparer, BatchComparer>();
+
+        // Network share access (no-op for local / already-mounted paths)
+        services.AddSingleton<INetworkShareConnector, PlatformShareConnector>();
 
         return services;
     }
