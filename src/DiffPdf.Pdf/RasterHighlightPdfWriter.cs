@@ -15,6 +15,8 @@ namespace DiffPdf.Pdf;
 /// </summary>
 public sealed class RasterHighlightPdfWriter : IHighlightedPdfWriter
 {
+    public HighlightStyle Style => HighlightStyle.Raster;
+
     private const double HeaderHeight = 18;
     private const double Gap = 16;
 
@@ -124,9 +126,10 @@ public sealed class RasterHighlightPdfWriter : IHighlightedPdfWriter
 
     private static void DrawSide(XGraphics gfx, HighlightSide side, double xOffset, double yOffset, double wPt, double hPt)
     {
-        using (var stream = new MemoryStream(side.Render.Png))
-        using (var image = XImage.FromStream(stream))
+        if (side.Render is not null)
         {
+            using var stream = new MemoryStream(side.Render.Png);
+            using var image = XImage.FromStream(stream);
             gfx.DrawImage(image, xOffset, yOffset, wPt, hPt);
         }
 
@@ -143,8 +146,9 @@ public sealed class RasterHighlightPdfWriter : IHighlightedPdfWriter
         }
     }
 
-    private static (double W, double H) SizePt(RenderedPage page)
+    private static (double W, double H) SizePt(RenderedPage? page)
     {
+        if (page is null) return (612, 792);
         int dpi = page.Dpi <= 0 ? 150 : page.Dpi;
         return (page.WidthPx * 72.0 / dpi, page.HeightPx * 72.0 / dpi);
     }

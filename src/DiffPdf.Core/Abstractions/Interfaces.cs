@@ -78,8 +78,16 @@ public interface IContentErrorDetector
         ComparisonOptions options);
 }
 
-/// <summary>One side (old or new) of a diff spread: a rendered page plus its regions.</summary>
-public sealed record HighlightSide(RenderedPage Render, IReadOnlyList<DifferenceRegion> Regions);
+/// <summary>
+/// One side (old or new) of a diff spread: the source PDF + page number and the
+/// difference regions (in PDF points). <see cref="Render"/> is only populated for
+/// the raster writer; the vector writer reads the original page directly.
+/// </summary>
+public sealed record HighlightSide(
+    string SourcePdfPath,
+    int PageNumber,
+    IReadOnlyList<DifferenceRegion> Regions,
+    RenderedPage? Render = null);
 
 /// <summary>
 /// A single differing page presented as an old/new pair. Either side may be
@@ -90,11 +98,19 @@ public sealed record DiffSpread(int? OldPageNumber, int? NewPageNumber, Highligh
 /// <summary>Assembles a highlighted diff PDF.</summary>
 public interface IHighlightedPdfWriter
 {
+    HighlightStyle Style { get; }
+
     Task WriteAsync(
         string outputPath,
         IReadOnlyList<DiffSpread> spreads,
         HighlightLayout layout,
         CancellationToken ct = default);
+}
+
+/// <summary>Selects a highlighted-PDF writer by style.</summary>
+public interface IHighlightedPdfWriterFactory
+{
+    IHighlightedPdfWriter Get(HighlightStyle style);
 }
 
 /// <summary>Top-level orchestrator: compares a single old/new PDF pair.</summary>

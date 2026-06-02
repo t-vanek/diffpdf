@@ -38,7 +38,8 @@ a chybové hlášky vyrenderované přímo do PDF.
 - **Oboustranné zvýrazněné diff-PDF** — pro každý lišící se soubor dvojstrana se
   starou stránkou (vlevo, odebraný obsah červeně) vedle nové (vpravo, přidané
   zeleně, vizuální změny oranžově); záhlaví označují stranu a číslo stránky
-  (`OLD p.3` / `NEW p.4`).
+  (`OLD p.3` / `NEW p.4`). Na výběr je rasterový styl nebo **vektorový overlay**,
+  který kreslí zvýraznění přímo nad původní stránky, takže text zůstává vybíratelný.
 - **Hromadné porovnání složek** — páruje soubory podle relativní cesty, běží
   paralelně, klasifikuje každou dvojici jako `Identical` / `Differs` /
   `OnlyInOld` / `OnlyInNew` / `Error`.
@@ -233,6 +234,7 @@ curl http://localhost:8080/api/jobs/<id>/report
 | `ignoreTextPatterns` | `[]` | Regexy; odpovídající slova se zahodí před textovým diffem. |
 | `produceHighlightedPdf` | `true` | Vytvořit diff-PDF pro lišící se soubory. |
 | `highlightLayout` | `SideBySide` | `SideBySide` (stará vlevo / nová vpravo) nebo `Single` (jen změněná strana). |
+| `highlightStyle` | `Raster` | `Raster` (stránky jako obrázek) nebo `VectorOverlay` (overlay nad originálem — text zůstává vybíratelný). |
 | `renderer` | `Ghostscript` | `Ghostscript` nebo `Pdfium`. |
 
 Výsledek jedné dvojice (`POST /api/comparisons`) vrací `outcome`
@@ -370,7 +372,6 @@ PdfSharp (MIT), SkiaSharp (MIT).
 
 ## Roadmap / zatím neimplementováno
 
-- Vektorové zvýraznění nad původním PDF (zachová vybíratelný text).
 - SSIM perceptuální skórování; strukturální shlukování regionů.
 - Autentizace / multi-tenant izolace artefaktů.
 - Credentialy síťových sdílení ve file-pair cestě (zatím jen předmountováno).

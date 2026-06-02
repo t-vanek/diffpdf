@@ -22,6 +22,8 @@ public static class DiffPdfServiceCollectionExtensions
         services.AddSingleton<IImageComparer, SkiaImageComparer>();
         services.AddSingleton<IBlankPageDetector, SkiaBlankPageDetector>();
         services.AddSingleton<IHighlightedPdfWriter, RasterHighlightPdfWriter>();
+        services.AddSingleton<IHighlightedPdfWriter, VectorHighlightPdfWriter>();
+        services.AddSingleton<IHighlightedPdfWriterFactory, HighlightedPdfWriterFactory>();
 
         // Renderers + factory
         services.AddSingleton<IPdfPageRenderer, GhostscriptPageRenderer>();

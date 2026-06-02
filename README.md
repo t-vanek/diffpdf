@@ -39,7 +39,8 @@ blank pages, and error messages baked into the output.
 - **Two-sided highlighted diff PDF** — per differing file, a spread with the
   old page (left, removed content in red) beside the new page (right, added in
   green, visual changes in orange); header strips are labeled with the side and
-  page number (`OLD p.3` / `NEW p.4`).
+  page number (`OLD p.3` / `NEW p.4`). Choose a raster style or a **vector
+  overlay** that draws highlights on the original pages so text stays selectable.
 - **Bulk folder comparison** — pairs files by relative path, runs in parallel,
   classifies each pair as `Identical` / `Differs` / `OnlyInOld` / `OnlyInNew` / `Error`.
 - **Network share folders** — compare local, mounted, or UNC (`\\server\share`)
@@ -252,6 +253,7 @@ curl http://localhost:8080/api/jobs/<id>/report
 | `ignoreTextPatterns` | `[]` | Regexes; matching words are dropped before the text diff. |
 | `produceHighlightedPdf` | `true` | Emit diff PDF for differing files. |
 | `highlightLayout` | `SideBySide` | `SideBySide` (old left / new right) or `Single` (changed side only). |
+| `highlightStyle` | `Raster` | `Raster` (image pages) or `VectorOverlay` (overlay on the original PDF — text stays selectable). |
 | `renderer` | `Ghostscript` | `Ghostscript` or `Pdfium`. |
 
 The single-pair result (`POST /api/comparisons`) returns `outcome`
@@ -392,7 +394,6 @@ SkiaSharp (MIT).
 
 ## Roadmap / not yet implemented
 
-- Vector highlight overlay on the original PDF (keeps text selectable).
 - SSIM-based perceptual scoring; structural region clustering.
 - Authentication / multi-tenant artifact isolation.
 - Network-share credentials in the per-file-pair path (currently pre-mounted only).
