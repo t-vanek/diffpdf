@@ -1,11 +1,14 @@
+using DiffPdf.Core.Network;
 using DiffPdf.Pdf.Network;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 
 namespace DiffPdf.Core.Tests;
 
 public class PlatformShareConnectorTests
 {
-    private static PlatformShareConnector Connector() => new(NullLogger<PlatformShareConnector>.Instance);
+    private static PlatformShareConnector Connector() =>
+        new(Options.Create(new NetworkOptions()), NullLogger<PlatformShareConnector>.Instance);
 
     [Fact]
     public void LocalPath_PassesThrough()

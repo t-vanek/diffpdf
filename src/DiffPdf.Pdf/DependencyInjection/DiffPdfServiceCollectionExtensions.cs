@@ -1,5 +1,6 @@
 using DiffPdf.Core.Abstractions;
 using DiffPdf.Core.Comparison;
+using DiffPdf.Core.Network;
 using DiffPdf.Pdf.Network;
 using DiffPdf.Pdf.Rendering;
 using Microsoft.Extensions.DependencyInjection;
@@ -13,6 +14,7 @@ public static class DiffPdfServiceCollectionExtensions
     {
         services.AddOptions<GhostscriptOptions>();
         services.AddOptions<PdfWorkLimiterOptions>();
+        services.AddOptions<NetworkOptions>();
 
         // Global cap on concurrent render operations (CPU/RAM protection)
         services.AddSingleton<IPdfWorkLimiter, SemaphorePdfWorkLimiter>();
@@ -37,8 +39,11 @@ public static class DiffPdfServiceCollectionExtensions
         services.AddSingleton<IComparisonEngine, ComparisonEngine>();
         services.AddSingleton<IBatchComparer, BatchComparer>();
 
-        // Network share access (no-op for local / already-mounted paths)
+        // Network share access (no-op for local / already-mounted paths) + the
+        // config-driven resolver and the discovery service.
         services.AddSingleton<INetworkShareConnector, PlatformShareConnector>();
+        services.AddSingleton<INetworkShareResolver, NetworkShareResolver>();
+        services.AddSingleton<INetworkDiscoveryService, NetworkDiscoveryService>();
 
         return services;
     }

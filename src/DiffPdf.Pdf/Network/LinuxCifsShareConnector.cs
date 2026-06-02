@@ -3,6 +3,7 @@ using System.Runtime.Versioning;
 using DiffPdf.Core.Abstractions;
 using DiffPdf.Core.Comparison;
 using DiffPdf.Core.Models;
+using DiffPdf.Core.Network;
 using Microsoft.Extensions.Logging;
 
 namespace DiffPdf.Pdf.Network;
@@ -15,7 +16,8 @@ namespace DiffPdf.Pdf.Network;
 [SupportedOSPlatform("linux")]
 internal static class LinuxCifsShareConnector
 {
-    public static NetworkShareConnection Connect(string folder, NetworkCredentials credentials, ILogger logger)
+    public static NetworkShareConnection Connect(
+        string folder, NetworkCredentials credentials, NetworkOptions options, ILogger logger)
     {
         var (server, share, subPath) = UncPath.Split(folder);
         string source = $"//{server}/{share}";
@@ -29,9 +31,11 @@ internal static class LinuxCifsShareConnector
             $"username={credentials.Username}\npassword={credentials.Password}\ndomain={credentials.Domain ?? string.Empty}\n");
         File.SetUnixFileMode(credentialsFile, UnixFileMode.UserRead | UnixFileMode.UserWrite);
 
+        string mountOptions = BuildMountOptions(credentialsFile, options);
+
         try
         {
-            Run("mount", ["-t", "cifs", source, mountPoint, "-o", $"credentials={credentialsFile},ro"], logger);
+            Run("mount", ["-t", "cifs", source, mountPoint, "-o", mountOptions], logger);
         }
         catch
         {
@@ -56,6 +60,20 @@ internal static class LinuxCifsShareConnector
             catch (Exception ex) { logger.LogWarning(ex, "Failed to unmount {MountPoint}", mountPoint); }
             TryRemoveDir(mountPoint);
         });
+    }
+
+    /// <summary>Builds the <c>mount.cifs -o</c> string: credentials file, read-only flag and any extra configured options.</summary>
+    private static string BuildMountOptions(string credentialsFile, NetworkOptions options)
+    {
+        var parts = new List<string> { $"credentials={credentialsFile}" };
+
+        if (options.MountReadOnly)
+            parts.Add("ro");
+
+        if (!string.IsNullOrWhiteSpace(options.CifsMountOptions))
+            parts.Add(options.CifsMountOptions.Trim().Trim(','));
+
+        return string.Join(',', parts);
     }
 
     private static void Run(string fileName, string[] args, ILogger logger)
