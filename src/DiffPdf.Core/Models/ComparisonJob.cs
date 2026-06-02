@@ -17,10 +17,10 @@ public sealed record ComparisonJob
     public required BatchComparisonRequest Request { get; init; }
 
     // --- Domain scope ---
-    public required Guid BusinessInstanceId { get; init; }
-    public required Guid ProjectId { get; init; }
-    public string BusinessInstanceKey => Request.Scope.BusinessInstanceKey;
-    public string ProjectKey => Request.Scope.ProjectKey;
+    public required Guid BranchId { get; init; }
+    public required Guid InstanceId { get; init; }
+    public string BranchKey => Request.Scope.BranchKey;
+    public string InstanceKey => Request.Scope.InstanceKey;
 
     public JobStatus Status { get; init; } = JobStatus.Queued;
 

@@ -88,8 +88,8 @@ public class IncrementProcessedTests
         var job = await store.CreateAsync(new ComparisonJob
         {
             Id = Guid.NewGuid(),
-            BusinessInstanceId = Guid.NewGuid(),
-            ProjectId = Guid.NewGuid(),
+            BranchId = Guid.NewGuid(),
+            InstanceId = Guid.NewGuid(),
             Request = new BatchComparisonRequest
             {
                 Scope = new JobScope("Alfa", "P"),

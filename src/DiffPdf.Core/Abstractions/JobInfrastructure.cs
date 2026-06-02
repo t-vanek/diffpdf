@@ -5,8 +5,8 @@ namespace DiffPdf.Core.Abstractions;
 /// <summary>Realtime job progress event (also used as the SignalR payload).</summary>
 public sealed record JobProgressChanged(
     Guid JobId,
-    string BusinessInstanceKey,
-    string ProjectKey,
+    string BranchKey,
+    string InstanceKey,
     string Status,
     int ProcessedCount,
     int TotalCount,
@@ -14,7 +14,7 @@ public sealed record JobProgressChanged(
     string? Error = null)
 {
     public static JobProgressChanged From(ComparisonJob job) => new(
-        job.Id, job.BusinessInstanceKey, job.ProjectKey, job.Status.ToString(),
+        job.Id, job.BranchKey, job.InstanceKey, job.Status.ToString(),
         job.ProcessedCount, job.TotalCount, job.Progress, job.Error);
 }
 
@@ -30,7 +30,7 @@ public sealed class NullJobProgressPublisher : IJobProgressPublisher
     public Task PublishAsync(JobProgressChanged progress, CancellationToken ct = default) => Task.CompletedTask;
 }
 
-/// <summary>Resolves the on-disk locations for a job's input/output, scoped by business instance + project.</summary>
+/// <summary>Resolves the on-disk locations for a job's output, under the instance's reports folder.</summary>
 public interface IJobStoragePathProvider
 {
     string GetJobRoot(ComparisonJob job);
@@ -39,7 +39,7 @@ public interface IJobStoragePathProvider
     string GetLogsPath(ComparisonJob job);
 }
 
-/// <summary>Creates the storage folders for instances / projects / jobs on demand.</summary>
+/// <summary>Creates the per-job output folders under the instance's reports folder on demand.</summary>
 public interface IStorageProvisioner
 {
     Task EnsureJobFoldersAsync(ComparisonJob job, CancellationToken ct = default);

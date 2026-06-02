@@ -9,13 +9,14 @@ public class InMemoryJobStoreTests
     private static ComparisonJob NewJob() => new()
     {
         Id = Guid.NewGuid(),
-        BusinessInstanceId = Guid.NewGuid(),
-        ProjectId = Guid.NewGuid(),
+        BranchId = Guid.NewGuid(),
+        InstanceId = Guid.NewGuid(),
         Request = new BatchComparisonRequest
         {
-            Scope = new JobScope("Alfa", "LamaEnergyAlfa"),
+            Scope = new JobScope("Alfa", "LamaEnergy"),
             OldFolder = "/old",
             NewFolder = "/new",
+            ReportsFolder = "/reports",
         },
     };
 
@@ -67,8 +68,8 @@ public class InMemoryJobStoreTests
         var store = new InMemoryJobStore();
         await store.CreateAsync(NewJob());
 
-        var byInstance = await store.ListAsync(new JobListQuery { BusinessInstanceKey = "Alfa" });
-        var other = await store.ListAsync(new JobListQuery { BusinessInstanceKey = "Nope" });
+        var byInstance = await store.ListAsync(new JobListQuery { BranchKey = "Alfa" });
+        var other = await store.ListAsync(new JobListQuery { BranchKey = "Nope" });
 
         Assert.Single(byInstance);
         Assert.Empty(other);

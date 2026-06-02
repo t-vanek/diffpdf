@@ -3,11 +3,15 @@ namespace DiffPdf.Core.Models;
 /// <summary>Request to compare every PDF under <see cref="OldFolder"/> against <see cref="NewFolder"/>.</summary>
 public sealed record BatchComparisonRequest
 {
-    /// <summary>Business instance + project this job belongs to.</summary>
+    /// <summary>Branch + instance this job belongs to.</summary>
     public required JobScope Scope { get; init; }
 
-    public required string OldFolder { get; init; }
-    public required string NewFolder { get; init; }
+    /// <summary>Resolved input/output folders, derived server-side from the instance's base path.</summary>
+    public string OldFolder { get; init; } = string.Empty;
+    public string NewFolder { get; init; } = string.Empty;
+
+    /// <summary>Resolved reports folder (<c>{base}/reports</c>); per-job outputs live under <c>{ReportsFolder}/{jobId}</c>.</summary>
+    public string ReportsFolder { get; init; } = string.Empty;
 
     /// <summary>Glob-style search pattern relative to each folder.</summary>
     public string SearchPattern { get; init; } = "*.pdf";

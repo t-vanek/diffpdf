@@ -18,8 +18,8 @@ public static class PostgresPersistenceServiceCollectionExtensions
         services.AddSingleton<EntityMapper>();
         services.AddScoped<IJobStore, PostgresJobStore>();
         services.AddScoped<IFilePairTaskStore, PostgresFilePairTaskStore>();
-        services.AddScoped<IBusinessInstanceStore, PostgresBusinessInstanceStore>();
-        services.AddScoped<IProjectStore, PostgresProjectStore>();
+        services.AddScoped<IBranchStore, PostgresBranchStore>();
+        services.AddScoped<IInstanceStore, PostgresInstanceStore>();
         services.AddScoped<IJobSubmissionService, PostgresJobSubmissionService>();
 
         services.AddHostedService(sp => new PostgresMigrationHostedService(

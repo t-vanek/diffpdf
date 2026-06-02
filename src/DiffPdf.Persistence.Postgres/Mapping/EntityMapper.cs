@@ -8,9 +8,9 @@ namespace DiffPdf.Persistence.Postgres.Mapping;
 [Mapper]
 public sealed partial class EntityMapper
 {
-    public partial BusinessInstance ToDomain(BusinessInstanceEntity entity);
+    public partial Branch ToDomain(BranchEntity entity);
 
-    public partial ComparisonProject ToDomain(ProjectEntity entity);
+    public partial ComparisonInstance ToDomain(InstanceEntity entity);
 
     [MapProperty(nameof(JobEntity.RequestJson), nameof(ComparisonJob.Request))]
     [MapProperty(nameof(JobEntity.ReportJson), nameof(ComparisonJob.Report))]

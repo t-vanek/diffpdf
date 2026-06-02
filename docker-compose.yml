@@ -52,9 +52,10 @@ services:
       Storage__RootPath: /data/storage
       DIFFPDF_LOG_DIR: /data/logs
     volumes:
-      # Mount the folders you want to compare (read-only) and a writable data dir.
-      - ./samples/old:/pdfs/old:ro
-      - ./samples/new:/pdfs/new:ro
+      # Mount each instance's base folder (holds old/ and new/; the job writes
+      # reports/ here, so this is read-write). Register the instance with
+      # basePath: /pdfs/LamaEnergy (see README).
+      - ./samples/LamaEnergy:/pdfs/LamaEnergy
       - diffpdf-data:/data
 
 volumes:

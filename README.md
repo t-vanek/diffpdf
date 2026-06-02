@@ -47,7 +47,7 @@ a chybové hlášky vyrenderované přímo do PDF.
   `share:<jméno>`), nebo volitelně inline per složka (Windows `WNetAddConnection2`,
   Linux CIFS mount).
 - **Discovery režim** — suchý běh přes `/api/v1/discovery`: ověř existenci scope
-  (business instance + projekt), dostupnost cesty, počet PDF a párování old/new
+  (větev + instance), dostupnost cesty, počet PDF a párování old/new
   ještě než odešleš dávku.
 - **Asynchronní job API** — odeslání dávky, polling stavu, stažení reportu a
   artefaktů.
@@ -95,7 +95,7 @@ kreslení převede na pixely.
 
 ```
 Klient → POST /api/v1/batch
-   │  validace scope (business instance + projekt), kontrola složek
+   │  validace scope (větev + instance), kontrola složek
    ▼
 [API]  vloží job do PostgreSQL  +  publikuje RunBatchComparison   ← jedna transakce (outbox)
    ▼
@@ -112,7 +112,7 @@ SignalR (živý progress)  +  REST polling (zdroj pravdy)
 
 Principy:
 
-- **PostgreSQL je zdroj pravdy** pro joby, business instance, projekty, progress
+- **PostgreSQL je zdroj pravdy** pro joby, větve, instance, progress
   a metadata reportu. Přechody stavů používají optimistic concurrency (`version`)
   a lease (`locked_by`/`locked_until`); `Queued → Running` provede jen jeden worker.
 - **RabbitMQ je jen transport** příkazů — nedrží stav úlohy.
@@ -146,7 +146,7 @@ se podle connection stringu:
 - `ConnectionStrings:SqlServer` → použije se SQL Server (má přednost, je-li nastaven).
 - jinak `ConnectionStrings:Postgres` → použije se PostgreSQL.
 
-Schéma (tabulky `business_instances`, `projects`, `jobs`, `file_pair_tasks`) se
+Schéma (tabulky `branches`, `instances`, `jobs`, `file_pair_tasks`) se
 vytvoří idempotentně při startu pro oba providery; Wolverine si spravuje vlastní
 inbox/outbox tabulky v téže databázi. Stejná volba platí i pro OpenIddict (auth)
 — ten používá stejné připojení. Příklad pro SQL Server:
@@ -181,13 +181,13 @@ Všechny aplikační cesty jsou pod prefixem **`/api/v1`**.
 | `GET`  | `/health` | Liveness probe (anonymní). |
 | `POST` | `/connect/token` | OAuth2 token endpoint (client-credentials). |
 | `*` | `/connect/revocation` | Zneplatnění access tokenu (RFC 7009). |
-| `POST` | `/api/v1/business-instances` | Vytvoří business instanci (`Alfa`, `RNew`, …). |
-| `GET`  | `/api/v1/business-instances` | Výpis business instancí. |
-| `POST` | `/api/v1/business-instances/{key}/projects` | Vytvoří projekt pod instancí. |
-| `GET`  | `/api/v1/business-instances/{key}/projects` | Výpis projektů. |
+| `POST` | `/api/v1/branches` | Vytvoří větev (`Alfa`, `RNew`, `ROld`). |
+| `GET`  | `/api/v1/branches` | Výpis větví. |
+| `POST` | `/api/v1/branches/{branchKey}/instances` | Vytvoří instanci pod větví (nese `basePath`). |
+| `GET`  | `/api/v1/branches/{branchKey}/instances` | Výpis instancí. |
 | `POST` | `/api/v1/comparisons` | Porovná jednu dvojici (synchronně). |
 | `POST` | `/api/v1/batch` | Odešle úlohu porovnání složek (async, vrací `202`). |
-| `GET`  | `/api/v1/jobs` | Výpis úloh (filtr `businessInstanceKey` / `projectKey` / `status`). |
+| `GET`  | `/api/v1/jobs` | Výpis úloh (filtr `branchKey` / `instanceKey` / `status`). |
 | `GET`  | `/api/v1/jobs/{id}` | Stav úlohy + progress. |
 | `GET`  | `/api/v1/jobs/{id}/tasks` | Výpis file-pair tasků úlohy. |
 | `GET`  | `/api/v1/jobs/{id}/report` | Agregovaný JSON report (`409` než je hotovo). |
@@ -196,7 +196,7 @@ Všechny aplikační cesty jsou pod prefixem **`/api/v1`**.
 | `POST` | `/api/v1/jobs/{id}/retry` | Znovu spustí failed file-pairs hotové úlohy. |
 | `GET`  | `/api/v1/jobs/{id}/artifacts/{**path}` | Stažení zvýrazněného diff-PDF. |
 | `GET`  | `/api/v1/discovery/shares` | Výpis nakonfigurovaných sdílení a jmen credential profilů. |
-| `POST` | `/api/v1/discovery/folder` | Probe složky — dostupnost + počet PDF + ukázka cest; volitelně ověří i scope (instance/projekt) a vrátí `ready`. |
+| `POST` | `/api/v1/discovery/folder` | Probe složky — dostupnost + počet PDF + ukázka cest; volitelně ověří i scope (větev/instance) a vrátí `ready`. |
 | `POST` | `/api/v1/discovery/preview` | Suchý běh párování old/new (bez porovnání); volitelně ověří i scope a vrátí `ready`. |
 
 OpenAPI dokument je na `/openapi/v1.json`, interaktivní **Swagger UI** na `/swagger`.
@@ -208,8 +208,8 @@ Chyby se vrací jako **`application/problem+json`** (RFC 9457 ProblemDetails).
 curl -X POST http://localhost:8080/api/v1/comparisons \
   -H 'Content-Type: application/json' \
   -d '{
-        "oldPath": "/pdfs/old/report.pdf",
-        "newPath": "/pdfs/new/report.pdf",
+        "oldPath": "/pdfs/LamaEnergy/old/report.pdf",
+        "newPath": "/pdfs/LamaEnergy/new/report.pdf",
         "options": { "mode": "Both", "dpi": 150 }
       }'
 ```
@@ -217,17 +217,16 @@ curl -X POST http://localhost:8080/api/v1/comparisons \
 ### Příklad — hromadné porovnání složek
 
 ```bash
-# 0. jednou vytvoř scope (business instance + projekt)
-curl -X POST http://localhost:8080/api/v1/business-instances -d '{"key":"Alfa","name":"Alfa"}' -H 'Content-Type: application/json'
-curl -X POST http://localhost:8080/api/v1/business-instances/Alfa/projects -d '{"key":"LamaEnergyAlfa","name":"Lama Energy Alfa"}' -H 'Content-Type: application/json'
+# 0. jednou vytvoř scope: větev + instanci (instance nese základní cestu)
+curl -X POST http://localhost:8080/api/v1/branches -d '{"key":"Alfa","name":"Alfa"}' -H 'Content-Type: application/json'
+curl -X POST http://localhost:8080/api/v1/branches/Alfa/instances \
+  -d '{"key":"LamaEnergy","name":"Lama Energy","basePath":"/pdfs/LamaEnergy"}' -H 'Content-Type: application/json'
 
-# 1. odešli dávku pod tímto scope
+# 1. odešli dávku pod tímto scope — old/new/reports se odvodí z basePath instance
 curl -X POST http://localhost:8080/api/v1/batch \
   -H 'Content-Type: application/json' \
   -d '{
-        "scope": { "businessInstanceKey": "Alfa", "projectKey": "LamaEnergyAlfa" },
-        "oldFolder": "/pdfs/old",
-        "newFolder": "/pdfs/new",
+        "scope": { "branchKey": "Alfa", "instanceKey": "LamaEnergy" },
         "recursive": true,
         "options": { "mode": "Both", "produceHighlightedPdf": true }
       }'
@@ -279,8 +278,8 @@ flagovalo každý report. Vyluč ho oblastí a/nebo textovým vzorem:
 
 ```jsonc
 {
-  "oldPath": "/pdfs/old/report.pdf",
-  "newPath": "/pdfs/new/report.pdf",
+  "oldPath": "/pdfs/LamaEnergy/old/report.pdf",
+  "newPath": "/pdfs/LamaEnergy/new/report.pdf",
   "options": {
     "ignoreRegions": [
       // spodních 8 % každé stránky; souřadnice mají počátek vlevo nahoře
@@ -303,8 +302,7 @@ ideální pro `curl --fail` v pipeline.
 
 ```jsonc
 {
-  "oldFolder": "/pdfs/old",
-  "newFolder": "/pdfs/new",
+  "scope": { "branchKey": "Alfa", "instanceKey": "LamaEnergy" },
   "gate": {
     "failOnAnyDifference": true,   // nebo nastav maxDifferingFiles
     "maxErrors": 0,
@@ -315,54 +313,37 @@ ideální pro `curl --fail` v pipeline.
 
 Hodnota `null` znamená „bez limitu"; report vystavuje `passed` a `gateViolations`.
 
-#### Síťové složky
+#### Síťové složky a credentialy (na instanci)
 
-`oldFolder` / `newFolder` mohou být lokální cesty, namountovaná sdílení, UNC cesty
+`basePath` instance může být lokální cesta, namountované sdílení, UNC cesta
 (`\\server\share\...` či `//server/share/...`) nebo **pojmenovaný alias** sdílení
-(`share:<jméno>[/podcesta]`). Přihlašovací údaje se dají zadat třemi způsoby —
-seřazeno od nejvíc doporučeného:
+(`share:<jméno>[/podcesta]`). Credentialy se na instanci **neukládají** — instance
+jen odkáže na pojmenovaný **credential profil**; heslo zůstává v konfiguraci.
 
-**1) Konfigurace sítě (`Network` v appsettings) — doporučeno.** Credentialy a
-sdílení se definují **jednou** v konfiguraci (nebo secret storu), ne v každém
-requestu:
+**Konfigurace sítě (`Network` v appsettings).** Sdílení a credential profily se
+definují **jednou** (v configu nebo secret storu):
 
 ```jsonc
 "Network": {
-  "AllowInlineCredentials": true,   // false = zakaž hesla v tělech requestů
-  "MountReadOnly": true,            // Linux: mountuj CIFS read-only
+  "AllowInlineCredentials": false,  // inline hesla v requestech se už nepoužívají
+  "MountReadOnly": false,           // Linux: false — do reports/ se zapisuje
   "CifsMountOptions": "vers=3.0",   // Linux: extra -o volby pro mount.cifs
   "CredentialProfiles": {
     "corp": { "username": "svc_diff", "password": "…", "domain": "CORP" }
   },
   "Shares": {
-    "reports":  { "root": "\\\\fileserver\\reports", "credentialProfile": "corp" },
-    "baseline": { "localMountPath": "/mnt/reports" }   // předmountováno na každém workeru
+    "lama": { "root": "\\\\fileserver\\reports\\LamaEnergy", "credentialProfile": "corp" }
   }
 }
 ```
 
-Request se pak odkáže na alias a/nebo profil — heslo nikdy neopustí konfiguraci:
+Instance pak odkáže na alias a/nebo profil — heslo nikdy neopustí konfiguraci:
 
 ```jsonc
-{
-  "oldFolder": "share:reports/baseline",        // → \\fileserver\reports\baseline (creds z profilu "corp")
-  "newFolder": "share:reports/build-123"
-}
-```
-
-**2) Profil jménem na vlastní cestě** — `oldFolderCredentialProfile: "corp"`
-k libovolné UNC cestě.
-
-**3) Inline credentialy v requestu** (zpětně kompatibilní; jdou zakázat přes
-`AllowInlineCredentials: false`):
-
-```jsonc
-{
-  "oldFolder": "\\\\fileserver\\reports\\baseline",
-  "newFolder": "\\\\fileserver\\reports\\build-123",
-  "oldFolderCredentials": { "username": "svc_diff", "password": "…", "domain": "CORP" },
-  "newFolderCredentials": { "username": "svc_diff", "password": "…", "domain": "CORP" }
-}
+// POST /api/v1/branches/Alfa/instances
+{ "key": "LamaEnergy", "name": "Lama Energy",
+  "basePath": "share:lama",            // → \\fileserver\reports\LamaEnergy (profil z aliasu)
+  "credentialProfile": "corp" }        // volitelné; lze přepsat/doplnit profil
 ```
 
 Mechanismus připojení:
@@ -371,15 +352,15 @@ Mechanismus připojení:
   mapování disku) a po doběhnutí odpojí.
 - **Linux** namountuje sdílení přes CIFS do dočasného bodu a poté odmountuje.
   Vyžaduje `cifs-utils` (v Docker image už je) a oprávnění k mountu (kontejner s
-  `--privileged` nebo `--cap-add SYS_ADMIN`). `MountReadOnly` a `CifsMountOptions`
-  ladí `-o` volby.
+  `--privileged` nebo `--cap-add SYS_ADMIN`). Protože se do `reports/` **zapisuje**,
+  nech `MountReadOnly: false`.
 - Cesty **bez** credentialů (lokální, mapované disky, předmountovaná sdílení nebo
-  UNC pod service účtem) se použijí tak, jak jsou. Credentialy posílej jen přes
-  HTTPS; nikdy se nezapisují do logů ani reportů.
+  UNC pod service účtem) se použijí tak, jak jsou. Credentialy nikdy nekončí v
+  logu ani reportu.
 - **Durable pipeline** (`/api/v1/batch`) pracuje se stabilními cestami napříč
-  workery — proto pro ni preferuj `localMountPath` (předmountováno) nebo UNC pod
-  service účtem. Aliasy a profily se vyhodnotí už při submitu, takže do úlohy se
-  uloží konkrétní cesta; s `localMountPath` se navíc nepersistuje žádné heslo.
+  workery — proto preferuj `localMountPath` (předmountováno) nebo UNC pod service
+  účtem. `basePath` instance se resolvne už při submitu, takže do úlohy se uloží
+  konkrétní cesta; s `localMountPath` se navíc nepersistuje žádné heslo.
 
 #### Discovery režim (suchý běh)
 
@@ -395,11 +376,11 @@ curl -X POST http://localhost:8080/api/v1/discovery/folder \
   -H 'Content-Type: application/json' \
   -d '{ "folder": "share:reports/baseline" }'
 
-# pre-flight: ověř i existenci scope (business instance + projekt) k téže složce
+# pre-flight: ověř i existenci scope (větev + instance) k téže složce
 curl -X POST http://localhost:8080/api/v1/discovery/folder \
   -H 'Content-Type: application/json' \
-  -d '{ "folder": "share:reports/baseline",
-        "businessInstanceKey": "Alfa", "projectKey": "LamaEnergyAlfa" }'
+  -d '{ "folder": "share:lama/old",
+        "branchKey": "Alfa", "instanceKey": "LamaEnergy" }'
 
 # suchý běh párování old vs new — kolik matched / onlyInOld / onlyInNew
 curl -X POST http://localhost:8080/api/v1/discovery/preview \
@@ -410,23 +391,27 @@ curl -X POST http://localhost:8080/api/v1/discovery/preview \
 Discovery přijímá stejné odkazy na sdílení/profily jako dávka. Nedostupná cesta
 nebo neznámý alias vrátí `reachable: false` s důvodem v `error`, ne chybu 500.
 
-Když do `/discovery/folder` nebo `/discovery/preview` přidáš `businessInstanceKey`
-+ `projectKey` (oba, nebo žádný), odpověď navíc nese `scope` s příznaky
-`businessInstanceExists` / `projectExists` a celkový `ready` (cesty dostupné,
+Když do `/discovery/folder` nebo `/discovery/preview` přidáš `branchKey`
++ `instanceKey` (oba, nebo žádný), odpověď navíc nese `scope` s příznaky
+`branchExists` / `instanceExists` a celkový `ready` (cesty dostupné,
 obsahují PDF a scope existuje) — jediný pre-flight check, než pošleš dávku.
 
-### Business instance, projekty a struktura úložiště
+### Větve, instance a struktura úložiště
 
-Úlohy mají scope **business instance** (např. `Alfa`, `RNew`, `ROld`) a
-**projekt** pod ní (např. `LamaEnergyAlfa`). To jsou data zakládaná přes API a
-uložená v PostgreSQL — nikdy ne natvrdo v kódu. Artefakty žijí pod scope:
+Úlohy mají scope **větev** (např. `Alfa`, `RNew`, `ROld`) a **instanci** pod ní
+(např. `LamaEnergy`, `Pragoplyn`). To jsou data zakládaná přes API a uložená v
+PostgreSQL — nikdy ne natvrdo v kódu. Každá instance nese **základní cestu**
+(`basePath`); vstup i výstup jsou její podsložky:
 
 ```
-storage/{businessInstanceKey}/{projectKey}/jobs/{jobId}/artifacts|reports|logs
+{instance basePath}/old                  # vstupní PDF (reference)
+{instance basePath}/new                  # vstupní PDF (nová verze)
+{instance basePath}/reports/{jobId}/...  # výstup běhu: artifacts/ (diff-PDF) + JSON report + logs/
 ```
 
-Klíče se validují (`[a-zA-Z0-9_.-]`, ≤64 znaků, žádné `..`), takže nemůžou utéct
-z kořene úložiště. Struktura výše je příklad dat, ne chování aplikace.
+Klíče větve/instance se validují (`[a-zA-Z0-9_.-]`, ≤64 znaků, žádné `..`);
+`basePath` zadává operátor při zakládání instance (lokál / UNC / `share:` alias).
+Aplikace zapisuje **jen** do `reports/`; `old/` a `new/` pouze čte.
 
 ## Spuštění
 
@@ -434,8 +419,9 @@ z kořene úložiště. Struktura výše je příklad dat, ne chování aplikace
 
 ```bash
 docker compose up --build
-# Spustí PostgreSQL + RabbitMQ + API na http://localhost:8080,
-# porovnává ./samples/old vs ./samples/new. Data jsou v pojmenovaných volumech.
+# Spustí PostgreSQL + RabbitMQ + API na http://localhost:8080. Vstup je složka
+# instance ./samples/LamaEnergy (old/ vs new/); reports se píší do téže složky.
+# Pak vytvoř větev + instanci (basePath: /pdfs/LamaEnergy) a odešli dávku — viz výše.
 ```
 
 Image instaluje Ghostscript a nativní závislosti pro SkiaSharp/PDFium; compose

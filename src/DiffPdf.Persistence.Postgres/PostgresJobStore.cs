@@ -27,10 +27,10 @@ public sealed class PostgresJobStore(DiffPdfDbContext db, EntityMapper mapper) :
         string? status = query.Status?.ToString();
         var q =
             from j in db.Jobs.AsNoTracking()
-            join bi in db.BusinessInstances.AsNoTracking() on j.BusinessInstanceId equals bi.Id
-            join p in db.Projects.AsNoTracking() on j.ProjectId equals p.Id
-            where (query.BusinessInstanceKey == null || bi.Key == query.BusinessInstanceKey)
-               && (query.ProjectKey == null || p.Key == query.ProjectKey)
+            join br in db.Branches.AsNoTracking() on j.BranchId equals br.Id
+            join inst in db.Instances.AsNoTracking() on j.InstanceId equals inst.Id
+            where (query.BranchKey == null || br.Key == query.BranchKey)
+               && (query.InstanceKey == null || inst.Key == query.InstanceKey)
                && (status == null || j.Status == status)
             orderby j.CreatedAt descending
             select j;
@@ -174,8 +174,8 @@ public sealed class PostgresJobStore(DiffPdfDbContext db, EntityMapper mapper) :
     internal static JobEntity ToEntity(ComparisonJob job) => new()
     {
         Id = job.Id,
-        BusinessInstanceId = job.BusinessInstanceId,
-        ProjectId = job.ProjectId,
+        BranchId = job.BranchId,
+        InstanceId = job.InstanceId,
         Status = job.Status.ToString(),
         CreatedAt = job.CreatedAt,
         ProcessedCount = job.ProcessedCount,

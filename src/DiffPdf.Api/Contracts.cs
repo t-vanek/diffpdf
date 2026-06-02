@@ -11,6 +11,30 @@ public sealed record SingleComparisonRequest
     public ComparisonOptions Options { get; init; } = new();
 }
 
+/// <summary>
+/// Request body for submitting a batch comparison. The old/new/reports folders are
+/// derived server-side from the target instance's base path, so only the scope
+/// (branch + instance) and tuning options are supplied.
+/// </summary>
+public sealed record SubmitBatchRequest
+{
+    /// <summary>Branch + instance to compare. The job reads <c>{base}/old</c> vs <c>{base}/new</c>.</summary>
+    public required JobScope Scope { get; init; }
+
+    /// <summary>Glob-style search pattern relative to each folder.</summary>
+    public string SearchPattern { get; init; } = "*.pdf";
+
+    public bool Recursive { get; init; } = true;
+
+    public ComparisonOptions Options { get; init; } = new();
+
+    /// <summary>Maximum number of file pairs compared concurrently. 0 = processor count.</summary>
+    public int MaxDegreeOfParallelism { get; init; } = 0;
+
+    /// <summary>Optional pass/fail criteria for CI gating. Null = no gating.</summary>
+    public BatchGate? Gate { get; init; }
+}
+
 /// <summary>Probe a single folder (local, UNC or a <c>share:</c> alias) for reachability and PDF count.</summary>
 public sealed record DiscoverFolderRequest
 {
@@ -29,26 +53,26 @@ public sealed record DiscoverFolderRequest
     public int SampleSize { get; init; } = 20;
 
     /// <summary>
-    /// Optional business-instance key. When set (together with <see cref="ProjectKey"/>),
+    /// Optional branch key. When set (together with <see cref="InstanceKey"/>),
     /// the probe also verifies the scope exists. Leave both null to skip the scope check.
     /// </summary>
-    public string? BusinessInstanceKey { get; init; }
+    public string? BranchKey { get; init; }
 
-    /// <summary>Optional project key under the business instance; validated alongside it.</summary>
-    public string? ProjectKey { get; init; }
+    /// <summary>Optional instance key under the branch; validated alongside it.</summary>
+    public string? InstanceKey { get; init; }
 }
 
-/// <summary>Result of validating that a business-instance/project scope exists.</summary>
+/// <summary>Result of validating that a branch/instance scope exists.</summary>
 public sealed record ScopeCheck(
-    string BusinessInstanceKey,
-    bool BusinessInstanceExists,
-    string? BusinessInstanceName,
-    string ProjectKey,
-    bool ProjectExists,
-    string? ProjectName)
+    string BranchKey,
+    bool BranchExists,
+    string? BranchName,
+    string InstanceKey,
+    bool InstanceExists,
+    string? InstanceName)
 {
-    /// <summary>True only when both the instance and the project under it exist.</summary>
-    public bool Ok => BusinessInstanceExists && ProjectExists;
+    /// <summary>True only when both the branch and the instance under it exist.</summary>
+    public bool Ok => BranchExists && InstanceExists;
 }
 
 /// <summary>A folder probe enriched with an optional scope check and an overall readiness verdict.</summary>
@@ -59,7 +83,7 @@ public sealed record FolderDiscoveryResult(ScopeCheck? Scope, FolderDiscovery Fo
 
     /// <summary>
     /// True when the folder is reachable and contains PDFs, and — if a scope was
-    /// requested — the instance and project both exist. The "OK to submit a batch" signal.
+    /// requested — the branch and instance both exist. The "OK to submit a batch" signal.
     /// </summary>
     public bool Ready => Folder.Reachable && HasPdfs && (Scope?.Ok ?? true);
 }
@@ -80,13 +104,13 @@ public sealed record PreviewPairingRequest
     public int SampleSize { get; init; } = 20;
 
     /// <summary>
-    /// Optional business-instance key. When set (together with <see cref="ProjectKey"/>),
+    /// Optional branch key. When set (together with <see cref="InstanceKey"/>),
     /// the dry-run also verifies the scope exists. Leave both null to skip the scope check.
     /// </summary>
-    public string? BusinessInstanceKey { get; init; }
+    public string? BranchKey { get; init; }
 
-    /// <summary>Optional project key under the business instance; validated alongside it.</summary>
-    public string? ProjectKey { get; init; }
+    /// <summary>Optional instance key under the branch; validated alongside it.</summary>
+    public string? InstanceKey { get; init; }
 }
 
 /// <summary>A pairing dry-run enriched with an optional scope check and an overall readiness verdict.</summary>
@@ -97,7 +121,7 @@ public sealed record PairingPreviewResult(ScopeCheck? Scope, PairingPreview Pair
 
     /// <summary>
     /// True when the folders are reachable and contain PDFs, and — if a scope was
-    /// requested — the instance and project both exist. The "OK to submit a batch" signal.
+    /// requested — the branch and instance both exist. The "OK to submit a batch" signal.
     /// </summary>
     public bool Ready => Pairing.Reachable && HasPdfs && (Scope?.Ok ?? true);
 }
@@ -105,9 +129,10 @@ public sealed record PairingPreviewResult(ScopeCheck? Scope, PairingPreview Pair
 /// <summary>Configured network: named shares and credential-profile names (never secrets).</summary>
 public sealed record NetworkConfigSummary(IReadOnlyList<ShareInfo> Shares, IReadOnlyList<string> CredentialProfiles);
 
-public sealed record CreateBusinessInstanceRequest(string Key, string Name);
+public sealed record CreateBranchRequest(string Key, string Name);
 
-public sealed record CreateProjectRequest(string Key, string Name);
+/// <summary>Create an instance under a branch. <paramref name="BasePath"/> holds the old/new/reports subfolders.</summary>
+public sealed record CreateInstanceRequest(string Key, string Name, string BasePath, string? CredentialProfile = null);
 
 /// <summary>Per-file-pair task view.</summary>
 public sealed record FilePairTaskSummary
@@ -134,8 +159,8 @@ public sealed record FilePairTaskSummary
 public sealed record JobSummary
 {
     public required Guid Id { get; init; }
-    public required string BusinessInstanceKey { get; init; }
-    public required string ProjectKey { get; init; }
+    public required string BranchKey { get; init; }
+    public required string InstanceKey { get; init; }
     public required string Status { get; init; }
     public double Progress { get; init; }
     public int ProcessedCount { get; init; }
@@ -147,8 +172,8 @@ public sealed record JobSummary
     public static JobSummary From(ComparisonJob job) => new()
     {
         Id = job.Id,
-        BusinessInstanceKey = job.BusinessInstanceKey,
-        ProjectKey = job.ProjectKey,
+        BranchKey = job.BranchKey,
+        InstanceKey = job.InstanceKey,
         Status = job.Status.ToString(),
         Progress = job.Progress,
         ProcessedCount = job.ProcessedCount,

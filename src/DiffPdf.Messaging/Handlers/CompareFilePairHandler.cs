@@ -65,7 +65,7 @@ public sealed class CompareFilePairHandler
 
         var (processed, total) = await jobStore.IncrementProcessedAsync(command.JobId, ct);
         await progressPublisher.PublishAsync(new JobProgressChanged(
-            job.Id, job.BusinessInstanceKey, job.ProjectKey, "Running", processed, total,
+            job.Id, job.BranchKey, job.InstanceKey, "Running", processed, total,
             total == 0 ? 0 : (double)processed / total), ct);
 
         if (total > 0 && processed >= total)

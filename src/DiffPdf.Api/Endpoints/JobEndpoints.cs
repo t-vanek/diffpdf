@@ -14,14 +14,14 @@ public static class JobEndpoints
         var group = app.MapGroup("/jobs").WithTags("Jobs");
 
         group.MapGet("/", async (
-            string? businessInstanceKey, string? projectKey, string? status,
+            string? branchKey, string? instanceKey, string? status,
             IJobStore jobStore, CancellationToken ct) =>
         {
             JobStatus? parsed = Enum.TryParse<JobStatus>(status, true, out var s) ? s : null;
             var jobs = await jobStore.ListAsync(new JobListQuery
             {
-                BusinessInstanceKey = businessInstanceKey,
-                ProjectKey = projectKey,
+                BranchKey = branchKey,
+                InstanceKey = instanceKey,
                 Status = parsed,
             }, ct);
             return Results.Ok(jobs.Select(JobSummary.From));

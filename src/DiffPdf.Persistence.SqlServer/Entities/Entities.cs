@@ -1,6 +1,6 @@
 namespace DiffPdf.Persistence.SqlServer.Entities;
 
-public sealed class BusinessInstanceEntity
+public sealed class BranchEntity
 {
     public Guid Id { get; set; }
     public string Key { get; set; } = string.Empty;
@@ -11,12 +11,14 @@ public sealed class BusinessInstanceEntity
     public long Version { get; set; } = 1;
 }
 
-public sealed class ProjectEntity
+public sealed class InstanceEntity
 {
     public Guid Id { get; set; }
-    public Guid BusinessInstanceId { get; set; }
+    public Guid BranchId { get; set; }
     public string Key { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
+    public string BasePath { get; set; } = string.Empty;
+    public string? CredentialProfile { get; set; }
     public bool Enabled { get; set; } = true;
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? UpdatedAt { get; set; }
@@ -45,8 +47,8 @@ public sealed class FilePairTaskEntity
 public sealed class JobEntity
 {
     public Guid Id { get; set; }
-    public Guid BusinessInstanceId { get; set; }
-    public Guid ProjectId { get; set; }
+    public Guid BranchId { get; set; }
+    public Guid InstanceId { get; set; }
     public string Status { get; set; } = "Queued";
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? UpdatedAt { get; set; }

@@ -21,12 +21,12 @@ public static class DiscoveryEndpoints
         group.MapPost("/folder", async (
             DiscoverFolderRequest request,
             INetworkDiscoveryService discovery,
-            IBusinessInstanceStore instances,
-            IProjectStore projects,
+            IBranchStore branches,
+            IInstanceStore instances,
             CancellationToken ct) =>
         {
             var (valid, scope) = await ResolveScopeAsync(
-                request.BusinessInstanceKey, request.ProjectKey, instances, projects, ct);
+                request.BranchKey, request.InstanceKey, branches, instances, ct);
             if (!valid)
                 return MismatchedScopeProblem();
 
@@ -36,19 +36,19 @@ public static class DiscoveryEndpoints
 
             return Results.Ok(new FolderDiscoveryResult(scope, folder));
         })
-        .WithSummary("Probe a folder for reachability + PDF count, optionally validating a business-instance/project scope")
+        .WithSummary("Probe a folder for reachability + PDF count, optionally validating a branch/instance scope")
         .Produces<FolderDiscoveryResult>()
         .ProducesProblem(StatusCodes.Status400BadRequest);
 
         group.MapPost("/preview", async (
             PreviewPairingRequest request,
             INetworkDiscoveryService discovery,
-            IBusinessInstanceStore instances,
-            IProjectStore projects,
+            IBranchStore branches,
+            IInstanceStore instances,
             CancellationToken ct) =>
         {
             var (valid, scope) = await ResolveScopeAsync(
-                request.BusinessInstanceKey, request.ProjectKey, instances, projects, ct);
+                request.BranchKey, request.InstanceKey, branches, instances, ct);
             if (!valid)
                 return MismatchedScopeProblem();
 
@@ -60,38 +60,38 @@ public static class DiscoveryEndpoints
 
             return Results.Ok(new PairingPreviewResult(scope, pairing));
         })
-        .WithSummary("Dry-run an old/new folder pairing, optionally validating a business-instance/project scope")
+        .WithSummary("Dry-run an old/new folder pairing, optionally validating a branch/instance scope")
         .Produces<PairingPreviewResult>()
         .ProducesProblem(StatusCodes.Status400BadRequest);
     }
 
     /// <summary>
-    /// Validates an optional business-instance/project scope. Returns
-    /// <c>valid=false</c> when exactly one of the two keys is supplied; otherwise a
-    /// <see cref="ScopeCheck"/> (or null when neither key was supplied).
+    /// Validates an optional branch/instance scope. Returns <c>valid=false</c> when
+    /// exactly one of the two keys is supplied; otherwise a <see cref="ScopeCheck"/>
+    /// (or null when neither key was supplied).
     /// </summary>
     private static async Task<(bool Valid, ScopeCheck? Scope)> ResolveScopeAsync(
-        string? businessInstanceKey, string? projectKey,
-        IBusinessInstanceStore instances, IProjectStore projects, CancellationToken ct)
+        string? branchKey, string? instanceKey,
+        IBranchStore branches, IInstanceStore instances, CancellationToken ct)
     {
-        bool hasInstance = !string.IsNullOrWhiteSpace(businessInstanceKey);
-        bool hasProject = !string.IsNullOrWhiteSpace(projectKey);
-        if (hasInstance != hasProject)
+        bool hasBranch = !string.IsNullOrWhiteSpace(branchKey);
+        bool hasInstance = !string.IsNullOrWhiteSpace(instanceKey);
+        if (hasBranch != hasInstance)
             return (false, null);
-        if (!hasInstance)
+        if (!hasBranch)
             return (true, null);
 
-        var instance = await instances.GetByKeyAsync(businessInstanceKey!, ct);
-        var project = instance is null
+        var branch = await branches.GetByKeyAsync(branchKey!, ct);
+        var instance = branch is null
             ? null
-            : await projects.GetByKeyAsync(instance.Id, projectKey!, ct);
+            : await instances.GetByKeyAsync(branch.Id, instanceKey!, ct);
 
         return (true, new ScopeCheck(
-            businessInstanceKey!, instance is not null, instance?.Name,
-            projectKey!, project is not null, project?.Name));
+            branchKey!, branch is not null, branch?.Name,
+            instanceKey!, instance is not null, instance?.Name));
     }
 
     private static IResult MismatchedScopeProblem() => Results.Problem(
-        "Provide both businessInstanceKey and projectKey, or neither.",
+        "Provide both branchKey and instanceKey, or neither.",
         statusCode: StatusCodes.Status400BadRequest);
 }

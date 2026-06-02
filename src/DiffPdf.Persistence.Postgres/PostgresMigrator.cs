@@ -9,7 +9,7 @@ namespace DiffPdf.Persistence.Postgres;
 public static class PostgresMigrator
 {
     private const string Schema = """
-        create table if not exists business_instances (
+        create table if not exists branches (
             id uuid primary key,
             key text not null unique,
             name text not null,
@@ -19,22 +19,24 @@ public static class PostgresMigrator
             version bigint not null default 1
         );
 
-        create table if not exists projects (
+        create table if not exists instances (
             id uuid primary key,
-            business_instance_id uuid not null references business_instances(id),
+            branch_id uuid not null references branches(id),
             key text not null,
             name text not null,
+            base_path text not null,
+            credential_profile text null,
             enabled boolean not null default true,
             created_at timestamptz not null default now(),
             updated_at timestamptz null,
             version bigint not null default 1,
-            constraint uq_projects_business_instance_key unique (business_instance_id, key)
+            constraint uq_instances_branch_key unique (branch_id, key)
         );
 
         create table if not exists jobs (
             id uuid primary key,
-            business_instance_id uuid not null references business_instances(id),
-            project_id uuid not null references projects(id),
+            branch_id uuid not null references branches(id),
+            instance_id uuid not null references instances(id),
             status text not null,
             created_at timestamptz not null default now(),
             updated_at timestamptz null,
@@ -50,7 +52,7 @@ public static class PostgresMigrator
             locked_until timestamptz null
         );
 
-        create index if not exists ix_jobs_business_project_created_at on jobs (business_instance_id, project_id, created_at desc);
+        create index if not exists ix_jobs_branch_instance_created_at on jobs (branch_id, instance_id, created_at desc);
         create index if not exists ix_jobs_status_created_at on jobs (status, created_at desc);
 
         create table if not exists file_pair_tasks (
