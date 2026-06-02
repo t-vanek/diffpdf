@@ -1,4 +1,5 @@
 using DiffPdf.Core.Models;
+using DiffPdf.Core.Network;
 using DiffPdf.Core.Storage;
 using DiffPdf.Persistence;
 
@@ -41,7 +42,8 @@ public static class ScopeEndpoints
 
         group.MapPost("/{branchKey}/instances", async (
             string branchKey, CreateInstanceRequest request,
-            IBranchStore branches, IInstanceStore instances, CancellationToken ct) =>
+            IBranchStore branches, IInstanceStore instances, IInstanceStructureService structure,
+            bool? ensureStructure, CancellationToken ct) =>
         {
             if (!StorageKeyValidator.IsValidKey(request.Key))
                 return Results.Problem($"Invalid instance key '{request.Key}'.", statusCode: StatusCodes.Status400BadRequest);
@@ -52,17 +54,28 @@ public static class ScopeEndpoints
             if (branch is null)
                 return Results.Problem($"Branch '{branchKey}' not found.", statusCode: StatusCodes.Status404NotFound);
 
+            ComparisonInstance created;
             try
             {
-                var created = await instances.CreateAsync(
+                created = await instances.CreateAsync(
                     branch.Id, request.Key, request.Name, request.BasePath, request.CredentialProfile, ct);
-                return Results.Created($"/api/v1/branches/{branchKey}/instances/{created.Key}", created);
             }
             catch (DuplicateKeyException ex)
             {
                 return Results.Problem(ex.Message, statusCode: StatusCodes.Status409Conflict);
             }
-        }).WithSummary("Create an instance under a branch").Produces<ComparisonInstance>(StatusCodes.Status201Created)
+
+            // Provision old/new/reports under the base path by default; best-effort so an
+            // unreachable share does not undo the (valid) instance record.
+            InstanceStructureReport? report = null;
+            if (ensureStructure != false)
+                report = await structure.EnsureAsync(created.BasePath, created.CredentialProfile, ct);
+
+            return Results.Created(
+                $"/api/v1/branches/{branchKey}/instances/{created.Key}",
+                new CreatedInstanceResponse(created, report));
+        }).WithSummary("Create an instance under a branch (provisions old/new/reports unless ?ensureStructure=false)")
+          .Produces<CreatedInstanceResponse>(StatusCodes.Status201Created)
           .ProducesProblem(StatusCodes.Status400BadRequest).ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapGet("/{branchKey}/instances", async (
@@ -82,5 +95,35 @@ public static class ScopeEndpoints
             var instance = await instances.GetByKeyAsync(branch.Id, instanceKey, ct);
             return instance is null ? Results.NotFound() : Results.Ok(instance);
         }).WithSummary("Get an instance").Produces<ComparisonInstance>().ProducesProblem(StatusCodes.Status404NotFound);
+
+        group.MapGet("/{branchKey}/instances/{instanceKey}/structure", async (
+            string branchKey, string instanceKey,
+            IBranchStore branches, IInstanceStore instances, IInstanceStructureService structure, CancellationToken ct) =>
+        {
+            var instance = await ResolveInstanceAsync(branchKey, instanceKey, branches, instances, ct);
+            return instance is null
+                ? Results.NotFound()
+                : Results.Ok(await structure.InspectAsync(instance.BasePath, instance.CredentialProfile, ct));
+        }).WithSummary("Inspect the instance's old/new/reports structure")
+          .Produces<InstanceStructureReport>().ProducesProblem(StatusCodes.Status404NotFound);
+
+        group.MapPost("/{branchKey}/instances/{instanceKey}/structure", async (
+            string branchKey, string instanceKey,
+            IBranchStore branches, IInstanceStore instances, IInstanceStructureService structure, CancellationToken ct) =>
+        {
+            var instance = await ResolveInstanceAsync(branchKey, instanceKey, branches, instances, ct);
+            return instance is null
+                ? Results.NotFound()
+                : Results.Ok(await structure.EnsureAsync(instance.BasePath, instance.CredentialProfile, ct));
+        }).WithSummary("Create/repair the instance's old/new/reports structure (missing -> created, file collision -> replaced)")
+          .Produces<InstanceStructureReport>().ProducesProblem(StatusCodes.Status404NotFound);
+    }
+
+    private static async Task<ComparisonInstance?> ResolveInstanceAsync(
+        string branchKey, string instanceKey, IBranchStore branches, IInstanceStore instances, CancellationToken ct)
+    {
+        var branch = await branches.GetByKeyAsync(branchKey, ct);
+        if (branch is null) return null;
+        return await instances.GetByKeyAsync(branch.Id, instanceKey, ct);
     }
 }

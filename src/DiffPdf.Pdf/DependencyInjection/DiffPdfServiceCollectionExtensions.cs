@@ -44,6 +44,7 @@ public static class DiffPdfServiceCollectionExtensions
         services.AddSingleton<INetworkShareConnector, PlatformShareConnector>();
         services.AddSingleton<INetworkShareResolver, NetworkShareResolver>();
         services.AddSingleton<INetworkDiscoveryService, NetworkDiscoveryService>();
+        services.AddSingleton<IInstanceStructureService, InstanceStructureService>();
 
         return services;
     }

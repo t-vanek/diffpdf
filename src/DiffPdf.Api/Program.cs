@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using DiffPdf.Api;
 using DiffPdf.Api.Auth;
 using DiffPdf.Api.Endpoints;
 using DiffPdf.Api.Hubs;
@@ -88,6 +89,10 @@ else
 
 // Recovers file-pair tasks abandoned by a crashed worker (works with either store).
 builder.Services.AddHostedService<StaleTaskRecoveryService>();
+
+// On startup, ensure each registered instance's old/new/reports skeleton exists
+// (runs after the persistence migration above; no-op for the in-memory fallback).
+builder.Services.AddHostedService<InstanceStructureHostedService>();
 
 var auth = builder.Configuration.GetSection("Auth").Get<AuthOptions>() ?? new AuthOptions();
 builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection("Auth"));
