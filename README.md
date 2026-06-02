@@ -111,9 +111,9 @@ curl http://localhost:8080/api/jobs/<id>/report
 | `visualThreshold` | `0.0005` | Min differing-pixel fraction to flag a page; `0` flags a single pixel. |
 | `visualClusterCellSize` | `24` | Highlight cluster size (px); `1` = per-pixel regions. |
 | `alignPages` | `true` | Align pages by content (detect insert/delete). |
-| `pageMatchThreshold` | `0.5` | Min text similarity to align two pages as the same. |
+| `pageMatchThreshold` | `0.2` | Min word overlap to treat two pages as the same page changed (vs add+remove). |
 | `detectBlankPages` | `true` | Flag blank/non-blank transitions. |
-| `blankPageThreshold` | `0.002` | Max non-white pixel fraction to count as blank. |
+| `blankPageThreshold` | `0.0002` | Max non-white pixel fraction to count as blank. |
 | `detectContentErrors` | `true` | Scan text for error messages. |
 | `contentErrorPatterns` | see below | Case-insensitive regexes; defaults include `subreport error`, `#error`. |
 | `produceHighlightedPdf` | `true` | Emit diff PDF for differing files. |

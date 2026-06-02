@@ -66,15 +66,24 @@ public sealed record ComparisonOptions
     /// </summary>
     public bool AlignPages { get; init; } = true;
 
-    /// <summary>Minimum text similarity (0-1) for two pages to align as "the same page".</summary>
-    public double PageMatchThreshold { get; init; } = 0.5;
+    /// <summary>
+    /// Minimum word-overlap similarity (0-1) for two pages to align as "the same
+    /// page that changed" rather than a separate add+remove. Kept low so a
+    /// heavily edited page at the same position is still reported as TextChanged;
+    /// only near-unrelated pages split into PageAdded/PageRemoved.
+    /// </summary>
+    public double PageMatchThreshold { get; init; } = 0.2;
 
     // ---- Blank page detection ----
 
     public bool DetectBlankPages { get; init; } = true;
 
-    /// <summary>Max fraction of non-white pixels for a page to count as visually blank.</summary>
-    public double BlankPageThreshold { get; init; } = 0.002;
+    /// <summary>
+    /// Max fraction of non-white (inked) pixels for a page to count as visually
+    /// blank. A sparse text page typically has ~0.1-0.5% ink, so this is set well
+    /// below that; a truly blank page renders at ~0.
+    /// </summary>
+    public double BlankPageThreshold { get; init; } = 0.0002;
 
     // ---- Content error detection ----
 
