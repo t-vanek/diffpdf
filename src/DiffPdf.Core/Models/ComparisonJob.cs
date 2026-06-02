@@ -2,6 +2,8 @@ namespace DiffPdf.Core.Models;
 
 public enum JobStatus
 {
+    /// <summary>Created but not yet started (decoupled create → start).</summary>
+    Draft,
     Queued,
     Running,
     Completed,

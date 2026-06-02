@@ -2,12 +2,11 @@ using DiffPdf.Core.Comparison;
 using DiffPdf.Core.Models;
 using DiffPdf.Core.Network;
 using DiffPdf.Core.Storage;
-using DiffPdf.Messaging.Messages;
 using DiffPdf.Persistence;
 
 namespace DiffPdf.Api.Endpoints;
 
-/// <summary>Async batch comparison submission. The old/new/reports folders are derived from the target instance.</summary>
+/// <summary>Creates a batch comparison job in Draft. The job is started separately via POST /jobs/{id}/start.</summary>
 public static class BatchEndpoints
 {
     public static void MapBatchEndpoints(this IEndpointRouteBuilder app)
@@ -16,9 +15,8 @@ public static class BatchEndpoints
             SubmitBatchRequest request,
             IBranchStore branches,
             IInstanceStore instances,
-            IInstanceStructureService structure,
             INetworkShareResolver shareResolver,
-            IJobSubmissionService submission,
+            IJobStore jobStore,
             CancellationToken ct) =>
         {
             var scope = request.Scope;
@@ -33,23 +31,10 @@ public static class BatchEndpoints
             if (instance is null)
                 return Results.Problem($"Instance '{scope.InstanceKey}' not found.", statusCode: StatusCodes.Status404NotFound);
 
-            // Pre-flight: the structure must be reachable and both input folders must hold
-            // PDFs, otherwise the job would run with nothing to compare. Inspecting also
-            // covers existence (a missing old/new yields a null PdfCount, caught below).
-            var structureReport = await structure.InspectAsync(instance.BasePath, instance.CredentialProfile, ct: ct);
-            if (!structureReport.Reachable)
-                return Results.Problem(
-                    $"Instance base path is not reachable: {structureReport.Error}", statusCode: StatusCodes.Status400BadRequest);
-
-            int oldPdfs = structureReport.Items.FirstOrDefault(i => i.Name == "old")?.PdfCount ?? 0;
-            int newPdfs = structureReport.Items.FirstOrDefault(i => i.Name == "new")?.PdfCount ?? 0;
-            if (oldPdfs == 0 || newPdfs == 0)
-                return Results.Problem(
-                    $"Nothing to compare: 'old' has {oldPdfs} PDF(s), 'new' has {newPdfs}. Both folders must contain at least one PDF.",
-                    statusCode: StatusCodes.Status422UnprocessableEntity);
-
-            // Resolve the instance's base path (share alias / credential profile) for the
-            // durable job, then derive the conventional old/new/reports subfolders.
+            // Resolve the instance's base path (share alias / credential profile) and derive the
+            // conventional old/new/reports subfolders. The job is created in Draft and does not run
+            // until POST /jobs/{id}/start — where the "is there anything to compare" check happens
+            // (PDFs may be added between creating and starting the job).
             ResolvedFolder baseResolved;
             try
             {
@@ -61,19 +46,17 @@ public static class BatchEndpoints
             }
 
             string basePath = baseResolved.Path;
-            string oldFolder = InstanceFolders.Old(basePath);
-            string newFolder = InstanceFolders.New(basePath);
-            string reportsFolder = InstanceFolders.Reports(basePath);
 
             var job = new ComparisonJob
             {
                 Id = Guid.NewGuid(),
+                Status = JobStatus.Draft,
                 Request = new BatchComparisonRequest
                 {
                     Scope = scope,
-                    OldFolder = oldFolder,
-                    NewFolder = newFolder,
-                    ReportsFolder = reportsFolder,
+                    OldFolder = InstanceFolders.Old(basePath),
+                    NewFolder = InstanceFolders.New(basePath),
+                    ReportsFolder = InstanceFolders.Reports(basePath),
                     SearchPattern = request.SearchPattern,
                     Recursive = request.Recursive,
                     Options = request.Options,
@@ -86,15 +69,13 @@ public static class BatchEndpoints
                 InstanceId = instance.Id,
             };
 
-            await submission.SubmitAsync(job, new RunBatchComparison(job.Id, scope.BranchKey, scope.InstanceKey), ct);
-
-            return Results.Accepted($"/api/v1/jobs/{job.Id}", JobSummary.From(job));
+            var created = await jobStore.CreateAsync(job, ct);
+            return Results.Created($"/api/v1/jobs/{created.Id}", JobSummary.From(created));
         })
         .WithTags("Batch")
-        .WithSummary("Submit a folder comparison job (folders derived from the instance)")
-        .Produces<JobSummary>(StatusCodes.Status202Accepted)
+        .WithSummary("Create a folder comparison job in Draft (start it with POST /jobs/{id}/start)")
+        .Produces<JobSummary>(StatusCodes.Status201Created)
         .ProducesProblem(StatusCodes.Status400BadRequest)
-        .ProducesProblem(StatusCodes.Status404NotFound)
-        .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
+        .ProducesProblem(StatusCodes.Status404NotFound);
     }
 }
