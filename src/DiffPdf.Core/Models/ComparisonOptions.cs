@@ -183,6 +183,14 @@ public sealed record ComparisonOptions
     /// </summary>
     public HighlightLayout HighlightLayout { get; init; } = HighlightLayout.SideBySide;
 
+    /// <summary>
+    /// How the highlighted diff PDF is rendered. <see cref="HighlightStyle.Raster"/>
+    /// rasterizes pages (works for any backend, image output). <see cref="HighlightStyle.VectorOverlay"/>
+    /// overlays highlights on the original PDF pages, keeping the original vector
+    /// content and selectable text.
+    /// </summary>
+    public HighlightStyle HighlightStyle { get; init; } = HighlightStyle.Raster;
+
     /// <summary>Preferred renderer backend for the visual mode.</summary>
     public RendererBackend Renderer { get; init; } = RendererBackend.Ghostscript;
 }
@@ -199,6 +207,14 @@ public enum HighlightLayout
     SideBySide,
     /// <summary>Only the changed side (new for added/changed, old for removed).</summary>
     Single,
+}
+
+public enum HighlightStyle
+{
+    /// <summary>Rasterize each page to an image and draw highlights on top.</summary>
+    Raster,
+    /// <summary>Overlay highlights on the original PDF pages — text stays selectable.</summary>
+    VectorOverlay,
 }
 
 /// <summary>Engine strictness presets, from pixel-perfect to forgiving.</summary>

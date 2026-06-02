@@ -18,7 +18,7 @@ public sealed class ComparisonEngine(
     IPageAligner pageAligner,
     IContentErrorDetector contentErrorDetector,
     IPdfPageRendererFactory rendererFactory,
-    IHighlightedPdfWriter highlightedPdfWriter,
+    IHighlightedPdfWriterFactory highlightedPdfWriterFactory,
     ILogger<ComparisonEngine> logger) : IComparisonEngine
 {
     private const double SizeTolerancePoints = 1.0;
@@ -83,7 +83,7 @@ public sealed class ComparisonEngine(
         {
             try
             {
-                highlightedPath = await WriteHighlightedAsync(newPath, spreads, options.HighlightLayout, artifactDirectory, ct);
+                highlightedPath = await WriteHighlightedAsync(newPath, spreads, options, artifactDirectory, ct);
             }
             catch (Exception ex)
             {
@@ -121,7 +121,9 @@ public sealed class ComparisonEngine(
         var renderer = rendererFactory.GetRenderer(options.Renderer);
         bool doText = options.Mode.HasFlag(ComparisonMode.Text);
         bool doVisual = options.Mode.HasFlag(ComparisonMode.Visual);
-        bool needRenders = doVisual || options.DetectBlankPages || wantHighlight;
+        // The vector writer overlays on the original PDF, so highlighting needs no render.
+        bool rasterHighlight = wantHighlight && options.HighlightStyle == HighlightStyle.Raster;
+        bool needRenders = doVisual || options.DetectBlankPages || rasterHighlight;
 
         // --- Page added (only in new) ---
         if (pair.OldPageNumber is null && pair.NewPageNumber is int addedNum)
@@ -135,9 +137,9 @@ public sealed class ComparisonEngine(
                 DifferenceScore = 1.0,
                 NewBlank = blank,
             };
-            var spread = wantHighlight && render is not null
+            var spread = wantHighlight
                 ? new DiffSpread(null, addedNum, Old: null,
-                    New: new HighlightSide(render, [FullPageRegion(render, DifferenceKind.Added)]))
+                    New: new HighlightSide(newPath, addedNum, [FullPageRegion(newGeom, addedNum, DifferenceKind.Added)], render))
                 : null;
             return (comparison, spread);
         }
@@ -154,9 +156,9 @@ public sealed class ComparisonEngine(
                 DifferenceScore = 1.0,
                 OldBlank = blank,
             };
-            var spread = wantHighlight && render is not null
+            var spread = wantHighlight
                 ? new DiffSpread(removedNum, null,
-                    Old: new HighlightSide(render, [FullPageRegion(render, DifferenceKind.Removed)]), New: null)
+                    Old: new HighlightSide(oldPath, removedNum, [FullPageRegion(oldGeom, removedNum, DifferenceKind.Removed)], render), New: null)
                 : null;
             return (comparison, spread);
         }
@@ -237,7 +239,7 @@ public sealed class ComparisonEngine(
         };
 
         DiffSpread? matchedSpread = null;
-        if (wantHighlight && changes != PageChangeType.None && (oldRender is not null || newRender is not null))
+        if (wantHighlight && changes != PageChangeType.None)
         {
             // Removed text -> old side; added text -> new side; visual changes -> both.
             var oldRegions = regions.Where(r => r.Kind == DifferenceKind.Removed).Concat(visualRegions).ToList();
@@ -245,8 +247,8 @@ public sealed class ComparisonEngine(
 
             matchedSpread = new DiffSpread(
                 oldNum, newNum,
-                Old: oldRender is null ? null : new HighlightSide(oldRender, oldRegions),
-                New: newRender is null ? null : new HighlightSide(newRender, newRegions));
+                Old: new HighlightSide(oldPath, oldNum, oldRegions, oldRender),
+                New: new HighlightSide(newPath, newNum, newRegions, newRender));
         }
 
         return (pageComparison, matchedSpread);
@@ -259,19 +261,20 @@ public sealed class ComparisonEngine(
         return Math.Abs(aw - bw) <= SizeTolerancePoints && Math.Abs(ah - bh) <= SizeTolerancePoints;
     }
 
-    private static DifferenceRegion FullPageRegion(RenderedPage page, DifferenceKind kind)
+    private static DifferenceRegion FullPageRegion(IReadOnlyDictionary<int, PageGeometry> geom, int pageNumber, DifferenceKind kind)
     {
-        double widthPt = page.WidthPx * 72.0 / Math.Max(1, page.Dpi);
-        double heightPt = page.HeightPx * 72.0 / Math.Max(1, page.Dpi);
+        double widthPt = geom.TryGetValue(pageNumber, out var g) ? g.Width : 612;
+        double heightPt = g?.Height ?? 792;
         return new DifferenceRegion(kind, new RectangleD(0, 0, widthPt, heightPt));
     }
 
     private async Task<string> WriteHighlightedAsync(
-        string newPath, IReadOnlyList<DiffSpread> spreads, HighlightLayout layout, string artifactDirectory, CancellationToken ct)
+        string newPath, IReadOnlyList<DiffSpread> spreads, ComparisonOptions options, string artifactDirectory, CancellationToken ct)
     {
         Directory.CreateDirectory(artifactDirectory);
         string outPath = Path.Combine(artifactDirectory, Path.GetFileNameWithoutExtension(newPath) + ".diff.pdf");
-        await highlightedPdfWriter.WriteAsync(outPath, spreads, layout, ct);
+        var writer = highlightedPdfWriterFactory.Get(options.HighlightStyle);
+        await writer.WriteAsync(outPath, spreads, options.HighlightLayout, ct);
         return outPath;
     }
 
