@@ -2,11 +2,16 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
-# Restore (layer-cached on project files)
+# Restore (layer-cached on project files). Every project in DiffPdf.Api's
+# reference graph must be copied here, or `dotnet restore` fails on the missing
+# .csproj — add new projects to this list when the solution grows.
 COPY DiffPdf.slnx ./
 COPY src/DiffPdf.Core/*.csproj src/DiffPdf.Core/
 COPY src/DiffPdf.Pdf/*.csproj src/DiffPdf.Pdf/
 COPY src/DiffPdf.Persistence/*.csproj src/DiffPdf.Persistence/
+COPY src/DiffPdf.Persistence.Postgres/*.csproj src/DiffPdf.Persistence.Postgres/
+COPY src/DiffPdf.Persistence.SqlServer/*.csproj src/DiffPdf.Persistence.SqlServer/
+COPY src/DiffPdf.Messaging/*.csproj src/DiffPdf.Messaging/
 COPY src/DiffPdf.Worker/*.csproj src/DiffPdf.Worker/
 COPY src/DiffPdf.Api/*.csproj src/DiffPdf.Api/
 RUN dotnet restore src/DiffPdf.Api/DiffPdf.Api.csproj
@@ -31,7 +36,7 @@ RUN apt-get update \
 COPY --from=build /app ./
 
 ENV ASPNETCORE_URLS=http://+:8080
-ENV DIFFPDF_ARTIFACT_ROOT=/data/artifacts
+ENV DIFFPDF_STORAGE_ROOT=/data/storage
 ENV DIFFPDF_LOG_DIR=/data/logs
 EXPOSE 8080
 VOLUME ["/data"]
