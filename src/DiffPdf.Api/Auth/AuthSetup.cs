@@ -1,7 +1,5 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore; // OpenIddictServerAspNetCoreHelpers.GetOpenIddictServerRequest
-using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using OpenIddict.Abstractions;
@@ -13,15 +11,11 @@ namespace DiffPdf.Api.Auth;
 
 public static class AuthSetup
 {
-    /// <summary>Cookie scheme that carries the interactive (authorization-code) login session.</summary>
-    public const string LoginCookieScheme = "DiffPdf.Login";
-
     /// <summary>
-    /// Wires OpenIddict as an embedded OAuth2 / OIDC server exposing the standard
-    /// auto-generated endpoints — token, authorization, userinfo, revocation and
-    /// end-session — supporting client-credentials (M2M) and authorization-code +
-    /// PKCE + refresh-token (interactive) flows, plus token validation. Every
-    /// endpoint requires a valid token by default.
+    /// Wires OpenIddict as an embedded OAuth2 server exposing the standard
+    /// auto-generated endpoints — token and revocation — supporting the
+    /// client-credentials (M2M) flow, plus token validation. Every endpoint
+    /// requires a valid token by default.
     /// </summary>
     public static void AddDiffPdfAuth(this IServiceCollection services, string connectionString, bool useSqlServer, AuthOptions auth)
     {
@@ -39,22 +33,16 @@ public static class AuthSetup
             .AddServer(o =>
             {
                 // Standard endpoints — OpenIddict generates and protocol-handles them;
-                // the passthrough ones below are completed by our minimal handlers.
+                // the token passthrough below is completed by our minimal handler.
                 o.SetTokenEndpointUris("connect/token");
-                o.SetAuthorizationEndpointUris("connect/authorize");
-                o.SetUserInfoEndpointUris("connect/userinfo");
-                o.SetEndSessionEndpointUris("connect/logout");
                 o.SetRevocationEndpointUris("connect/revocation"); // fully handled by OpenIddict
 
-                // M2M plus interactive (authorization code + PKCE) and refresh tokens.
+                // Machine-to-machine client authentication.
                 o.AllowClientCredentialsFlow();
-                o.AllowAuthorizationCodeFlow().RequireProofKeyForCodeExchange();
-                o.AllowRefreshTokenFlow();
 
-                o.RegisterScopes(auth.Scope, Scopes.OpenId, Scopes.Profile, Scopes.OfflineAccess);
+                o.RegisterScopes(auth.Scope);
 
                 o.SetAccessTokenLifetime(TimeSpan.FromMinutes(auth.AccessTokenMinutes));
-                o.SetRefreshTokenLifetime(TimeSpan.FromDays(auth.RefreshTokenDays));
 
                 // Ephemeral keys are fine for short-lived tokens validated by this same
                 // server; use real certificates for multi-instance production.
@@ -66,9 +54,6 @@ public static class AuthSetup
                 // the app so the endpoints work without app-level HTTPS.
                 o.UseAspNetCore()
                     .EnableTokenEndpointPassthrough()
-                    .EnableAuthorizationEndpointPassthrough()
-                    .EnableUserInfoEndpointPassthrough()
-                    .EnableEndSessionEndpointPassthrough()
                     .DisableTransportSecurityRequirement();
             })
             .AddValidation(o =>
@@ -77,16 +62,8 @@ public static class AuthSetup
                 o.UseAspNetCore();
             });
 
-        // Bearer validation protects the API; a cookie carries the interactive login
-        // session consumed by the authorization endpoint.
-        services.AddAuthentication(OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme)
-            .AddCookie(LoginCookieScheme, o =>
-            {
-                o.Cookie.Name = LoginCookieScheme;
-                o.LoginPath = "/account/login";
-                o.ExpireTimeSpan = TimeSpan.FromHours(1);
-                o.SlidingExpiration = false;
-            });
+        // Bearer validation protects the API.
+        services.AddAuthentication(OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme);
 
         var requireAuth = new AuthorizationPolicyBuilder()
             .RequireAuthenticatedUser()
@@ -99,51 +76,31 @@ public static class AuthSetup
     }
 
     /// <summary>
-    /// Token endpoint for all enabled grants: client-credentials (M2M) plus the
-    /// authorization-code and refresh-token grants (interactive). For the latter two
-    /// the subject identity is recovered from the incoming code / refresh token.
+    /// Token endpoint for the client-credentials (M2M) grant. The client id/secret
+    /// are validated by OpenIddict; this handler mints the access token.
     /// </summary>
     public static void MapTokenEndpoint(this WebApplication app, AuthOptions auth)
     {
-        app.MapPost("/connect/token", async (HttpContext context) =>
+        app.MapPost("/connect/token", (HttpContext context) =>
         {
             var request = context.GetOpenIddictServerRequest()
                 ?? throw new InvalidOperationException("The OpenIddict request cannot be retrieved.");
 
-            if (request.IsClientCredentialsGrantType())
-            {
-                // Client id/secret are already validated by OpenIddict against the store.
-                var identity = new ClaimsIdentity(
-                    OpenIddictServerAspNetCoreDefaults.AuthenticationScheme,
-                    Claims.Name, Claims.Role);
-                identity.AddClaim(Claims.Subject, request.ClientId!);
-                identity.AddClaim(Claims.Name, request.ClientId!);
+            if (!request.IsClientCredentialsGrantType())
+                return Results.BadRequest(new { error = Errors.UnsupportedGrantType });
 
-                var principal = new ClaimsPrincipal(identity);
-                principal.SetScopes(request.GetScopes().Any() ? request.GetScopes() : [auth.Scope]);
-                principal.SetDestinations(GetDestinations);
+            // Client id/secret are already validated by OpenIddict against the store.
+            var identity = new ClaimsIdentity(
+                OpenIddictServerAspNetCoreDefaults.AuthenticationScheme,
+                Claims.Name, Claims.Role);
+            identity.AddClaim(Claims.Subject, request.ClientId!);
+            identity.AddClaim(Claims.Name, request.ClientId!);
 
-                return Results.SignIn(principal, properties: null, OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
-            }
+            var principal = new ClaimsPrincipal(identity);
+            principal.SetScopes(request.GetScopes().Any() ? request.GetScopes() : [auth.Scope]);
+            principal.SetDestinations(GetDestinations);
 
-            if (request.IsAuthorizationCodeGrantType() || request.IsRefreshTokenGrantType())
-            {
-                // Recover the principal persisted with the authorization code / refresh token.
-                var result = await context.AuthenticateAsync(OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
-                if (result.Principal is null)
-                    return Results.Forbid(
-                        authenticationSchemes: [OpenIddictServerAspNetCoreDefaults.AuthenticationScheme],
-                        properties: new AuthenticationProperties(new Dictionary<string, string?>
-                        {
-                            [OpenIddictServerAspNetCoreConstants.Properties.Error] = Errors.InvalidGrant,
-                            [OpenIddictServerAspNetCoreConstants.Properties.ErrorDescription] = "The token is no longer valid.",
-                        }));
-
-                result.Principal.SetDestinations(GetDestinations);
-                return Results.SignIn(result.Principal, properties: null, OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
-            }
-
-            return Results.BadRequest(new { error = Errors.UnsupportedGrantType });
+            return Results.SignIn(principal, properties: null, OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
         }).AllowAnonymous();
     }
 

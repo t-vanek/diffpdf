@@ -178,8 +178,8 @@ Všechny aplikační cesty jsou pod prefixem **`/api/v1`**.
 | Metoda | Cesta | Účel |
 |---|---|---|
 | `GET`  | `/health` | Liveness probe (anonymní). |
-| `POST` | `/connect/token` | OAuth2 token endpoint (client-credentials / authorization-code / refresh-token). |
-| `*` | `/connect/authorize`, `/connect/revocation`, `/connect/userinfo`, `/connect/logout` | OIDC endpointy (auth-code start, revoke, userinfo, end-session). |
+| `POST` | `/connect/token` | OAuth2 token endpoint (client-credentials). |
+| `*` | `/connect/revocation` | Zneplatnění access tokenu (RFC 7009). |
 | `POST` | `/api/v1/business-instances` | Vytvoří business instanci (`Alfa`, `RNew`, …). |
 | `GET`  | `/api/v1/business-instances` | Výpis business instancí. |
 | `POST` | `/api/v1/business-instances/{key}/projects` | Vytvoří projekt pod instancí. |
@@ -466,17 +466,12 @@ Vestavěný OpenIddict server vystavuje standardní auto-generované endpointy:
 
 | Endpoint | Účel |
 | --- | --- |
-| `POST /connect/token` | Vydání access (a refresh) tokenu — všechny granty. |
-| `GET/POST /connect/authorize` | Authorization-code start (interaktivní flow). |
-| `POST /connect/revocation` | Zneplatnění access/refresh tokenu (RFC 7009). |
-| `GET/POST /connect/userinfo` | OIDC claims subjektu (vyžaduje token). |
-| `GET/POST /connect/logout` | End-session (odhlášení, post-logout redirect). |
+| `POST /connect/token` | Vydání access tokenu. |
+| `POST /connect/revocation` | Zneplatnění access tokenu (RFC 7009). |
 
-Podporované jsou dva flow a dva seedované klienti:
-
-**1) Client-credentials (M2M / CI).** Confidential klient `Auth:ClientId` /
-`Auth:ClientSecret` / `Auth:Scope`. Strojoví klienti si vyžádají token a volají
-s ním API:
+**Client-credentials (M2M / CI).** Klient se autentizuje vůči serveru jako
+confidential klient `Auth:ClientId` / `Auth:ClientSecret` / `Auth:Scope`. Strojoví
+klienti si vyžádají token a volají s ním API:
 
 ```bash
 # 1. získej token
@@ -488,32 +483,21 @@ curl -X POST http://localhost:8080/connect/token \
 curl -H "Authorization: Bearer <access_token>" http://localhost:8080/api/v1/jobs
 ```
 
-**2) Authorization-code + PKCE + refresh (interaktivní).** Public klient
-`Auth:InteractiveClientId` (bez secretu, chráněný PKCE) pro klienty připojující se
-za uživatele. Klient pošle uživatele na `/connect/authorize` (`response_type=code`,
-`code_challenge`, `scope=openid profile offline_access diffpdf.api`); ten se
-přihlásí (`/account/login`, uživatelé z `Auth:Users`) a po redirectu klient
-vymění kód na `/connect/token` (`grant_type=authorization_code`) za **access +
-refresh** token. Token se obnovuje `grant_type=refresh_token` (refresh tokeny se
-rotují) a zneplatňuje přes `/connect/revocation`.
+Existující tokeny se zneplatňují přes `/connect/revocation`. Tokeny jsou
+krátkodobé (lifetime `Auth:AccessTokenMinutes`); klient si po expiraci vyžádá
+nový přes client-credentials.
 
 ```jsonc
 "Auth": {
   "Enabled": true,
   "ClientId": "diffpdf-ci", "ClientSecret": "…", "Scope": "diffpdf.api",
-  "InteractiveClientId": "diffpdf-app",
-  "RedirectUris": [ "http://localhost:8080/swagger/oauth2-redirect.html" ],
-  "Users": [ { "username": "tester", "password": "…", "name": "QA tester" } ],
-  "AccessTokenMinutes": 60,
-  "RefreshTokenDays": 14
+  "AccessTokenMinutes": 60
 }
 ```
 
 Tokeny jsou JWT podepsané ephemerálními klíči (pro krátkodobé tokeny validované
 týmž serverem v pořádku; v produkci použij reálné certifikáty a HTTPS). Seedovaný
-secret změň přes `Auth:ClientSecret` a nedávej ho do gitu. Vestavěné
-`/account/login` (uživatelé z konfigurace) je minimální — v produkci ho nahraď
-reálným identity providerem.
+secret změň přes `Auth:ClientSecret` a nedávej ho do gitu.
 
 ## Licenční poznámka
 
