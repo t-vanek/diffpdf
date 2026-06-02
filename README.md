@@ -1,202 +1,175 @@
-# diffpdf — server-side PDF comparison
+# diffpdf — serverové porovnávání PDF
 
-🌐 **Jazyk / Language:** [English](README.md) · [Čeština](README.cs.md)
+Serverová náhrada za [diffpdf](https://mark-summerfield.github.io/diffpdf.html),
+postavená v **C# / .NET 10** jako REST API. Je navržená pro hromadné porovnávání
+velkého množství PDF (složka `old` vs složka `new`) i jednotlivých dvojic.
 
-A server-side replacement for [diffpdf](https://mark-summerfield.github.io/diffpdf.html),
-built in **C# / .NET 10** as a REST API. Designed to compare large numbers of
-PDFs in bulk (an `old` folder vs a `new` folder), in addition to single pairs.
+**Hlavní use-case — regresní testování tiskových sestav.** Testeři porovnávají
+čerstvě vygenerovanou dávku reportů (`new`) proti známé dobré referenci (`old`)
+a ověřují, že nová verze nerozbila stávající tisky. Engine je stavěný tak, aby
+přesně tyhle regrese odhalil: změněný obsah, rozbité rozložení, prázdné stránky
+a chybové hlášky vyrenderované přímo do PDF.
 
-**Primary use case — print/report regression testing.** Testers compare a
-freshly generated batch of report PDFs (`new`) against a known-good baseline
-(`old`) to confirm a new build did not break existing printouts. The engine is
-built to surface exactly those regressions: changed content, broken layouts,
-blank pages, and error messages baked into the output.
+## Funkce
 
-## Features
-
-- **Text comparison** — word-level diff with positional highlights (PdfPig).
-- **Pixel-level visual comparison** — per-pixel diff with configurable tolerance
-  (down to exact, 0-tolerance matching) and cluster granularity (down to a single
-  pixel); Ghostscript by default, PDFium as a fallback.
-- **Configurable strictness** — an `Exact` / `Strict` / `Balanced` / `Lenient`
-  preset drives the difference-reporting tolerances, each of which can also be
-  overridden individually.
-- **Page alignment** — inserted/removed pages are detected (Needleman–Wunsch over
-  page-text similarity) so they don't cascade into a run of false differences.
-- **Typed page classification** — each page is tagged `TextChanged`,
-  `VisualChanged`, `PageAdded`, `PageRemoved`, `SizeChanged`, `BecameBlank` or
+- **Textové porovnání** — slovní diff s pozičním zvýrazněním (PdfPig).
+- **Pixelové vizuální porovnání** — diff po pixelech s nastavitelnou tolerancí
+  (až po přesnou shodu s tolerancí 0) a granularitou shluků (až po jednotlivý
+  pixel); ve výchozím stavu Ghostscript, PDFium jako záloha.
+- **Nastavitelná přísnost** — preset `Exact` / `Strict` / `Balanced` / `Lenient`
+  řídí prahy pro hlášení rozdílů; každý lze i přepsat jednotlivě.
+- **Zarovnání stránek** — vložené/odebrané stránky se detekují (Needleman–Wunsch
+  nad podobností textu stránek), takže nezpůsobí kaskádu falešných rozdílů.
+- **Typovaná klasifikace stránek** — každá stránka dostane štítek `TextChanged`,
+  `VisualChanged`, `PageAdded`, `PageRemoved`, `SizeChanged`, `BecameBlank` nebo
   `WasBlank`.
-- **Blank page detection** — flags pages that became (or stopped being) blank,
-  inspecting pixels so it works for scanned pages too.
-- **Content-error detection** — scans the rendered text for error messages a
-  report engine may have printed into the PDF (e.g. `subreport error`, `#error`);
-  patterns are configurable.
-- **Ignore dynamic content** — exclude regions (footer date/time, page numbers,
-  watermarks) and/or text patterns (timestamps) from both the text and visual
-  diff, so legitimately changing content doesn't flag every report.
-- **Robust error handling** — corrupt, encrypted, missing or empty PDFs are
-  reported as `Error` with a reason instead of crashing the batch.
-- **Two-sided highlighted diff PDF** — per differing file, a spread with the
-  old page (left, removed content in red) beside the new page (right, added in
-  green, visual changes in orange); header strips are labeled with the side and
-  page number (`OLD p.3` / `NEW p.4`). Choose a raster style or a **vector
-  overlay** that draws highlights on the original pages so text stays selectable.
-- **Bulk folder comparison** — pairs files by relative path, runs in parallel,
-  classifies each pair as `Identical` / `Differs` / `OnlyInOld` / `OnlyInNew` / `Error`.
-- **Network share folders** — compare local, mounted, or UNC (`\\server\share`)
-  folders; optional per-folder credentials authenticate the share (Windows
-  `WNetAddConnection2`, Linux CIFS mount).
-- **Async job API** — submit a batch, poll status, download the report and
-  artifacts.
-- **Optional OAuth2 authentication** — embedded OpenIddict server with the
-  client-credentials (machine-to-machine) flow issuing JWT bearer tokens; toggle
-  with `Auth:Enabled`.
+- **Detekce prázdných stránek** — hlásí stránky, které se staly (nebo přestaly
+  být) prázdné; zkoumá pixely, takže funguje i na skeny.
+- **Detekce chybových hlášek v obsahu** — prohledává text na chyby, které
+  reportovací nástroj vyrenderoval do PDF (např. `subreport error`, `#error`);
+  vzory jsou konfigurovatelné.
+- **Ignorování dynamického obsahu** — vyloučí oblasti (datum/čas v patičce, čísla
+  stránek, vodoznaky) a/nebo textové vzory (časová razítka) z textového i
+  vizuálního diffu, aby legitimně se měnící obsah nehlásil každý report.
+- **Robustní ošetření chyb** — poškozené, šifrované, chybějící nebo prázdné PDF
+  se ohlásí jako `Error` s důvodem místo pádu celé dávky.
+- **Oboustranné zvýrazněné diff-PDF** — pro každý lišící se soubor dvojstrana se
+  starou stránkou (vlevo, odebraný obsah červeně) vedle nové (vpravo, přidané
+  zeleně, vizuální změny oranžově); záhlaví označují stranu a číslo stránky
+  (`OLD p.3` / `NEW p.4`). Na výběr je rasterový styl nebo **vektorový overlay**,
+  který kreslí zvýraznění přímo nad původní stránky, takže text zůstává vybíratelný.
+- **Hromadné porovnání složek** — páruje soubory podle relativní cesty, běží
+  paralelně, klasifikuje každou dvojici jako `Identical` / `Differs` /
+  `OnlyInOld` / `OnlyInNew` / `Error`.
+- **Síťové složky** — porovnání lokálních, namountovaných nebo UNC
+  (`\\server\share`) složek; volitelné přihlašovací údaje per složka
+  (Windows `WNetAddConnection2`, Linux CIFS mount).
+- **Asynchronní job API** — odeslání dávky, polling stavu, stažení reportu a
+  artefaktů.
+- **Volitelná OAuth2 autentizace** — vestavěný OpenIddict server s
+  client-credentials (M2M) flow vydávajícím JWT bearer tokeny; zapíná se přes
+  `Auth:Enabled`.
 
-## How it works
+## Jak software funguje
 
-### A) The comparison engine (core)
+Tahle sekce popisuje, co se uvnitř děje — od požadavku po výsledek.
 
-Comparing one PDF pair (`old` vs `new`), `ComparisonEngine` runs:
+### A) Porovnávací engine (jádro)
 
-1. **Probe** — both PDFs are opened defensively (page count, sizes, status:
-   `Ok` / `Encrypted` / `Unreadable` / `Empty`). An unreadable side yields a
-   `Failed` result with a reason — never a crash.
-2. **Text extraction** — PdfPig pulls words with their bounding boxes.
-3. **Content-error detection** — the text is scanned with configurable regexes
-   (`subreport error`, `#error`, …); hits are recorded with side/page/snippet.
-4. **Page alignment** — pages are aligned by text similarity (Needleman–Wunsch)
-   instead of by index, so an inserted page becomes `PageAdded`, a deleted one
-   `PageRemoved`, with no cascade of false diffs.
-5. **Per-page-pair comparison**: ignore-filter (drop words in ignore regions /
-   matching ignore patterns) → word-level text diff → pixel-level visual diff
-   (render + tolerance + shift-tolerance + region clustering) → blank/size
-   checks → a **typed page classification** + score.
-6. **Highlighted diff PDF** — differing pages become a spread: old (removed in
-   red) left, new (added green, visual orange) right, with page-number headers.
+Při porovnání jedné dvojice PDF (`old` vs `new`) projde `ComparisonEngine` tyto
+kroky:
 
-All difference regions are stored in **PDF points (bottom-left origin)** so text
-and visual results share one coordinate space; the raster writer converts to
-pixels at draw time. Bulk comparison just applies this engine to every paired
-file and aggregates the results.
+1. **Probe** — obě PDF se nejdřív „osahají": zjistí se počet stránek, rozměry a
+   stav (`Ok` / `Encrypted` / `Unreadable` / `Empty`). Pokud je jeden soubor
+   nečitelný, výsledek je `Failed` s důvodem (žádný pád).
+2. **Extrakce textu** — PdfPig vytáhne slova s jejich pozicemi (bounding boxy).
+3. **Detekce chyb v obsahu** — text se prohledá konfigurovatelnými regexy
+   (`subreport error`, `#error`, …) a nálezy se zapíšou se stranou/stránkou/úryvkem.
+4. **Zarovnání stránek** — místo párování podle indexu se stránky zarovnají podle
+   podobnosti textu (Needleman–Wunsch). Vložená stránka se rozpozná jako
+   `PageAdded`, smazaná jako `PageRemoved` — bez kaskády falešných rozdílů.
+5. **Porovnání každé dvojice stránek**:
+   - *Filtr ignorování* — slova v ignorovaných oblastech nebo odpovídající
+     ignorovaným vzorům (časová razítka) se zahodí ještě před diffem.
+   - *Textový diff* — slovní LCS diff; přidaná/odebraná slova se stanou regiony.
+   - *Vizuální diff* — stránky se vyrenderují (Ghostscript/PDFium) a porovnají po
+     pixelech s tolerancí, shift-tolerancí (pohltí sub-pixelové posuny/AA) a
+     shlukováním do regionů.
+   - *Prázdné stránky / rozměry* — pixelová detekce prázdnoty a porovnání
+     velikosti/orientace.
+   - Výsledkem je **typovaná klasifikace** stránky (kombinace příznaků) a skóre.
+6. **Zvýrazněné diff-PDF** — pro lišící se stránky vznikne dvojstrana: vlevo stará
+   (odebrané červeně), vpravo nová (přidané zeleně, vizuální oranžově), v záhlaví
+   čísla stránek.
 
-### B) The durable job lifecycle
+Všechny regiony rozdílů engine ukládá v **PDF bodech (počátek vlevo dole)**, aby
+textové a vizuální výsledky sdílely jeden souřadný systém; raster writer je při
+kreslení převede na pixely.
+
+### B) Životní cyklus dávkové úlohy (durable pipeline)
 
 ```
-Client → POST /api/batch
-   │  validate scope (business instance + project), check folders
+Klient → POST /api/batch
+   │  validace scope (business instance + projekt), kontrola složek
    ▼
-[API]  insert job into PostgreSQL  +  publish RunBatchComparison   ← one transaction (outbox)
+[API]  vloží job do PostgreSQL  +  publikuje RunBatchComparison   ← jedna transakce (outbox)
    ▼
 RabbitMQ  ──►  [Worker / handler]
    │   RunBatchComparison  → TryStart (Queued→Running, optimistic concurrency)
-   │   IndexBatch          → pair folders, create file_pair_tasks, set total
-   │   CompareFilePair × N → compare one pair, store result, ++processed
-   │   FinalizeBatch       → aggregate results into the report, job → Completed
+   │   IndexBatch          → spáruje složky, založí file_pair_tasks, nastaví total
+   │   CompareFilePair × N → porovná jednu dvojici, zapíše výsledek, ++processed
+   │   FinalizeBatch       → zagreguje výsledky do reportu, job → Completed
    ▼
-PostgreSQL (state) + storage (artifacts)
+PostgreSQL (stav) + storage (artefakty)
    ▼
-SignalR (live progress)  +  REST polling (source of truth)
+SignalR (živý progress)  +  REST polling (zdroj pravdy)
 ```
 
-See **Durable job processing** below for the guarantees behind each step.
+Principy:
 
-## Architecture
+- **PostgreSQL je zdroj pravdy** pro joby, business instance, projekty, progress
+  a metadata reportu. Přechody stavů používají optimistic concurrency (`version`)
+  a lease (`locked_by`/`locked_until`); `Queued → Running` provede jen jeden worker.
+- **RabbitMQ je jen transport** příkazů — nedrží stav úlohy.
+- **Wolverine** řídí publish/consume s durable inbox/outbox v PostgreSQL. Handler
+  je idempotentní: opakovaně doručená zpráva najde job, který už není `Queued`, a
+  přeskočí.
+- **Transakční outbox** — vložení jobu a zařazení příkazu proběhne v jedné EF
+  transakci; job nikdy neexistuje bez své zprávy a naopak.
+- **Klasifikace retry** — transientní chyby (IO/síť/broker) se opakují s
+  cooldownem, pak jdou do dead-letteru; permanentní (špatný request, chybějící
+  složka, poškozený vstup) se zapíšou jako `Failed` a potvrdí (neopakují se).
+- **Per-file-pair tasking** — dávka se rozpadne na řádky `file_pair_tasks`, každá
+  dvojice se zpracuje samostatně. Jeden poškozený PDF se zapíše jako `Error`, ale
+  **nezabije dávku**. Dvojice se **opakují** při transientních chybách
+  (`Worker:MaxFilePairAttempts`) a `StaleTaskRecoveryService` vrátí do fronty a
+  znovu rozešle tasky po spadlém workeru (vyprší lease) — dávka **pokračuje**
+  místo zaseknutí.
+- **Omezený paralelismus renderu** — procesový semafor (`IPdfWorkLimiter`,
+  `Pdf:MaxConcurrentOperations`, default 4) omezí počet souběžných renderů napříč
+  všemi joby/instancemi, aby paralelismus nevyčerpal CPU/RAM.
 
-```
-DiffPdf.Core                Domain models, abstractions, comparison orchestration
-                            (WordDiff, TextComparer, PageAligner, ContentErrorDetector,
-                            IgnoreFilter, ComparisonEngine, BatchComparer), scope models,
-                            storage path provider — no PDF-library dependencies.
-DiffPdf.Pdf                 PdfPig text extraction, Ghostscript & PDFium renderers,
-                            SkiaSharp pixel diff + blank detector, PdfSharp side-by-side
-                            highlight writer, network-share connectors.
-DiffPdf.Persistence         Job / business-instance / project store abstractions +
-                            in-memory (dev) implementations.
-DiffPdf.Persistence.Postgres EF Core (Npgsql) stores with optimistic concurrency,
-                            Mapperly entity→domain mapping, transactional outbox.
-DiffPdf.Messaging           Wolverine handler + RabbitMQ wiring (RunBatchComparison).
-DiffPdf.Worker              Worker-side infrastructure (storage, worker identity, options).
-DiffPdf.Api                 ASP.NET Core Minimal API (Serilog, OpenAPI, endpoint groups).
-```
+Pokud jsou nastavené `ConnectionStrings:Postgres` a `ConnectionStrings:RabbitMq`,
+použije se plný stack; jinak API spadne zpět na in-memory úložiště a in-process
+Wolverine transport (jednoinstanční dev režim).
 
-### Durable job processing (multi-instance)
+## Použité technologie a proč
 
-For running many jobs across multiple worker instances, the async pipeline is
-backed by durable infrastructure rather than in-process state:
-
-- **PostgreSQL is the source of truth** for jobs, business instances, projects,
-  progress and report metadata. State transitions use optimistic concurrency
-  (`version`) and a lease (`locked_by` / `locked_until`); only one worker can
-  move a job `Queued → Running`.
-- **RabbitMQ is the transport** for the `RunBatchComparison` command — it never
-  holds job state.
-- **Wolverine** orchestrates publish/consume with a PostgreSQL durable
-  inbox/outbox, so the handler is safe under duplicate delivery: a redelivered
-  message simply finds the job is no longer `Queued` and skips.
-- **Transactional outbox** — submitting a batch inserts the job and enqueues its
-  command in a single EF Core transaction (Wolverine `IDbContextOutbox`), so a
-  job can never exist without its message or vice versa.
-- **Retry classification** — transient failures (IO/network/broker) are retried
-  with cooldown then dead-lettered; permanent failures (bad request, missing
-  folder, corrupt input) are recorded as `Failed` and acknowledged, not retried.
-- The handler runs the comparison with bounded parallelism and writes
-  version-checked progress; a completed job can never be overwritten by a late
-  progress update.
-
-Persistence uses **EF Core** (Npgsql) with **Mapperly** for source-generated
-entity→domain mapping; atomic state transitions use `ExecuteUpdate` guarded by
-`status` + `version`.
-
-**Realtime progress (SignalR).** Clients connect to the `/hubs/jobs` hub and
-join a `job:{id}`, `project:{bi}:{proj}` or `business-instance:{bi}` group to
-receive `jobProgress` events. SignalR is notification-only — it holds no state,
-so a client that misses an event recovers via `GET /api/jobs/{id}`. (A Redis
-backplane is needed for more than one API instance.)
-
-**Bounded render concurrency.** A process-wide semaphore (`IPdfWorkLimiter`,
-`Pdf:MaxConcurrentOperations`, default 4) caps concurrent PDF renders across all
-jobs and instances, so parallelism can't exhaust CPU/RAM no matter how many
-jobs run at once.
-
-**Per-file-pair tasking.** A submitted batch is indexed into one
-`file_pair_tasks` row per file pair (`IndexBatch`), each pair is compared by its
-own `CompareFilePair` message, and the run is aggregated into the final report
-by `FinalizeBatch` once an atomic processed counter reaches the total. This
-isolates failures (one corrupt PDF is recorded as `Error` without sinking the
-batch) and gives precise progress. Individual pairs **retry on transient errors**
-(up to `Worker:MaxFilePairAttempts`, with messaging cooldown), and a background
-`StaleTaskRecoveryService` requeues and re-dispatches tasks abandoned by a
-crashed worker (lease expiry), so a batch **resumes** instead of stalling.
-
-If `ConnectionStrings:Postgres` and `ConnectionStrings:RabbitMq` are configured
-the full stack is used; otherwise the API falls back to in-memory stores with an
-in-process Wolverine transport (single-instance dev mode).
-
-The engine stores all difference regions in **PDF points (bottom-left origin)**
-so text and visual results share one coordinate space; the raster highlight
-writer converts to pixels at render time.
+- **.NET 10 / ASP.NET Core Minimal API** — moderní výkonný runtime a štíhlé HTTP API.
+- **PdfPig** — extrakce textu s pozicemi slov, kterou potřebuje slovní diff.
+- **Ghostscript** / **PDFium** — spolehlivý rendering stránek na obrázky pro pixelové porovnání.
+- **SkiaSharp** — rychlé porovnání bitmap a detekce prázdných stránek.
+- **PdfSharp** — generování zvýrazněného diff-PDF (rasterového i vektorového overlay).
+- **PostgreSQL** — perzistentní zdroj pravdy o stavu úloh s atomickými přechody.
+- **EF Core (Npgsql)** — typovaný přístup k databázi s optimistic concurrency.
+- **Mapperly** — rychlé source-generated mapování entit na doménové modely bez reflexe.
+- **RabbitMQ** — distribuovaný transport práce mezi API a workery.
+- **Wolverine** — orchestrace zpráv s durable inbox/outbox, retry a dead-letterem.
+- **SignalR** — realtime push progressu úloh ke klientům.
+- **Serilog** — strukturované logování do konzole i rotovaného souboru.
+- **OpenIddict** — standardní OAuth2 server pro bezpečný přístup strojových klientů.
 
 ## REST API
 
-| Method | Route | Purpose |
+| Metoda | Cesta | Účel |
 |---|---|---|
-| `GET`  | `/health` | Liveness probe (anonymous). |
-| `POST` | `/connect/token` | OAuth2 token endpoint (client-credentials), when auth is enabled. |
-| `POST` | `/api/business-instances` | Create a business instance (`Alfa`, `RNew`, …). |
-| `GET`  | `/api/business-instances` | List business instances. |
-| `POST` | `/api/business-instances/{key}/projects` | Create a project under an instance. |
-| `GET`  | `/api/business-instances/{key}/projects` | List projects. |
-| `POST` | `/api/comparisons` | Compare a single pair (synchronous). |
-| `POST` | `/api/batch` | Submit a folder comparison job (async, returns `202`). |
-| `GET`  | `/api/jobs` | List jobs. |
-| `GET`  | `/api/jobs/{id}` | Job status + progress. |
-| `GET`  | `/api/jobs/{id}/report` | Aggregate JSON report (`409` until ready). |
-| `GET`  | `/api/jobs/{id}/result` | CI gate verdict: `200` if passed, `422` if the gate failed. |
-| `GET`  | `/api/jobs/{id}/artifacts/{**path}` | Download a highlighted diff PDF. |
+| `GET`  | `/health` | Liveness probe (anonymní). |
+| `POST` | `/connect/token` | OAuth2 token endpoint (client-credentials), když je auth zapnutá. |
+| `POST` | `/api/business-instances` | Vytvoří business instanci (`Alfa`, `RNew`, …). |
+| `GET`  | `/api/business-instances` | Výpis business instancí. |
+| `POST` | `/api/business-instances/{key}/projects` | Vytvoří projekt pod instancí. |
+| `GET`  | `/api/business-instances/{key}/projects` | Výpis projektů. |
+| `POST` | `/api/comparisons` | Porovná jednu dvojici (synchronně). |
+| `POST` | `/api/batch` | Odešle úlohu porovnání složek (async, vrací `202`). |
+| `GET`  | `/api/jobs` | Výpis úloh. |
+| `GET`  | `/api/jobs/{id}` | Stav úlohy + progress. |
+| `GET`  | `/api/jobs/{id}/report` | Agregovaný JSON report (`409` než je hotovo). |
+| `GET`  | `/api/jobs/{id}/result` | Verdikt CI brány: `200` když prošlo, `422` když selhalo. |
+| `GET`  | `/api/jobs/{id}/artifacts/{**path}` | Stažení zvýrazněného diff-PDF. |
 
-OpenAPI document is served at `/openapi/v1.json`.
+OpenAPI dokument je na `/openapi/v1.json`.
 
-### Example — single pair
+### Příklad — jedna dvojice
 
 ```bash
 curl -X POST http://localhost:8080/api/comparisons \
@@ -208,14 +181,14 @@ curl -X POST http://localhost:8080/api/comparisons \
       }'
 ```
 
-### Example — batch folder comparison
+### Příklad — hromadné porovnání složek
 
 ```bash
-# 0. create the scope once (business instance + project)
+# 0. jednou vytvoř scope (business instance + projekt)
 curl -X POST http://localhost:8080/api/business-instances -d '{"key":"Alfa","name":"Alfa"}' -H 'Content-Type: application/json'
 curl -X POST http://localhost:8080/api/business-instances/Alfa/projects -d '{"key":"LamaEnergyAlfa","name":"Lama Energy Alfa"}' -H 'Content-Type: application/json'
 
-# 1. submit a batch under that scope
+# 1. odešli dávku pod tímto scope
 curl -X POST http://localhost:8080/api/batch \
   -H 'Content-Type: application/json' \
   -d '{
@@ -227,49 +200,49 @@ curl -X POST http://localhost:8080/api/batch \
       }'
 # -> { "id": "...", "status": "Queued", ... }
 
-# 2. poll
+# 2. polling
 curl http://localhost:8080/api/jobs/<id>
 
-# 3. fetch report
+# 3. stažení reportu
 curl http://localhost:8080/api/jobs/<id>/report
 ```
 
-### Comparison options
+### Volby porovnání
 
-| Field | Default | Notes |
+| Pole | Výchozí | Poznámka |
 |---|---|---|
-| `mode` | `Both` | `Text`, `Visual`, or `Both`. |
-| `pages` | all | `{ "from": 1, "to": 5 }`. |
-| `dpi` | `150` | Visual render resolution. |
-| `strictness` | `Balanced` | Preset: `Exact` / `Strict` / `Balanced` / `Lenient`. Drives the tolerances below. |
-| `pixelTolerance` | *(preset)* | Override per-channel tolerance (0-255); `0` = exact pixel match. |
-| `visualThreshold` | *(preset)* | Override min differing-pixel fraction to flag a page; `0` flags a single pixel. |
-| `textDifferenceThreshold` | *(preset)* | Override min changed-word fraction to flag text; `0` flags any change. |
-| `shiftTolerance` | *(preset)* | Pixel radius for absorbing sub-pixel/anti-aliasing shifts; `0` = strict positional. |
-| `visualClusterCellSize` | `24` | Highlight cluster size (px); `1` = per-pixel regions. |
-| `alignPages` | `true` | Align pages by content (detect insert/delete). |
-| `pageMatchThreshold` | `0.2` | Min word overlap to treat two pages as the same page changed (vs add+remove). |
-| `detectBlankPages` | `true` | Flag blank/non-blank transitions. |
-| `blankPageThreshold` | `0.0002` | Max non-white pixel fraction to count as blank. |
-| `detectContentErrors` | `true` | Scan text for error messages. |
-| `contentErrorPatterns` | see below | Case-insensitive regexes; defaults include `subreport error`, `#error`. |
-| `ignoreRegions` | `[]` | Areas excluded from comparison (see below). |
-| `ignoreTextPatterns` | `[]` | Regexes; matching words are dropped before the text diff. |
-| `produceHighlightedPdf` | `true` | Emit diff PDF for differing files. |
-| `highlightLayout` | `SideBySide` | `SideBySide` (old left / new right) or `Single` (changed side only). |
-| `highlightStyle` | `Raster` | `Raster` (image pages) or `VectorOverlay` (overlay on the original PDF — text stays selectable). |
-| `renderer` | `Ghostscript` | `Ghostscript` or `Pdfium`. |
+| `mode` | `Both` | `Text`, `Visual`, nebo `Both`. |
+| `pages` | vše | `{ "from": 1, "to": 5 }`. |
+| `dpi` | `150` | Rozlišení renderu pro vizuál. |
+| `strictness` | `Balanced` | Preset: `Exact` / `Strict` / `Balanced` / `Lenient`. Řídí prahy níže. |
+| `pixelTolerance` | *(preset)* | Přepis tolerance na kanál (0-255); `0` = přesná shoda pixelů. |
+| `visualThreshold` | *(preset)* | Přepis min. podílu odlišných pixelů; `0` flagne i jeden pixel. |
+| `textDifferenceThreshold` | *(preset)* | Přepis min. podílu změněných slov; `0` flagne jakoukoli změnu. |
+| `shiftTolerance` | *(preset)* | Poloměr (px) pro pohlcení sub-pixelových/AA posunů; `0` = striktně poziční. |
+| `visualClusterCellSize` | `24` | Velikost shluku zvýraznění (px); `1` = regiony po pixelech. |
+| `alignPages` | `true` | Zarovnat stránky podle obsahu (detekce insert/delete). |
+| `pageMatchThreshold` | `0.2` | Min. překryv slov, aby šlo o tutéž změněnou stránku (vs add+remove). |
+| `detectBlankPages` | `true` | Hlásit přechody prázdná/neprázdná. |
+| `blankPageThreshold` | `0.0002` | Max. podíl ne-bílých pixelů pro prázdnou stránku. |
+| `detectContentErrors` | `true` | Hledat chybové hlášky v textu. |
+| `contentErrorPatterns` | viz níže | Case-insensitive regexy; default zahrnuje `subreport error`, `#error`. |
+| `ignoreRegions` | `[]` | Oblasti vyloučené z porovnání (viz níže). |
+| `ignoreTextPatterns` | `[]` | Regexy; odpovídající slova se zahodí před textovým diffem. |
+| `produceHighlightedPdf` | `true` | Vytvořit diff-PDF pro lišící se soubory. |
+| `highlightLayout` | `SideBySide` | `SideBySide` (stará vlevo / nová vpravo) nebo `Single` (jen změněná strana). |
+| `highlightStyle` | `Raster` | `Raster` (stránky jako obrázek) nebo `VectorOverlay` (overlay nad originálem — text zůstává vybíratelný). |
+| `renderer` | `Ghostscript` | `Ghostscript` nebo `Pdfium`. |
 
-The single-pair result (`POST /api/comparisons`) returns `outcome`
-(`Compared`/`Failed`), per-document status, a typed per-page breakdown
-(`changes`, `differenceScore`, blank flags, regions) and any `contentErrors`.
-The batch report aggregates counts (`identical`, `differing`, `errors`,
-`filesWithContentErrors`) plus `passed` / `gateViolations`.
+Výsledek jedné dvojice (`POST /api/comparisons`) vrací `outcome`
+(`Compared`/`Failed`), stav per dokument, typovaný rozpis po stránkách
+(`changes`, `differenceScore`, příznaky prázdnoty, regiony) a případné
+`contentErrors`. Batch report agreguje počty (`identical`, `differing`,
+`errors`, `filesWithContentErrors`) a navíc `passed` / `gateViolations`.
 
-#### Ignoring dynamic content
+#### Ignorování dynamického obsahu
 
-A footer timestamp or page number changes on every run and would otherwise flag
-every report. Exclude it by area and/or by text pattern:
+Časové razítko v patičce nebo číslo stránky se mění při každém běhu a jinak by
+flagovalo každý report. Vyluč ho oblastí a/nebo textovým vzorem:
 
 ```jsonc
 {
@@ -277,43 +250,43 @@ every report. Exclude it by area and/or by text pattern:
   "newPath": "/pdfs/new/report.pdf",
   "options": {
     "ignoreRegions": [
-      // bottom 8% of every page; coordinates are top-left origin
+      // spodních 8 % každé stránky; souřadnice mají počátek vlevo nahoře
       { "area": { "x": 0, "y": 0.92, "width": 1, "height": 0.08 },
         "unit": "Fraction", "label": "footer" }
     ],
-    "ignoreTextPatterns": ["\\d{4}-\\d{2}-\\d{2}"]   // ISO dates
+    "ignoreTextPatterns": ["\\d{4}-\\d{2}-\\d{2}"]   // ISO data
   }
 }
 ```
 
-`unit` is `Fraction` (0-1 of the page) or `Points`; `pages` (optional) limits a
-region to specific page numbers.
+`unit` je `Fraction` (0-1 stránky) nebo `Points`; `pages` (volitelné) omezí
+oblast na konkrétní čísla stránek.
 
-#### CI gate (batch pass/fail)
+#### CI brána (pass/fail dávky)
 
-Add a `gate` to a batch request to turn the run into a pass/fail check. The
-`GET /api/jobs/{id}/result` endpoint then returns `200` when the run passes and
-`422` when it fails — ideal for `curl --fail` in a pipeline.
+Přidej do batch požadavku `gate` a běh se stane pass/fail kontrolou. Endpoint
+`GET /api/jobs/{id}/result` pak vrátí `200` při úspěchu a `422` při selhání —
+ideální pro `curl --fail` v pipeline.
 
 ```jsonc
 {
   "oldFolder": "/pdfs/old",
   "newFolder": "/pdfs/new",
   "gate": {
-    "failOnAnyDifference": true,   // or set maxDifferingFiles
+    "failOnAnyDifference": true,   // nebo nastav maxDifferingFiles
     "maxErrors": 0,
     "maxFilesWithContentErrors": 0
   }
 }
 ```
 
-A null limit means "no limit"; the report exposes `passed` and `gateViolations`.
+Hodnota `null` znamená „bez limitu"; report vystavuje `passed` a `gateViolations`.
 
-#### Network share folders
+#### Síťové složky
 
-`oldFolder` / `newFolder` may be local paths, OS-mounted shares, or UNC paths
-(`\\server\share\...` or `//server/share/...`). A share that needs
-authentication takes optional credentials per folder:
+`oldFolder` / `newFolder` mohou být lokální cesty, namountovaná sdílení, nebo
+UNC cesty (`\\server\share\...` či `//server/share/...`). Sdílení vyžadující
+přihlášení přijme volitelné credentialy per složka:
 
 ```jsonc
 {
@@ -324,105 +297,102 @@ authentication takes optional credentials per folder:
 }
 ```
 
-- **Windows** connects the share with `WNetAddConnection2` (like `net use`, no
-  drive letter) and disconnects when the run finishes.
-- **Linux** mounts the share via CIFS to a temporary mount point and unmounts
-  after. This needs `cifs-utils` (bundled in the Docker image) and the
-  privilege to mount (run the container with `--privileged` or
-  `--cap-add SYS_ADMIN`).
-- Paths **without** credentials (local dirs, mapped drives, pre-mounted shares,
-  or UNC under the service account) are used as-is. Send credentials only over
-  HTTPS; they are never written to logs or comparison reports.
+- **Windows** připojí sdílení přes `WNetAddConnection2` (jako `net use`, bez
+  mapování disku) a po doběhnutí odpojí.
+- **Linux** namountuje sdílení přes CIFS do dočasného bodu a poté odmountuje.
+  Vyžaduje `cifs-utils` (v Docker image už je) a oprávnění k mountu (kontejner s
+  `--privileged` nebo `--cap-add SYS_ADMIN`).
+- Cesty **bez** credentialů (lokální, mapované disky, předmountovaná sdílení nebo
+  UNC pod service účtem) se použijí tak, jak jsou. Credentialy posílej jen přes
+  HTTPS; nikdy se nezapisují do logů ani reportů.
 
-### Business instances, projects & storage layout
+### Business instance, projekty a struktura úložiště
 
-Jobs are scoped to a **business instance** (e.g. `Alfa`, `RNew`, `ROld`) and a
-**project** under it (e.g. `LamaEnergyAlfa`). These are data created via the API
-and stored in PostgreSQL — never hardcoded. Artifacts live under the scope:
+Úlohy mají scope **business instance** (např. `Alfa`, `RNew`, `ROld`) a
+**projekt** pod ní (např. `LamaEnergyAlfa`). To jsou data zakládaná přes API a
+uložená v PostgreSQL — nikdy ne natvrdo v kódu. Artefakty žijí pod scope:
 
 ```
 storage/{businessInstanceKey}/{projectKey}/jobs/{jobId}/artifacts|reports|logs
 ```
 
-Keys are validated (`[a-zA-Z0-9_.-]`, ≤64 chars, no `..`) so they can never
-escape the storage root. The structure above is example data, not application
-behavior.
+Klíče se validují (`[a-zA-Z0-9_.-]`, ≤64 znaků, žádné `..`), takže nemůžou utéct
+z kořene úložiště. Struktura výše je příklad dat, ne chování aplikace.
 
-## Running
+## Spuštění
 
-### Docker (recommended)
+### Docker (doporučeno)
 
 ```bash
 docker compose up --build
-# Brings up PostgreSQL + RabbitMQ + the API on http://localhost:8080,
-# comparing ./samples/old vs ./samples/new. Data persists in named volumes.
+# Spustí PostgreSQL + RabbitMQ + API na http://localhost:8080,
+# porovnává ./samples/old vs ./samples/new. Data jsou v pojmenovaných volumech.
 ```
 
-The image installs Ghostscript and the native deps SkiaSharp/PDFium need;
-compose wires `ConnectionStrings__Postgres` / `__RabbitMq` and `Storage__RootPath`.
+Image instaluje Ghostscript a nativní závislosti pro SkiaSharp/PDFium; compose
+nastaví `ConnectionStrings__Postgres` / `__RabbitMq` a `Storage__RootPath`.
 
-### Local
+### Lokálně
 
 ```bash
 dotnet run --project src/DiffPdf.Api
 ```
 
-Requires the Ghostscript binary on `PATH` (or set `GHOSTSCRIPT_PATH`) for the
-visual mode. Override the artifact directory with `DIFFPDF_ARTIFACT_ROOT`.
+Pro vizuální režim vyžaduje binárku Ghostscript na `PATH` (nebo nastav
+`GHOSTSCRIPT_PATH`). Kořen artefaktů přepíšeš přes `DIFFPDF_ARTIFACT_ROOT`.
 
-### Tests
+### Testy
 
 ```bash
 dotnet test
 ```
 
-### Logging
+### Logování
 
-Logging uses **Serilog**, configured in `appsettings.json` (the `Serilog`
-section). Out of the box it writes structured logs to the console and to a
-daily-rolling file under `logs/` (14 days retained), enriches every event with
-the source context and an `Application` property, and logs one summary line per
-HTTP request. Adjust sinks/levels in `appsettings.json` — no code change needed.
+Logování používá **Serilog**, konfigurované v `appsettings.json` (sekce
+`Serilog`). Defaultně píše strukturované logy na konzoli a do denně rotovaného
+souboru v `logs/` (14 dní historie), obohacuje každou událost o source context a
+vlastnost `Application` a loguje jeden souhrnný řádek na HTTP request. Sinky a
+úrovně se mění v `appsettings.json` — bez zásahu do kódu.
 
-The file-log directory is set by `DIFFPDF_LOG_DIR` (default `logs/`); the Docker
-image points it at `/data/logs` so logs persist on the mounted volume.
+Adresář souborového logu nastavuje `DIFFPDF_LOG_DIR` (default `logs/`); Docker
+image ho míří na `/data/logs`, aby logy přežily na namountovaném volume.
 
-### Authentication (OAuth2)
+### Autentizace (OAuth2)
 
-Authentication is **off by default**. Enable it with `Auth:Enabled=true` (requires
-a PostgreSQL connection — OpenIddict stores its clients/tokens there). When on,
-**every endpoint requires a bearer token** except `/health`, `/connect/token` and
-the OpenAPI document.
+Autentizace je **ve výchozím stavu vypnutá**. Zapne se přes `Auth:Enabled=true`
+(vyžaduje připojení k PostgreSQL — OpenIddict tam ukládá klienty/tokeny). Když je
+zapnutá, **každý endpoint vyžaduje bearer token** kromě `/health`,
+`/connect/token` a OpenAPI dokumentu.
 
-A client-credentials application is seeded on startup (`Auth:ClientId` /
-`Auth:ClientSecret` / `Auth:Scope`). Machine clients (CI, testers) get a token
-and call the API with it:
+Při startu se vytvoří client-credentials aplikace (`Auth:ClientId` /
+`Auth:ClientSecret` / `Auth:Scope`). Strojoví klienti (CI, testeři) si vyžádají
+token a volají s ním API:
 
 ```bash
-# 1. get a token
+# 1. získej token
 curl -X POST http://localhost:8080/connect/token \
   -d 'grant_type=client_credentials&client_id=diffpdf-ci&client_secret=diffpdf-secret&scope=diffpdf.api'
 # -> { "access_token": "...", "token_type": "Bearer", "expires_in": 3599 }
 
-# 2. call the API with it
+# 2. volej API s tokenem
 curl -H "Authorization: Bearer <access_token>" http://localhost:8080/api/jobs
 ```
 
-Tokens are JWTs signed with ephemeral keys (fine for short-lived M2M tokens;
-use real certificates and HTTPS in production). Change the seeded secret via
-`Auth:ClientSecret` and keep it out of source control.
+Tokeny jsou JWT podepsané ephemerálními klíči (pro krátkodobé M2M tokeny v
+pořádku; v produkci použij reálné certifikáty a HTTPS). Seedovaný secret změň
+přes `Auth:ClientSecret` a nedávej ho do gitu.
 
-## Licensing note
+## Licenční poznámka
 
-The default renderer shells out to **Ghostscript (AGPL v3)**. For internal /
-server-side use this is fine, but redistributing a closed-source product that
-bundles Ghostscript requires a commercial license from Artifex. The **PDFium**
-renderer (BSD) is provided as a license-clean alternative — set
-`"renderer": "Pdfium"`. Other libraries: PdfPig (Apache 2.0), PdfSharp (MIT),
-SkiaSharp (MIT).
+Výchozí renderer volá **Ghostscript (AGPL v3)**. Pro interní / serverové použití
+je to v pořádku, ale distribuce uzavřeného produktu s Ghostscriptem vyžaduje
+komerční licenci od Artifexu. Renderer **PDFium** (BSD) je licenčně čistá
+alternativa — nastav `"renderer": "Pdfium"`. Další knihovny: PdfPig (Apache 2.0),
+PdfSharp (MIT), SkiaSharp (MIT).
 
-## Roadmap / not yet implemented
+## Roadmap / zatím neimplementováno
 
-- SSIM-based perceptual scoring; structural region clustering.
-- Authentication / multi-tenant artifact isolation.
-- Network-share credentials in the per-file-pair path (currently pre-mounted only).
+- SSIM perceptuální skórování; strukturální shlukování regionů.
+- Multi-tenant izolace artefaktů a oprávnění per scope.
+- Credentialy síťových sdílení ve file-pair cestě (zatím jen předmountováno).
