@@ -37,7 +37,26 @@ public sealed class CompareFilePairHandler
         var job = await jobStore.GetAsync(command.JobId, ct);
         if (job is null) return;
 
-        var result = await CompareAsync(task, job, engine, paths, logger, ct);
+        FilePairResult result;
+        try
+        {
+            result = await CompareAsync(task, job, engine, paths, ct);
+        }
+        catch (Exception ex) when (ExceptionClassifier.IsTransient(ex) && task.AttemptCount < workerOptions.Value.MaxFilePairAttempts)
+        {
+            // Transient and still under the attempt cap: return the task to the queue
+            // and let Wolverine redeliver (with cooldown) so it resumes on a retry.
+            logger.LogWarning(ex, "Transient failure on pair {Path} (attempt {Attempt}); requeuing", task.RelativePath, task.AttemptCount);
+            await taskStore.RequeueAsync(task.Id, ct);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // Permanent, or transient past the cap: record as an error and move on.
+            logger.LogError(ex, "Pair {Path} failed permanently in job {JobId}", task.RelativePath, job.Id);
+            result = new FilePairResult { RelativePath = task.RelativePath, Status = FilePairStatus.Error, Error = ex.Message };
+        }
+
         await taskStore.CompleteAsync(task.Id, result, FilePairTaskStatus.Completed, ct);
 
         var (processed, total) = await jobStore.IncrementProcessedAsync(command.JobId, ct);
@@ -51,35 +70,29 @@ public sealed class CompareFilePairHandler
 
     private static async Task<FilePairResult> CompareAsync(
         FilePairTask task, ComparisonJob job, IComparisonEngine engine,
-        IJobStoragePathProvider paths, ILogger logger, CancellationToken ct)
+        IJobStoragePathProvider paths, CancellationToken ct)
     {
         if (task.OldFilePath is null)
             return new FilePairResult { RelativePath = task.RelativePath, Status = FilePairStatus.OnlyInNew };
         if (task.NewFilePath is null)
             return new FilePairResult { RelativePath = task.RelativePath, Status = FilePairStatus.OnlyInOld };
 
-        try
-        {
-            string artifacts = paths.GetArtifactsPath(job);
-            var fr = await engine.CompareAsync(task.OldFilePath, task.NewFilePath, job.Request.Options, artifacts, ct);
+        // Unexpected exceptions propagate to the caller for transient/permanent classification.
+        string artifacts = paths.GetArtifactsPath(job);
+        var fr = await engine.CompareAsync(task.OldFilePath, task.NewFilePath, job.Request.Options, artifacts, ct);
 
-            if (fr.Outcome == ComparisonOutcome.Failed)
-                return new FilePairResult { RelativePath = task.RelativePath, Status = FilePairStatus.Error, Error = fr.Error };
+        // A readable-but-broken PDF is a handled (permanent) outcome, not a thrown error.
+        if (fr.Outcome == ComparisonOutcome.Failed)
+            return new FilePairResult { RelativePath = task.RelativePath, Status = FilePairStatus.Error, Error = fr.Error };
 
-            return new FilePairResult
-            {
-                RelativePath = task.RelativePath,
-                Status = fr.AreIdentical ? FilePairStatus.Identical : FilePairStatus.Differs,
-                Similarity = fr.Similarity,
-                DifferingPages = fr.DifferingPages,
-                ContentErrorCount = fr.ContentErrors.Count,
-                HighlightedPdfPath = fr.HighlightedPdfPath,
-            };
-        }
-        catch (Exception ex)
+        return new FilePairResult
         {
-            logger.LogError(ex, "File pair {Path} failed in job {JobId}", task.RelativePath, job.Id);
-            return new FilePairResult { RelativePath = task.RelativePath, Status = FilePairStatus.Error, Error = ex.Message };
-        }
+            RelativePath = task.RelativePath,
+            Status = fr.AreIdentical ? FilePairStatus.Identical : FilePairStatus.Differs,
+            Similarity = fr.Similarity,
+            DifferingPages = fr.DifferingPages,
+            ContentErrorCount = fr.ContentErrors.Count,
+            HighlightedPdfPath = fr.HighlightedPdfPath,
+        };
     }
 }

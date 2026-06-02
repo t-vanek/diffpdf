@@ -31,6 +31,36 @@ public class FilePairTaskStoreTests
     }
 
     [Fact]
+    public async Task Requeue_AllowsReclaim()
+    {
+        var store = new InMemoryFilePairTaskStore();
+        var task = Task(Guid.NewGuid());
+        await store.CreateManyAsync([task]);
+        await store.TryClaimAsync(task.Id, "w1", TimeSpan.FromMinutes(5));
+
+        await store.RequeueAsync(task.Id);
+        var reclaimed = await store.TryClaimAsync(task.Id, "w2", TimeSpan.FromMinutes(5));
+
+        Assert.NotNull(reclaimed);
+    }
+
+    [Fact]
+    public async Task RequeueStale_RecoversExpiredLeaseTasks()
+    {
+        var store = new InMemoryFilePairTaskStore();
+        var jobId = Guid.NewGuid();
+        var task = Task(jobId);
+        await store.CreateManyAsync([task]);
+        await store.TryClaimAsync(task.Id, "dead-worker", TimeSpan.FromSeconds(-1)); // already expired
+
+        var recovered = await store.RequeueStaleAsync();
+
+        var one = Assert.Single(recovered);
+        Assert.Equal((jobId, task.Id), one);
+        Assert.NotNull(await store.TryClaimAsync(task.Id, "w2", TimeSpan.FromMinutes(5)));
+    }
+
+    [Fact]
     public async Task Complete_StoresResult()
     {
         var store = new InMemoryFilePairTaskStore();

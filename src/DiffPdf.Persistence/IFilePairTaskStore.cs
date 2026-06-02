@@ -14,5 +14,14 @@ public interface IFilePairTaskStore
 
     Task FailAsync(Guid taskId, string error, CancellationToken ct = default);
 
+    /// <summary>Returns a claimed task to the queue (Running → Queued) for another attempt.</summary>
+    Task RequeueAsync(Guid taskId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Requeues tasks whose lease expired (crashed worker) and returns their
+    /// (jobId, taskId) so they can be re-dispatched. Enables resume.
+    /// </summary>
+    Task<IReadOnlyList<(Guid JobId, Guid TaskId)>> RequeueStaleAsync(CancellationToken ct = default);
+
     Task<IReadOnlyList<FilePairTask>> ListByJobAsync(Guid jobId, CancellationToken ct = default);
 }
