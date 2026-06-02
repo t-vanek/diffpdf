@@ -24,4 +24,10 @@ public interface IJobStore
     Task<ComparisonJob> CompleteAsync(Guid id, BatchComparisonReport report, long expectedVersion, CancellationToken ct = default);
 
     Task<ComparisonJob> FailAsync(Guid id, string error, long expectedVersion, CancellationToken ct = default);
+
+    /// <summary>Sets the total file-pair count once indexing is done.</summary>
+    Task SetTotalAsync(Guid id, int total, CancellationToken ct = default);
+
+    /// <summary>Atomically increments processed count and returns the new (processed, total).</summary>
+    Task<(int Processed, int Total)> IncrementProcessedAsync(Guid id, CancellationToken ct = default);
 }

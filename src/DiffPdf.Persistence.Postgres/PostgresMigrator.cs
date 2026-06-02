@@ -52,6 +52,26 @@ public static class PostgresMigrator
 
         create index if not exists ix_jobs_business_project_created_at on jobs (business_instance_id, project_id, created_at desc);
         create index if not exists ix_jobs_status_created_at on jobs (status, created_at desc);
+
+        create table if not exists file_pair_tasks (
+            id uuid primary key,
+            job_id uuid not null references jobs(id),
+            relative_path text not null,
+            old_file_path text null,
+            new_file_path text null,
+            status text not null,
+            attempt_count int not null default 0,
+            error text null,
+            result_json jsonb null,
+            created_at timestamptz not null default now(),
+            started_at timestamptz null,
+            completed_at timestamptz null,
+            version bigint not null default 1,
+            locked_by text null,
+            locked_until timestamptz null
+        );
+
+        create index if not exists ix_file_pair_tasks_job_status on file_pair_tasks (job_id, status);
         """;
 
     public static async Task MigrateAsync(string connectionString, CancellationToken ct = default)

@@ -57,6 +57,7 @@ else
 {
     // Dev fallback: in-memory stores + local (in-process) Wolverine transport.
     builder.Services.AddSingleton<IJobStore, InMemoryJobStore>();
+    builder.Services.AddSingleton<IFilePairTaskStore, InMemoryFilePairTaskStore>();
     builder.Services.AddSingleton<IBusinessInstanceStore, InMemoryBusinessInstanceStore>();
     builder.Services.AddSingleton<IProjectStore, InMemoryProjectStore>();
     builder.Services.AddScoped<IJobSubmissionService, SimpleJobSubmissionService>();

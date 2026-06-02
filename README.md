@@ -104,6 +104,13 @@ backplane is needed for more than one API instance.)
 jobs and instances, so parallelism can't exhaust CPU/RAM no matter how many
 jobs run at once.
 
+**Per-file-pair tasking.** A submitted batch is indexed into one
+`file_pair_tasks` row per file pair (`IndexBatch`), each pair is compared by its
+own `CompareFilePair` message, and the run is aggregated into the final report
+by `FinalizeBatch` once an atomic processed counter reaches the total. This
+isolates failures (one corrupt PDF is recorded as `Error` without sinking the
+batch), gives precise progress, and supports retry/resume of individual pairs.
+
 If `ConnectionStrings:Postgres` and `ConnectionStrings:RabbitMq` are configured
 the full stack is used; otherwise the API falls back to in-memory stores with an
 in-process Wolverine transport (single-instance dev mode).
