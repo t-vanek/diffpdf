@@ -120,6 +120,27 @@ public sealed class InMemoryJobStore : IJobStore
         }
     }
 
+    public Task SetTotalAsync(Guid id, int total, CancellationToken ct = default)
+    {
+        lock (_gate)
+        {
+            if (_jobs.TryGetValue(id, out var job))
+                _jobs[id] = job with { TotalCount = total, UpdatedAt = DateTimeOffset.UtcNow };
+        }
+        return Task.CompletedTask;
+    }
+
+    public Task<(int Processed, int Total)> IncrementProcessedAsync(Guid id, CancellationToken ct = default)
+    {
+        lock (_gate)
+        {
+            var job = _jobs[id];
+            var updated = job with { ProcessedCount = job.ProcessedCount + 1, UpdatedAt = DateTimeOffset.UtcNow };
+            _jobs[id] = updated;
+            return Task.FromResult((updated.ProcessedCount, updated.TotalCount));
+        }
+    }
+
     private ComparisonJob Guard(Guid id, long expectedVersion, params JobStatus[] allowed)
     {
         if (!_jobs.TryGetValue(id, out var job))

@@ -4,26 +4,23 @@ using DiffPdf.Persistence;
 using DiffPdf.Worker;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Wolverine;
 
 namespace DiffPdf.Messaging.Handlers;
 
 /// <summary>
-/// Idempotent handler for <see cref="RunBatchComparison"/>. Claims the job with
-/// optimistic concurrency, runs the comparison with version-checked progress,
-/// and completes or fails it. Safe under duplicate delivery and multiple worker
-/// instances: only one worker can transition Queued → Running.
+/// Claims the job (idempotent, optimistic concurrency) and kicks off indexing.
+/// Only one worker can transition Queued → Running; duplicate deliveries skip.
 /// </summary>
 public sealed class RunBatchComparisonHandler
 {
     public static async Task Handle(
         RunBatchComparison command,
         IJobStore jobStore,
-        IBatchComparer batchComparer,
-        IStorageProvisioner provisioner,
-        IJobStoragePathProvider paths,
         IJobProgressPublisher progressPublisher,
         IWorkerInstanceIdProvider workerInstance,
         IOptions<WorkerOptions> workerOptions,
+        IMessageBus bus,
         ILogger<RunBatchComparisonHandler> logger,
         CancellationToken ct)
     {
@@ -34,45 +31,7 @@ public sealed class RunBatchComparisonHandler
             return;
         }
 
-        var tracker = new JobProgressTracker(jobStore, progressPublisher, job, logger);
-
-        try
-        {
-            await provisioner.EnsureJobFoldersAsync(job, ct);
-            await progressPublisher.PublishAsync(JobProgressChanged.From(job), ct);
-
-            string artifactsPath = paths.GetArtifactsPath(job);
-            var report = await batchComparer.CompareAsync(job.Request, artifactsPath, tracker, ct);
-
-            await tracker.DrainAsync();
-            var completed = await jobStore.CompleteAsync(tracker.Current.Id, report, tracker.Current.Version, ct);
-            await progressPublisher.PublishAsync(JobProgressChanged.From(completed), ct);
-
-            logger.LogInformation("Job {JobId} completed: {Total} files, {Diff} differing.",
-                completed.Id, report.Total, report.Differing);
-        }
-        catch (Exception ex)
-        {
-            await tracker.DrainAsync();
-
-            if (ExceptionClassifier.IsTransient(ex))
-            {
-                // Leave the job Running and let Wolverine's retry policy re-deliver.
-                logger.LogWarning(ex, "Transient failure on job {JobId}; will retry", job.Id);
-                throw;
-            }
-
-            // Permanent failure: record it and acknowledge (no pointless retries / DLQ).
-            logger.LogError(ex, "Permanent failure on job {JobId}", job.Id);
-            try
-            {
-                var failed = await jobStore.FailAsync(tracker.Current.Id, ex.Message, tracker.Current.Version, CancellationToken.None);
-                await progressPublisher.PublishAsync(JobProgressChanged.From(failed), CancellationToken.None);
-            }
-            catch (Exception failEx)
-            {
-                logger.LogError(failEx, "Could not mark job {JobId} as failed", job.Id);
-            }
-        }
+        await progressPublisher.PublishAsync(JobProgressChanged.From(job), ct);
+        await bus.PublishAsync(new IndexBatch(job.Id));
     }
 }

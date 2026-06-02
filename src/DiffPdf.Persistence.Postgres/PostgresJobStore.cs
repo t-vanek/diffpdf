@@ -114,6 +114,29 @@ public sealed class PostgresJobStore(DiffPdfDbContext db, EntityMapper mapper) :
             : (await GetAsync(id, ct))!;
     }
 
+    public async Task SetTotalAsync(Guid id, int total, CancellationToken ct = default)
+    {
+        var now = DateTimeOffset.UtcNow;
+        await db.Jobs.Where(j => j.Id == id)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(j => j.TotalCount, total)
+                .SetProperty(j => j.UpdatedAt, now), ct);
+    }
+
+    public async Task<(int Processed, int Total)> IncrementProcessedAsync(Guid id, CancellationToken ct = default)
+    {
+        // Atomic increment + read in one statement so concurrent file-pair
+        // completions never lose a count or miss the finalize trigger.
+        await using var conn = new Npgsql.NpgsqlConnection(db.Database.GetConnectionString());
+        await conn.OpenAsync(ct);
+        await using var cmd = new Npgsql.NpgsqlCommand(
+            "update jobs set processed_count = processed_count + 1, updated_at = now() where id = @id returning processed_count, total_count", conn);
+        cmd.Parameters.AddWithValue("id", id);
+        await using var r = await cmd.ExecuteReaderAsync(ct);
+        await r.ReadAsync(ct);
+        return (r.GetInt32(0), r.GetInt32(1));
+    }
+
     internal static JobEntity ToEntity(ComparisonJob job) => new()
     {
         Id = job.Id,

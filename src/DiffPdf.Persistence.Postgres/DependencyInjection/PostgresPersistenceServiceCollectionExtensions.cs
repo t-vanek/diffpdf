@@ -17,6 +17,7 @@ public static class PostgresPersistenceServiceCollectionExtensions
 
         services.AddSingleton<EntityMapper>();
         services.AddScoped<IJobStore, PostgresJobStore>();
+        services.AddScoped<IFilePairTaskStore, PostgresFilePairTaskStore>();
         services.AddScoped<IBusinessInstanceStore, PostgresBusinessInstanceStore>();
         services.AddScoped<IProjectStore, PostgresProjectStore>();
         services.AddScoped<IJobSubmissionService, PostgresJobSubmissionService>();
