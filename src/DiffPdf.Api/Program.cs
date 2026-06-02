@@ -13,6 +13,7 @@ using DiffPdf.Persistence;
 using DiffPdf.Persistence.Postgres.DependencyInjection;
 using DiffPdf.Persistence.SqlServer.DependencyInjection;
 using DiffPdf.Worker.DependencyInjection;
+using Microsoft.EntityFrameworkCore;
 using Serilog;
 using Wolverine;
 
@@ -105,7 +106,13 @@ bool authEnabled = auth.Enabled && !string.IsNullOrWhiteSpace(relational);
 if (auth.Enabled && string.IsNullOrWhiteSpace(relational))
     Log.Warning("Auth:Enabled is set but no PostgreSQL/SQL Server connection is configured — authentication is disabled.");
 if (authEnabled)
-    builder.Services.AddDiffPdfAuth(relational!, useSqlServer, auth);
+    builder.Services.AddDiffPdfAuth(o =>
+    {
+        if (useSqlServer)
+            o.UseSqlServer(relational!);
+        else
+            o.UseNpgsql(relational!);
+    }, auth);
 
 var app = builder.Build();
 
@@ -113,6 +120,7 @@ app.UseSerilogRequestLogging();
 
 if (authEnabled)
 {
+    app.UseRateLimiter();
     app.UseAuthentication();
     app.UseAuthorization();
     app.MapTokenEndpoint(auth);

@@ -24,6 +24,11 @@ public sealed record DiffPdfJob
 /// <summary>A business instance / project scope reference.</summary>
 public sealed record DiffPdfScope(string BusinessInstanceKey, string ProjectKey);
 
+/// <summary>The server's configured network shares and credential-profile names (no secrets).</summary>
+public sealed record NetworkConfig(
+    IReadOnlyList<DiffPdf.Core.Network.ShareInfo> Shares,
+    IReadOnlyList<string> CredentialProfiles);
+
 /// <summary>OAuth token response.</summary>
 internal sealed record TokenResponse
 {

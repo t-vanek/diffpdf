@@ -73,6 +73,15 @@ public class NetworkShareResolverTests
         Assert.Equal("svc_diff", resolved.Credentials!.Username);
     }
 
+    [Theory]
+    [InlineData("share:reports/../secret")]
+    [InlineData("share:reports/a/../../b")]
+    public void ShareAlias_RejectsPathTraversal(string folder)
+    {
+        var ex = Assert.Throws<NetworkConfigurationException>(() => Resolver(SampleOptions()).Resolve(folder));
+        Assert.Contains("..", ex.Message);
+    }
+
     [Fact]
     public void UnknownShare_Throws()
     {

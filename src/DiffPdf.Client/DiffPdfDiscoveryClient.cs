@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using DiffPdf.Core.Discovery;
 
@@ -83,12 +84,45 @@ public sealed class DiffPdfDiscoveryClient : IDiffPdfDiscoveryClient
 
     private static async Task SendProbeAsync(UdpClient client, byte[] probe, int port, CancellationToken ct)
     {
-        // Broadcast (same subnet) and multicast (across cooperating switches/interfaces).
+        // Global broadcast (default interface) and multicast.
         await client.SendAsync(probe, probe.Length, new IPEndPoint(IPAddress.Broadcast, port));
 
         if (IPAddress.TryParse(DiscoveryProtocol.DefaultMulticastAddress, out var group))
             await client.SendAsync(probe, probe.Length, new IPEndPoint(group, port));
 
+        // Directed broadcast per interface so multi-homed clients (Wi-Fi + LAN, VPN) reach every subnet.
+        foreach (var broadcast in DirectedBroadcastAddresses())
+        {
+            try { await client.SendAsync(probe, probe.Length, new IPEndPoint(broadcast, port)); }
+            catch (SocketException) { /* interface may be down between enumeration and send */ }
+        }
+
         ct.ThrowIfCancellationRequested();
+    }
+
+    private static IEnumerable<IPAddress> DirectedBroadcastAddresses()
+    {
+        foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
+        {
+            if (nic.OperationalStatus != OperationalStatus.Up || nic.NetworkInterfaceType == NetworkInterfaceType.Loopback)
+                continue;
+
+            foreach (var unicast in nic.GetIPProperties().UnicastAddresses)
+            {
+                if (unicast.Address.AddressFamily != AddressFamily.InterNetwork || unicast.IPv4Mask is null)
+                    continue;
+
+                byte[] address = unicast.Address.GetAddressBytes();
+                byte[] mask = unicast.IPv4Mask.GetAddressBytes();
+                if (mask.Length != address.Length)
+                    continue;
+
+                var broadcast = new byte[address.Length];
+                for (int i = 0; i < address.Length; i++)
+                    broadcast[i] = (byte)(address[i] | ~mask[i]);
+
+                yield return new IPAddress(broadcast);
+            }
+        }
     }
 }

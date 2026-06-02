@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using DiffPdf.Core.Discovery;
 using DiffPdf.Core.Models;
+using DiffPdf.Core.Network;
 
 namespace DiffPdf.Client;
 
@@ -21,13 +22,18 @@ public sealed class DiffPdfClient : IDisposable
         Converters = { new JsonStringEnumConverter() },
     };
 
+    private enum Grant { None, ClientCredentials, AuthorizationCode }
+
     private readonly HttpClient _http;
     private readonly bool _ownsHttp;
+    private readonly SemaphoreSlim _tokenLock = new(1, 1);
 
-    // Cached client-credentials for transparent re-authentication.
+    // Cached grant state for transparent re-authentication.
+    private Grant _grant;
     private string? _clientId;
     private string? _clientSecret;
     private string? _scope;
+    private string? _refreshToken;
     private string? _accessToken;
     private DateTimeOffset _tokenExpiresAt;
 
@@ -56,19 +62,47 @@ public sealed class DiffPdfClient : IDisposable
     // --- Authentication ----------------------------------------------------
 
     /// <summary>
-    /// Authenticates with the client-credentials grant and applies the bearer token.
-    /// Credentials are cached so the token is refreshed automatically before it expires.
+    /// Authenticates with the client-credentials grant (M2M) and applies the bearer
+    /// token. Credentials are cached so the token is refreshed automatically before
+    /// it expires.
     /// </summary>
     public async Task AuthenticateClientCredentialsAsync(
         string clientId, string clientSecret, string? scope = null, CancellationToken ct = default)
     {
-        _clientId = clientId;
-        _clientSecret = clientSecret;
-        _scope = scope;
-        await AcquireTokenAsync(ct);
+        await _tokenLock.WaitAsync(ct);
+        try
+        {
+            _grant = Grant.ClientCredentials;
+            _clientId = clientId;
+            _clientSecret = clientSecret;
+            _scope = scope;
+            ApplyToken(await PostTokenAsync(ClientCredentialsForm(), ct), response: null);
+        }
+        finally { _tokenLock.Release(); }
     }
 
-    private async Task AcquireTokenAsync(CancellationToken ct)
+    /// <summary>
+    /// Authenticates a user with the interactive authorization-code + PKCE flow:
+    /// opens the system browser, captures the redirect on a loopback listener, and
+    /// exchanges the code for access + refresh tokens (refreshed automatically).
+    /// The interactive client must have the redirect URI registered (Auth:RedirectUris).
+    /// </summary>
+    public async Task AuthenticateAuthorizationCodeAsync(
+        string clientId, string scope, AuthorizationCodeFlowOptions? options = null, CancellationToken ct = default)
+    {
+        var token = await DiffPdfAuthCode.RunAsync(_http, BaseAddress, clientId, scope, options, ct);
+        await _tokenLock.WaitAsync(ct);
+        try
+        {
+            _grant = Grant.AuthorizationCode;
+            _clientId = clientId;
+            _scope = scope;
+            ApplyToken(token, response: null);
+        }
+        finally { _tokenLock.Release(); }
+    }
+
+    private Dictionary<string, string> ClientCredentialsForm()
     {
         var form = new Dictionary<string, string>
         {
@@ -78,14 +112,23 @@ public sealed class DiffPdfClient : IDisposable
         };
         if (!string.IsNullOrEmpty(_scope))
             form["scope"] = _scope;
+        return form;
+    }
 
+    private async Task<TokenResponse> PostTokenAsync(Dictionary<string, string> form, CancellationToken ct)
+    {
         using var response = await _http.PostAsync("/connect/token", new FormUrlEncodedContent(form), ct);
         await EnsureSuccessAsync(response, ct);
-
-        var token = await response.Content.ReadFromJsonAsync<TokenResponse>(Json, ct)
+        return await response.Content.ReadFromJsonAsync<TokenResponse>(Json, ct)
             ?? throw new DiffPdfClientException(response.StatusCode, "Empty token response.");
+    }
 
+    private void ApplyToken(TokenResponse token, HttpResponseMessage? response)
+    {
+        _ = response;
         _accessToken = token.AccessToken;
+        if (!string.IsNullOrEmpty(token.RefreshToken))
+            _refreshToken = token.RefreshToken;
         _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.AccessToken);
         // Refresh a little ahead of expiry to avoid races.
         _tokenExpiresAt = DateTimeOffset.UtcNow.AddSeconds(Math.Max(30, token.ExpiresIn - 30));
@@ -101,7 +144,7 @@ public sealed class DiffPdfClient : IDisposable
     public Task<DiffPdfLiveProgress> ConnectLiveProgressAsync(CancellationToken ct = default)
     {
         string hubUrl = new Uri(BaseAddress, "/hubs/jobs").ToString();
-        Func<Task<string?>>? tokenProvider = _clientId is null
+        Func<Task<string?>>? tokenProvider = _grant == Grant.None
             ? null
             : async () => { await EnsureTokenAsync(CancellationToken.None); return _accessToken; };
         return DiffPdfLiveProgress.ConnectAsync(hubUrl, tokenProvider, ct);
@@ -109,8 +152,34 @@ public sealed class DiffPdfClient : IDisposable
 
     private async Task EnsureTokenAsync(CancellationToken ct)
     {
-        if (_clientId is not null && DateTimeOffset.UtcNow >= _tokenExpiresAt)
-            await AcquireTokenAsync(ct);
+        // Fast path: still valid (or never authenticated).
+        if (_grant == Grant.None || DateTimeOffset.UtcNow < _tokenExpiresAt)
+            return;
+
+        await _tokenLock.WaitAsync(ct);
+        try
+        {
+            // Re-check under the lock so concurrent callers coalesce into one refresh.
+            if (DateTimeOffset.UtcNow < _tokenExpiresAt)
+                return;
+
+            var form = _grant switch
+            {
+                Grant.ClientCredentials => ClientCredentialsForm(),
+                Grant.AuthorizationCode => new Dictionary<string, string>
+                {
+                    ["grant_type"] = "refresh_token",
+                    ["client_id"] = _clientId!,
+                    ["refresh_token"] = _refreshToken!,
+                },
+                _ => null,
+            };
+            if (form is null)
+                return;
+
+            ApplyToken(await PostTokenAsync(form, ct), response: null);
+        }
+        finally { _tokenLock.Release(); }
     }
 
     // --- Scope management --------------------------------------------------
@@ -120,6 +189,24 @@ public sealed class DiffPdfClient : IDisposable
 
     public Task CreateProjectAsync(string businessInstanceKey, string key, string name, CancellationToken ct = default) =>
         PostAsync($"/api/v1/business-instances/{businessInstanceKey}/projects", new { key, name }, ct);
+
+    // --- Discovery (dry-run) ----------------------------------------------
+
+    /// <summary>Lists the server's configured shares and credential-profile names (no secrets).</summary>
+    public Task<NetworkConfig> GetSharesAsync(CancellationToken ct = default) =>
+        GetAsync<NetworkConfig>("/api/v1/discovery/shares", ct);
+
+    /// <summary>Probes a folder (local, UNC or <c>share:</c> alias) for reachability and PDF count.</summary>
+    public Task<FolderDiscovery> DiscoverFolderAsync(
+        string folder, string? credentialProfile = null, string searchPattern = "*.pdf", bool recursive = true, CancellationToken ct = default) =>
+        PostAsync<object, FolderDiscovery>("/api/v1/discovery/folder",
+            new { folder, credentialProfile, searchPattern, recursive }, ct);
+
+    /// <summary>Dry-runs an old/new folder pairing without comparing.</summary>
+    public Task<PairingPreview> PreviewPairingAsync(
+        string oldFolder, string newFolder, string searchPattern = "*.pdf", bool recursive = true, CancellationToken ct = default) =>
+        PostAsync<object, PairingPreview>("/api/v1/discovery/preview",
+            new { oldFolder, newFolder, searchPattern, recursive }, ct);
 
     // --- Batch / jobs ------------------------------------------------------
 
@@ -203,11 +290,37 @@ public sealed class DiffPdfClient : IDisposable
             return;
 
         string body = await response.Content.ReadAsStringAsync(ct);
-        throw new DiffPdfClientException(response.StatusCode, string.IsNullOrWhiteSpace(body) ? response.ReasonPhrase ?? "" : body);
+        throw new DiffPdfClientException(response.StatusCode, ExtractMessage(body, response.ReasonPhrase));
+    }
+
+    /// <summary>Surfaces a ProblemDetails <c>detail</c>/<c>title</c> when present, else the raw body.</summary>
+    private static string ExtractMessage(string body, string? reasonPhrase)
+    {
+        if (string.IsNullOrWhiteSpace(body))
+            return reasonPhrase ?? string.Empty;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            if (doc.RootElement.ValueKind == JsonValueKind.Object)
+            {
+                if (doc.RootElement.TryGetProperty("detail", out var detail) && detail.ValueKind == JsonValueKind.String)
+                    return detail.GetString()!;
+                if (doc.RootElement.TryGetProperty("title", out var title) && title.ValueKind == JsonValueKind.String)
+                    return title.GetString()!;
+            }
+        }
+        catch (JsonException)
+        {
+            // Not JSON — fall back to the raw body.
+        }
+
+        return body;
     }
 
     public void Dispose()
     {
+        _tokenLock.Dispose();
         if (_ownsHttp)
             _http.Dispose();
     }

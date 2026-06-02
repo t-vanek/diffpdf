@@ -51,14 +51,37 @@ public sealed class AuthOptions
 
     /// <summary>Refresh-token lifetime (days). Refresh tokens rotate on each use.</summary>
     public int RefreshTokenDays { get; set; } = 14;
+
+    /// <summary>
+    /// Path to a PKCS#12 (.pfx) certificate used to sign tokens. When unset, an
+    /// ephemeral key is used (fine for a single instance; set a real certificate for
+    /// multi-instance deployments so tokens survive restarts).
+    /// </summary>
+    public string? SigningCertificatePath { get; set; }
+    public string? SigningCertificatePassword { get; set; }
+
+    /// <summary>Path to a PKCS#12 (.pfx) certificate used for token encryption (optional).</summary>
+    public string? EncryptionCertificatePath { get; set; }
+    public string? EncryptionCertificatePassword { get; set; }
 }
 
 /// <summary>A login identity for the interactive (authorization-code) flow.</summary>
 public sealed class AuthUser
 {
     public string Username { get; set; } = string.Empty;
+
+    /// <summary>Plaintext password (dev). Prefer <see cref="PasswordHash"/> in production.</summary>
     public string Password { get; set; } = string.Empty;
+
+    /// <summary>PBKDF2 hash (<c>pbkdf2$iterations$salt$hash</c>); takes precedence over <see cref="Password"/>.</summary>
+    public string? PasswordHash { get; set; }
 
     /// <summary>Optional display name; falls back to the username.</summary>
     public string? Name { get; set; }
+
+    /// <summary>Verifies a candidate password (constant-time), preferring the hash when present.</summary>
+    public bool VerifyPassword(string candidate) =>
+        !string.IsNullOrEmpty(PasswordHash)
+            ? PasswordHasher.VerifyHash(candidate, PasswordHash)
+            : PasswordHasher.VerifyPlaintext(candidate, Password);
 }

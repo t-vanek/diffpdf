@@ -23,11 +23,22 @@ if (server is null) throw new InvalidOperationException("Žádný diffpdf server
 
 using var client = DiffPdfClient.ForServer(server);
 
-// 2) když má server zapnutou autentizaci, přihlas se (M2M)
+// 2) když má server zapnutou autentizaci, přihlas se:
 var info = await client.GetServerInfoAsync();
 if (info.AuthEnabled)
+{
+    // a) M2M (client-credentials)
     await client.AuthenticateClientCredentialsAsync("diffpdf-ci", "diffpdf-secret", "diffpdf.api");
+
+    // b) nebo uživatelsky (authorization-code + PKCE): otevře browser, zachytí loopback redirect
+    // await client.AuthenticateAuthorizationCodeAsync(
+    //     "diffpdf-app", "openid profile offline_access diffpdf.api");
+}
 ```
+
+Pro DI (např. v WPF přes generic host) je k dispozici
+`services.AddDiffPdfClient(new Uri("http://192.168.1.10:8080"))` a
+`services.AddDiffPdfDiscovery()`.
 
 ## Odešli dávku a sleduj ji živě (WPF)
 

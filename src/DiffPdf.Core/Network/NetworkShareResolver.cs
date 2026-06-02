@@ -140,6 +140,10 @@ public sealed class NetworkShareResolver(IOptions<NetworkOptions> options) : INe
             subPath = rest[(slash + 1)..];
         }
 
+        // Reject traversal so an alias sub-path can't escape the share root.
+        if (subPath.Split('/', '\\').Any(segment => segment == ".."))
+            throw new NetworkConfigurationException($"Share sub-path must not contain '..': {subPath}");
+
         return true;
     }
 

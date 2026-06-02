@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using DiffPdf.Core.Discovery;
 using Microsoft.Extensions.Options;
@@ -16,6 +17,7 @@ public sealed class UdpDiscoveryResponder(
     ILogger<UdpDiscoveryResponder> logger) : BackgroundService
 {
     private readonly DiscoveryOptions _options = options.Value;
+    private readonly IReadOnlyList<IpSubnet> _allowedSubnets = ParseSubnets(options.Value.AllowedClientSubnets);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -56,6 +58,12 @@ public sealed class UdpDiscoveryResponder(
                 if (!DiscoveryProtocol.IsProbe(received.Buffer))
                     continue;
 
+                if (!IsAllowedClient(received.RemoteEndPoint.Address))
+                {
+                    logger.LogDebug("Ignoring discovery probe from disallowed source {Remote}.", received.RemoteEndPoint);
+                    continue;
+                }
+
                 try
                 {
                     string baseUrl = ResolveBaseUrl(received.RemoteEndPoint);
@@ -77,13 +85,69 @@ public sealed class UdpDiscoveryResponder(
         socket.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
         socket.Client.Bind(new IPEndPoint(IPAddress.Any, _options.Port));
 
-        if (IPAddress.TryParse(_options.MulticastAddress, out var group))
+        if (IPAddress.TryParse(_options.MulticastAddress, out var group) && group.AddressFamily == AddressFamily.InterNetwork)
+            JoinMulticastOnAllInterfaces(socket, group);
+
+        return socket;
+    }
+
+    /// <summary>Joins the multicast group on every up, multicast-capable IPv4 interface (multi-homed hosts).</summary>
+    private void JoinMulticastOnAllInterfaces(UdpClient socket, IPAddress group)
+    {
+        bool joinedAny = false;
+
+        foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
+        {
+            if (nic.OperationalStatus != OperationalStatus.Up || !nic.SupportsMulticast)
+                continue;
+
+            foreach (var unicast in nic.GetIPProperties().UnicastAddresses)
+            {
+                if (unicast.Address.AddressFamily != AddressFamily.InterNetwork)
+                    continue;
+
+                try
+                {
+                    socket.Client.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.AddMembership,
+                        new MulticastOption(group, unicast.Address));
+                    joinedAny = true;
+                }
+                catch (SocketException ex)
+                {
+                    logger.LogDebug(ex, "Could not join {Group} on {Interface}.", group, unicast.Address);
+                }
+            }
+        }
+
+        if (!joinedAny)
         {
             try { socket.JoinMulticastGroup(group); }
             catch (SocketException ex) { logger.LogDebug(ex, "Could not join multicast group {Group}.", group); }
         }
+    }
 
-        return socket;
+    private bool IsAllowedClient(IPAddress source)
+    {
+        if (_allowedSubnets.Count == 0)
+            return true; // no restriction configured
+
+        foreach (var subnet in _allowedSubnets)
+        {
+            if (subnet.Contains(source))
+                return true;
+        }
+        return false;
+    }
+
+    private static IReadOnlyList<IpSubnet> ParseSubnets(IEnumerable<string> cidrs)
+    {
+        var result = new List<IpSubnet>();
+        foreach (var cidr in cidrs)
+        {
+            if (IpSubnet.TryParse(cidr, out var subnet) && subnet is not null)
+                result.Add(subnet);
+        }
+        return result;
     }
 
     /// <summary>Picks the base URL to advertise: the configured override, or the local interface IP + HTTP port.</summary>

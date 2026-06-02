@@ -416,8 +416,11 @@ se přes UDP a vystavuje self-popis:
 
 - **UDP responder** poslouchá na portu `Discovery:Port` (default `41234`) — odpovídá
   na broadcast i multicast probe popisem serveru (jméno, base URL, port, verze,
-  zda je auth a jaké granty). Vypíná se přes `Discovery:Enabled=false`; za reverse
-  proxy / s pevným DNS nastav `Discovery:AdvertisedBaseUrl`.
+  zda je auth a jaké granty). Multicast joinuje na všech interface (multi-homed).
+  Vypíná se přes `Discovery:Enabled=false`; za reverse proxy / s pevným DNS nastav
+  `Discovery:AdvertisedBaseUrl`. Provozuj jen na **důvěryhodné LAN** — UDP odpověď
+  je větší než probe (riziko reflection); `Discovery:AllowedClientSubnets` (CIDR)
+  omezí, komu responder odpoví.
 - **`GET /api/v1/server-info`** (anonymní) vrací tentýž popis přes HTTP — pro
   klienta, který už base URL zná.
 
@@ -546,11 +549,21 @@ rotují) a zneplatňuje přes `/connect/revocation`.
 }
 ```
 
-Tokeny jsou JWT podepsané ephemerálními klíči (pro krátkodobé tokeny validované
-týmž serverem v pořádku; v produkci použij reálné certifikáty a HTTPS). Seedovaný
-secret změň přes `Auth:ClientSecret` a nedávej ho do gitu. Vestavěné
-`/account/login` (uživatelé z konfigurace) je minimální — v produkci ho nahraď
-reálným identity providerem.
+Tokeny jsou JWT podepsané ephemerálními klíči; pro **více instancí / přežití
+restartu** nastav perzistentní certifikát přes `Auth:SigningCertificatePath`
+(volitelně `EncryptionCertificatePath`). Seedovaný secret změň přes
+`Auth:ClientSecret` a nedávej ho do gitu.
+
+Vestavěné `/account/login` je minimální, ale ošetřené: hesla uživatelů zadávej
+jako **PBKDF2 hash** (`Auth:Users[].passwordHash`, `pbkdf2$iter$salt$hash`;
+plaintext `password` jen pro dev), porovnání je constant-time, formulář chrání
+**antiforgery** token a endpoint má **rate-limit**. V produkci ho přesto raději
+nahraď reálným identity providerem.
+
+Z .NET klienta jde použít i tenhle interaktivní flow:
+`DiffPdfClient.AuthenticateAuthorizationCodeAsync(...)` otevře browser, zachytí
+redirect na loopbacku (PKCE) a vymění kód za access+refresh token (musí sedět
+`Auth:RedirectUris`).
 
 ## Licenční poznámka
 

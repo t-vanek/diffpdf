@@ -25,4 +25,11 @@ public sealed class DiscoveryOptions
     /// When unset, the responder derives it from the local interface + the HTTP port.
     /// </summary>
     public string? AdvertisedBaseUrl { get; set; }
+
+    /// <summary>
+    /// Client source subnets (CIDR, e.g. <c>10.0.0.0/8</c>) allowed to receive a reply.
+    /// Empty = answer any source. Set this to constrain the responder to trusted LAN
+    /// ranges and limit UDP reflection exposure.
+    /// </summary>
+    public IList<string> AllowedClientSubnets { get; set; } = new List<string>();
 }

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Security.Claims;
 using Microsoft.AspNetCore;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Options;
 using OpenIddict.Abstractions;
@@ -50,22 +51,36 @@ public static class InteractiveAuthEndpoints
             return Results.SignIn(principal, properties: null, OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
         }).AllowAnonymous().ExcludeFromDescription();
 
-        app.MapGet("/account/login", (string? returnUrl, string? error) =>
-            Results.Content(LoginPage(returnUrl, error), "text/html"))
-            .AllowAnonymous().ExcludeFromDescription();
-
-        app.MapPost("/account/login", async (HttpContext context, IOptions<AuthOptions> options) =>
+        app.MapGet("/account/login", (HttpContext context, IAntiforgery antiforgery, string? returnUrl, string? error) =>
         {
+            var tokens = antiforgery.GetAndStoreTokens(context);
+            return Results.Content(LoginPage(returnUrl, error, tokens), "text/html");
+        }).AllowAnonymous().ExcludeFromDescription();
+
+        app.MapPost("/account/login", async (HttpContext context, IAntiforgery antiforgery, IOptions<AuthOptions> options) =>
+        {
+            try
+            {
+                await antiforgery.ValidateRequestAsync(context);
+            }
+            catch (AntiforgeryValidationException)
+            {
+                return Results.BadRequest("Invalid or missing antiforgery token.");
+            }
+
             var form = await context.Request.ReadFormAsync();
             string username = form["username"].ToString();
             string password = form["password"].ToString();
             string? returnUrl = form["returnUrl"].ToString();
 
             var user = options.Value.Users.FirstOrDefault(u =>
-                string.Equals(u.Username, username, StringComparison.Ordinal) && u.Password == password);
+                string.Equals(u.Username, username, StringComparison.Ordinal));
 
-            if (user is null)
-                return Results.Content(LoginPage(returnUrl, "Invalid username or password."), "text/html");
+            if (user is null || !user.VerifyPassword(password))
+            {
+                var tokens = antiforgery.GetAndStoreTokens(context);
+                return Results.Content(LoginPage(returnUrl, "Invalid username or password.", tokens), "text/html");
+            }
 
             var identity = new ClaimsIdentity(AuthSetup.LoginCookieScheme);
             identity.AddClaim(new Claim(ClaimTypes.NameIdentifier, user.Username));
@@ -78,7 +93,7 @@ public static class InteractiveAuthEndpoints
                 ? returnUrl
                 : "/";
             return Results.Redirect(target);
-        }).AllowAnonymous().ExcludeFromDescription();
+        }).AllowAnonymous().ExcludeFromDescription().RequireRateLimiting(AuthSetup.LoginRateLimitPolicy);
 
         app.MapMethods("/connect/logout", ["GET", "POST"], async (HttpContext context) =>
         {
@@ -106,12 +121,14 @@ public static class InteractiveAuthEndpoints
         }).WithTags("Auth").WithSummary("OpenID Connect userinfo");
     }
 
-    private static string LoginPage(string? returnUrl, string? error)
+    private static string LoginPage(string? returnUrl, string? error, AntiforgeryTokenSet tokens)
     {
         string err = string.IsNullOrEmpty(error)
             ? string.Empty
             : $"<p style=\"color:#b00\">{WebUtility.HtmlEncode(error)}</p>";
         string encodedReturn = WebUtility.HtmlEncode(returnUrl ?? string.Empty);
+        string antiforgeryField =
+            $"<input type=\"hidden\" name=\"{tokens.FormFieldName}\" value=\"{WebUtility.HtmlEncode(tokens.RequestToken)}\" />";
 
         return $$"""
             <!doctype html>
@@ -121,6 +138,7 @@ public static class InteractiveAuthEndpoints
               <h1>diffpdf</h1>
               {{err}}
               <form method="post" action="/account/login">
+                {{antiforgeryField}}
                 <input type="hidden" name="returnUrl" value="{{encodedReturn}}" />
                 <p><label>User<br><input name="username" autofocus style="width:100%"></label></p>
                 <p><label>Password<br><input name="password" type="password" style="width:100%"></label></p>

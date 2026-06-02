@@ -1,8 +1,11 @@
 using System.Security.Claims;
+using System.Security.Cryptography.X509Certificates;
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore; // OpenIddictServerAspNetCoreHelpers.GetOpenIddictServerRequest
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using OpenIddict.Abstractions;
 using OpenIddict.Server.AspNetCore;
@@ -23,14 +26,12 @@ public static class AuthSetup
     /// PKCE + refresh-token (interactive) flows, plus token validation. Every
     /// endpoint requires a valid token by default.
     /// </summary>
-    public static void AddDiffPdfAuth(this IServiceCollection services, string connectionString, bool useSqlServer, AuthOptions auth)
+    public static void AddDiffPdfAuth(
+        this IServiceCollection services, Action<DbContextOptionsBuilder> configureDatabase, AuthOptions auth)
     {
         services.AddDbContext<AuthDbContext>(o =>
         {
-            if (useSqlServer)
-                o.UseSqlServer(connectionString);
-            else
-                o.UseNpgsql(connectionString);
+            configureDatabase(o);
             o.UseOpenIddict();
         });
 
@@ -56,10 +57,18 @@ public static class AuthSetup
                 o.SetAccessTokenLifetime(TimeSpan.FromMinutes(auth.AccessTokenMinutes));
                 o.SetRefreshTokenLifetime(TimeSpan.FromDays(auth.RefreshTokenDays));
 
-                // Ephemeral keys are fine for short-lived tokens validated by this same
-                // server; use real certificates for multi-instance production.
-                o.AddEphemeralEncryptionKey();
-                o.AddEphemeralSigningKey();
+                // Persistent certificates survive restarts and work across instances;
+                // fall back to ephemeral keys when none are configured.
+                if (LoadCertificate(auth.SigningCertificatePath, auth.SigningCertificatePassword) is { } signing)
+                    o.AddSigningCertificate(signing);
+                else
+                    o.AddEphemeralSigningKey();
+
+                if (LoadCertificate(auth.EncryptionCertificatePath, auth.EncryptionCertificatePassword) is { } encryption)
+                    o.AddEncryptionCertificate(encryption);
+                else
+                    o.AddEphemeralEncryptionKey();
+
                 o.DisableAccessTokenEncryption(); // emit a readable JWT bearer
 
                 // The API is expected to run behind TLS termination; allow plain HTTP at
@@ -95,8 +104,21 @@ public static class AuthSetup
             .SetDefaultPolicy(requireAuth)
             .SetFallbackPolicy(requireAuth); // every endpoint requires a token unless AllowAnonymous
 
+        // CSRF protection + throttling for the interactive login form.
+        services.AddAntiforgery();
+        services.AddRateLimiter(o => o.AddPolicy(LoginRateLimitPolicy, context =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1) })));
+
         services.AddHostedService<OpenIddictClientSeeder>();
     }
+
+    /// <summary>Rate-limit policy name applied to the interactive login endpoint.</summary>
+    public const string LoginRateLimitPolicy = "diffpdf-login";
+
+    private static X509Certificate2? LoadCertificate(string? path, string? password) =>
+        string.IsNullOrWhiteSpace(path) ? null : X509CertificateLoader.LoadPkcs12FromFile(path, password);
 
     /// <summary>
     /// Token endpoint for all enabled grants: client-credentials (M2M) plus the
