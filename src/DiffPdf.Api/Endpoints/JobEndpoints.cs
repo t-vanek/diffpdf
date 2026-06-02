@@ -119,7 +119,43 @@ public static class JobEndpoints
             return cancelled is null
                 ? Results.Problem("Job is not in a cancellable state.", statusCode: StatusCodes.Status409Conflict)
                 : Results.Ok(JobSummary.From(cancelled));
-        }).WithSummary("Cancel a queued/running job").Produces<JobSummary>().ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
+        }).WithSummary("Cancel a Draft/queued/running/paused job").Produces<JobSummary>().ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
+
+        group.MapPost("/{id:guid}/pause", async (
+            Guid id, IJobStore jobStore, IJobProgressPublisher progress, CancellationToken ct) =>
+        {
+            if (await jobStore.GetAsync(id, ct) is null) return Results.NotFound();
+            var paused = await jobStore.PauseAsync(id, ct);
+            if (paused is null)
+                return Results.Problem("Only a Running job can be paused.", statusCode: StatusCodes.Status409Conflict);
+
+            await progress.PublishAsync(JobProgressChanged.From(paused), ct);
+            return Results.Ok(JobSummary.From(paused));
+        }).WithSummary("Pause a Running job (in-flight pairs finish; pending pairs wait for resume)")
+          .Produces<JobSummary>().ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
+
+        group.MapPost("/{id:guid}/resume", async (
+            Guid id, IJobStore jobStore, IFilePairTaskStore taskStore,
+            IJobProgressPublisher progress, IMessageBus bus, CancellationToken ct) =>
+        {
+            if (await jobStore.GetAsync(id, ct) is null) return Results.NotFound();
+            var resumed = await jobStore.ResumeAsync(id, ct);
+            if (resumed is null)
+                return Results.Problem("Only a Paused job can be resumed.", statusCode: StatusCodes.Status409Conflict);
+
+            // Re-dispatch the pending (Queued) pairs. If none remain — everything finished
+            // while paused — finalize directly, since nothing else would trigger it.
+            var tasks = await taskStore.ListByJobAsync(id, ct);
+            var pending = tasks.Where(t => t.Status == FilePairTaskStatus.Queued).ToList();
+            foreach (var t in pending)
+                await bus.PublishAsync(new CompareFilePair(id, t.Id));
+            if (pending.Count == 0)
+                await bus.PublishAsync(new FinalizeBatch(id));
+
+            await progress.PublishAsync(JobProgressChanged.From(resumed), ct);
+            return Results.Ok(new { resumed = pending.Count, job = JobSummary.From(resumed) });
+        }).WithSummary("Resume a Paused job (re-dispatches the pending pairs)")
+          .ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/{id:guid}/retry", async (
             Guid id, IJobStore jobStore, IFilePairTaskStore taskStore, IMessageBus bus, CancellationToken ct) =>

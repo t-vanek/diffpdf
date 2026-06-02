@@ -31,6 +31,12 @@ public interface IJobStore
     /// <summary>Transitions a Draft job to Queued (ready for the worker). Null if it was not in Draft.</summary>
     Task<ComparisonJob?> EnqueueAsync(Guid id, CancellationToken ct = default);
 
+    /// <summary>Pauses a Running job (Running → Paused). Null if it was not Running.</summary>
+    Task<ComparisonJob?> PauseAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>Resumes a Paused job (Paused → Running). Null if it was not Paused.</summary>
+    Task<ComparisonJob?> ResumeAsync(Guid id, CancellationToken ct = default);
+
     /// <summary>Reopens a finished (Completed/Failed) job for a retry, resetting its progress.</summary>
     Task<ComparisonJob?> ReopenAsync(Guid id, int processedCount, CancellationToken ct = default);
 

@@ -98,4 +98,40 @@ public class InMemoryJobStoreTests
         Assert.NotNull(cancelled);
         Assert.Equal(JobStatus.Cancelled, cancelled!.Status);
     }
+
+    [Fact]
+    public async Task Pause_Resume_RoundTrip_IsOneShotEachWay()
+    {
+        var store = new InMemoryJobStore();
+        var job = await store.CreateAsync(NewJob());
+        await store.TryStartAsync(job.Id, "w", TimeSpan.FromMinutes(5)); // Queued -> Running
+
+        var paused = await store.PauseAsync(job.Id);
+        Assert.Equal(JobStatus.Paused, paused!.Status);
+        Assert.Null(await store.PauseAsync(job.Id)); // already paused
+
+        var resumed = await store.ResumeAsync(job.Id);
+        Assert.Equal(JobStatus.Running, resumed!.Status);
+        Assert.Null(await store.ResumeAsync(job.Id)); // already running
+    }
+
+    [Fact]
+    public async Task Pause_RequiresRunning()
+    {
+        var store = new InMemoryJobStore();
+        var job = await store.CreateAsync(NewJob()); // Queued, not Running
+        Assert.Null(await store.PauseAsync(job.Id));
+    }
+
+    [Fact]
+    public async Task Cancel_IsAllowedFromPaused()
+    {
+        var store = new InMemoryJobStore();
+        var job = await store.CreateAsync(NewJob());
+        await store.TryStartAsync(job.Id, "w", TimeSpan.FromMinutes(5));
+        await store.PauseAsync(job.Id);
+
+        var cancelled = await store.CancelAsync(job.Id);
+        Assert.Equal(JobStatus.Cancelled, cancelled!.Status);
+    }
 }

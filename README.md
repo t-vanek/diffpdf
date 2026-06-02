@@ -196,7 +196,9 @@ Všechny aplikační cesty jsou pod prefixem **`/api/v1`**.
 | `GET`  | `/api/v1/jobs/{id}/report` | Agregovaný JSON report (`409` než je hotovo). |
 | `GET`  | `/api/v1/jobs/{id}/result` | Verdikt CI brány: `200` když prošlo, `422` když selhalo. |
 | `POST` | `/api/v1/jobs/{id}/start` | Spustí `Draft` úlohu (ověří, že je co porovnávat; `422` když ne). |
-| `POST` | `/api/v1/jobs/{id}/cancel` | Zruší `Draft`/queued/running úlohu (`409` jinak). |
+| `POST` | `/api/v1/jobs/{id}/cancel` | Zruší `Draft`/queued/running/`Paused` úlohu (`409` jinak). |
+| `POST` | `/api/v1/jobs/{id}/pause` | Pozastaví běžící úlohu (rozdělané dvojice doběhnou, čekající čekají). |
+| `POST` | `/api/v1/jobs/{id}/resume` | Obnoví pozastavenou úlohu (dorazí čekající dvojice). |
 | `POST` | `/api/v1/jobs/{id}/retry` | Znovu spustí failed file-pairs hotové úlohy. |
 | `GET`  | `/api/v1/jobs/{id}/artifacts/{**path}` | Stažení zvýrazněného diff-PDF. |
 | `GET`  | `/api/v1/discovery/shares` | Výpis nakonfigurovaných sdílení a jmen credential profilů. |

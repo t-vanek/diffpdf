@@ -6,6 +6,8 @@ public enum JobStatus
     Draft,
     Queued,
     Running,
+    /// <summary>Running job temporarily paused; resume continues the pending pairs.</summary>
+    Paused,
     Completed,
     Failed,
     Cancelled,
