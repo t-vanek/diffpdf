@@ -27,4 +27,7 @@ public interface IFilePairTaskStore
     Task<IReadOnlyList<(Guid JobId, Guid TaskId)>> RequeueStaleAsync(CancellationToken ct = default);
 
     Task<IReadOnlyList<FilePairTask>> ListByJobAsync(Guid jobId, CancellationToken ct = default);
+
+    /// <summary>Deletes all tasks of a job (used when the job itself is deleted).</summary>
+    Task DeleteByJobAsync(Guid jobId, CancellationToken ct = default);
 }

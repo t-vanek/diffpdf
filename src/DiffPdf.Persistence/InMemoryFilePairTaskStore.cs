@@ -125,4 +125,14 @@ public sealed class InMemoryFilePairTaskStore : IFilePairTaskStore
     public Task<IReadOnlyList<FilePairTask>> ListByJobAsync(Guid jobId, CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<FilePairTask>>(
             _tasks.Values.Where(t => t.JobId == jobId).OrderBy(t => t.RelativePath).ToList());
+
+    public Task DeleteByJobAsync(Guid jobId, CancellationToken ct = default)
+    {
+        lock (_gate)
+        {
+            foreach (var id in _tasks.Values.Where(t => t.JobId == jobId).Select(t => t.Id).ToList())
+                _tasks.TryRemove(id, out _);
+        }
+        return Task.CompletedTask;
+    }
 }

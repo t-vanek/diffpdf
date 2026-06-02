@@ -193,13 +193,17 @@ Všechny aplikační cesty jsou pod prefixem **`/api/v1`**.
 | `POST` | `/api/v1/business-instances/{key}/projects` | Vytvoří projekt pod instancí. |
 | `GET`  | `/api/v1/business-instances/{key}/projects` | Výpis projektů. |
 | `POST` | `/api/v1/comparisons` | Porovná jednu dvojici (synchronně). |
-| `POST` | `/api/v1/batch` | Odešle úlohu porovnání složek (async, vrací `202`). |
-| `GET`  | `/api/v1/jobs` | Výpis úloh (filtr `businessInstanceKey` / `projectKey` / `status`). |
+| `POST` | `/api/v1/batch` | **Založí** úlohu porovnání složek (async, vrací `202`). |
+| `GET`  | `/api/v1/jobs` | **Seznam** úloh (filtr `businessInstanceKey` / `projectKey` / `status`). |
 | `GET`  | `/api/v1/jobs/{id}` | Stav úlohy + progress. |
+| `PUT`  | `/api/v1/jobs/{id}` | **Aktualizuje** úlohu (jen `Queued`; scope se nemění). |
+| `DELETE` | `/api/v1/jobs/{id}` | **Smaže** dokončenou úlohu (+ tasky a artefakty; aktivní → `409`). |
 | `GET`  | `/api/v1/jobs/{id}/tasks` | Výpis file-pair tasků úlohy. |
 | `GET`  | `/api/v1/jobs/{id}/report` | Agregovaný JSON report (`409` než je hotovo). |
 | `GET`  | `/api/v1/jobs/{id}/result` | Verdikt CI brány: `200` když prošlo, `422` když selhalo. |
-| `POST` | `/api/v1/jobs/{id}/cancel` | Zruší queued/running úlohu (`409` jinak). |
+| `POST` | `/api/v1/jobs/{id}/cancel` | **Zastaví** (zruší) queued/running/paused úlohu (`409` jinak). |
+| `POST` | `/api/v1/jobs/{id}/pause` | **Pozastaví** běžící úlohu (`Running → Paused`). |
+| `POST` | `/api/v1/jobs/{id}/resume` | **Obnoví** pozastavenou úlohu (`Paused → Running`, znovu rozdá nezpracované páry). |
 | `POST` | `/api/v1/jobs/{id}/retry` | Znovu spustí failed file-pairs hotové úlohy. |
 | `GET`  | `/api/v1/jobs/{id}/artifacts/{**path}` | Stažení zvýrazněného diff-PDF. |
 | `GET`  | `/api/v1/preview/shares` | Výpis nakonfigurovaných sdílení a jmen credential profilů. |

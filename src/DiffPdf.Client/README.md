@@ -68,3 +68,15 @@ Console.WriteLine($"{report.Differing} lišících se z {report.Total}, passed={
 
 REST zůstává zdrojem pravdy — když UI o SignalR event přijde, stav si kdykoli
 načteš přes `GetJobAsync` / `WaitForJobAsync`.
+
+### Životní cyklus dávek
+
+```csharp
+var jobs = await client.ListJobsAsync(businessInstanceKey: "Alfa");  // seznam / refresh
+await client.UpdateJobAsync(id, updatedRequest);   // jen Queued
+await client.PauseJobAsync(id);                     // Running → Paused
+await client.ResumeJobAsync(id);                    // Paused → Running
+await client.CancelJobAsync(id);                    // zastavit (zrušit)
+await client.RetryJobAsync(id);                     // znovu failed páry hotové dávky
+await client.DeleteJobAsync(id);                    // smazat hotovou dávku
+```

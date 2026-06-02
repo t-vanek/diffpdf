@@ -217,6 +217,41 @@ public sealed class DiffPdfClient : IDisposable
     public Task<DiffPdfJob> GetJobAsync(Guid jobId, CancellationToken ct = default) =>
         GetAsync<DiffPdfJob>($"/api/v1/jobs/{jobId}", ct);
 
+    /// <summary>Lists jobs (the batch list); call again to refresh.</summary>
+    public Task<IReadOnlyList<DiffPdfJob>> ListJobsAsync(
+        string? businessInstanceKey = null, string? projectKey = null, string? status = null, int? limit = null, CancellationToken ct = default)
+    {
+        var query = new List<string>();
+        if (!string.IsNullOrEmpty(businessInstanceKey)) query.Add($"businessInstanceKey={Uri.EscapeDataString(businessInstanceKey)}");
+        if (!string.IsNullOrEmpty(projectKey)) query.Add($"projectKey={Uri.EscapeDataString(projectKey)}");
+        if (!string.IsNullOrEmpty(status)) query.Add($"status={Uri.EscapeDataString(status)}");
+        if (limit is { } l) query.Add($"limit={l}");
+        string url = "/api/v1/jobs" + (query.Count > 0 ? "?" + string.Join('&', query) : "");
+        return GetAsync<IReadOnlyList<DiffPdfJob>>(url, ct);
+    }
+
+    /// <summary>Replaces a queued job's request.</summary>
+    public Task<DiffPdfJob> UpdateJobAsync(Guid jobId, BatchComparisonRequest request, CancellationToken ct = default) =>
+        PutAsync<BatchComparisonRequest, DiffPdfJob>($"/api/v1/jobs/{jobId}", request, ct);
+
+    /// <summary>Deletes a finished job (and its tasks/artifacts).</summary>
+    public Task DeleteJobAsync(Guid jobId, CancellationToken ct = default) =>
+        DeleteAsync($"/api/v1/jobs/{jobId}", ct);
+
+    /// <summary>Pauses a running job.</summary>
+    public Task<DiffPdfJob> PauseJobAsync(Guid jobId, CancellationToken ct = default) =>
+        PostAsync<DiffPdfJob>($"/api/v1/jobs/{jobId}/pause", ct);
+
+    /// <summary>Resumes a paused job, re-dispatching the pairs that hadn't run.</summary>
+    public async Task<DiffPdfJob> ResumeJobAsync(Guid jobId, CancellationToken ct = default)
+    {
+        await EnsureTokenAsync(ct);
+        using var response = await _http.PostAsync($"/api/v1/jobs/{jobId}/resume", content: null, ct);
+        await EnsureSuccessAsync(response, ct);
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+        return doc.RootElement.GetProperty("job").Deserialize<DiffPdfJob>(Json)!;
+    }
+
     /// <summary>Polls until the job reaches a terminal state, reporting each update.</summary>
     public async Task<DiffPdfJob> WaitForJobAsync(
         Guid jobId, IProgress<DiffPdfJob>? progress = null, TimeSpan? pollInterval = null, CancellationToken ct = default)
@@ -282,6 +317,21 @@ public sealed class DiffPdfClient : IDisposable
         using var response = await _http.PostAsJsonAsync(url, body, Json, ct);
         await EnsureSuccessAsync(response, ct);
         return (await response.Content.ReadFromJsonAsync<TResult>(Json, ct))!;
+    }
+
+    private async Task<TResult> PutAsync<TBody, TResult>(string url, TBody body, CancellationToken ct)
+    {
+        await EnsureTokenAsync(ct);
+        using var response = await _http.PutAsJsonAsync(url, body, Json, ct);
+        await EnsureSuccessAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<TResult>(Json, ct))!;
+    }
+
+    private async Task DeleteAsync(string url, CancellationToken ct)
+    {
+        await EnsureTokenAsync(ct);
+        using var response = await _http.DeleteAsync(url, ct);
+        await EnsureSuccessAsync(response, ct);
     }
 
     private static async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken ct)

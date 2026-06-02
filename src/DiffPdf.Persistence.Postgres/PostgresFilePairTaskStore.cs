@@ -114,6 +114,9 @@ public sealed class PostgresFilePairTaskStore(DiffPdfDbContext db, EntityMapper 
         return rows.Select(mapper.ToDomain).ToList();
     }
 
+    public async Task DeleteByJobAsync(Guid jobId, CancellationToken ct = default) =>
+        await db.FilePairTasks.Where(t => t.JobId == jobId).ExecuteDeleteAsync(ct);
+
     private static FilePairTaskEntity ToEntity(FilePairTask t) => new()
     {
         Id = t.Id,

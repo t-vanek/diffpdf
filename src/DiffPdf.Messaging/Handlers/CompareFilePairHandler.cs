@@ -30,16 +30,15 @@ public sealed class CompareFilePairHandler
         ILogger<CompareFilePairHandler> logger,
         CancellationToken ct)
     {
+        // Check the job before claiming so a paused/cancelled job leaves the task in
+        // its current state — resume (or stale recovery) re-dispatches it untouched.
+        var job = await jobStore.GetAsync(command.JobId, ct);
+        if (job is null || job.Status != JobStatus.Running)
+            return; // queued-but-paused, cancelled or finished — don't process
+
         var task = await taskStore.TryClaimAsync(command.TaskId, workerInstance.WorkerInstanceId, workerOptions.Value.JobLease, ct);
         if (task is null)
             return; // already claimed / completed (idempotent)
-
-        var job = await jobStore.GetAsync(command.JobId, ct);
-        if (job is null || job.Status != JobStatus.Running)
-        {
-            // Job was cancelled or finished; stop processing this pair.
-            return;
-        }
 
         FilePairResult result;
         try

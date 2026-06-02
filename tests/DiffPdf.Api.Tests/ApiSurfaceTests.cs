@@ -114,6 +114,50 @@ public sealed class ApiSurfaceTests(DiffPdfApiFactory factory) : IClassFixture<D
         }
     }
 
+    [Fact]
+    public async Task JobLifecycle_List_Delete_And_Guards()
+    {
+        string bi = "li" + Guid.NewGuid().ToString("N")[..8];
+        string oldDir = Path.Combine(Path.GetTempPath(), "diffpdf-l-" + Guid.NewGuid().ToString("N"));
+        string newDir = Path.Combine(Path.GetTempPath(), "diffpdf-l-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(oldDir);
+        Directory.CreateDirectory(newDir);
+        try
+        {
+            using var client = NewClient();
+            await client.CreateBusinessInstanceAsync(bi, bi);
+            await client.CreateProjectAsync(bi, "p", "p");
+
+            var request = new BatchComparisonRequest { Scope = new JobScope(bi, "p"), OldFolder = oldDir, NewFolder = newDir };
+            var job = await client.SubmitBatchAsync(request);
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            var done = await client.WaitForJobAsync(job.Id, pollInterval: TimeSpan.FromMilliseconds(200), ct: cts.Token);
+            Assert.Equal("Completed", done.Status);
+
+            // List (refreshable) contains the job.
+            var list = await client.ListJobsAsync(businessInstanceKey: bi);
+            Assert.Contains(list, j => j.Id == job.Id);
+
+            // Update / pause a finished job are rejected (409).
+            var update = await Assert.ThrowsAsync<DiffPdfClientException>(() => client.UpdateJobAsync(job.Id, request));
+            Assert.Equal(System.Net.HttpStatusCode.Conflict, update.StatusCode);
+
+            var pause = await Assert.ThrowsAsync<DiffPdfClientException>(() => client.PauseJobAsync(job.Id));
+            Assert.Equal(System.Net.HttpStatusCode.Conflict, pause.StatusCode);
+
+            // Delete the finished job, then it is gone (404).
+            await client.DeleteJobAsync(job.Id);
+            var gone = await Assert.ThrowsAsync<DiffPdfClientException>(() => client.GetJobAsync(job.Id));
+            Assert.Equal(System.Net.HttpStatusCode.NotFound, gone.StatusCode);
+        }
+        finally
+        {
+            Directory.Delete(oldDir, recursive: true);
+            Directory.Delete(newDir, recursive: true);
+        }
+    }
+
     private static string CreateTree(out string oldDir, out string newDir)
     {
         string root = Path.Combine(Path.GetTempPath(), "diffpdf-tree-" + Guid.NewGuid().ToString("N"));

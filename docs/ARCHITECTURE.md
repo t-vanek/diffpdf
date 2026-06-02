@@ -81,6 +81,29 @@ Vlastnosti, na kterých to stojí:
 - **Per-pár odolnost** — transientní chyba se opakuje s cooldownem, pak se zapíše
   jako `Error` (dávka se nezasekne).
 
+### Stavový automat dávky (lifecycle)
+
+```
+                 pause                     cancel
+   Queued ──► Running ──► Paused ──► Running ──► … ──► Completed
+     │           │  └────── resume ────┘                Failed
+     │           └────────────── cancel ──────────────► Cancelled
+     └── update (jen Queued) ·  cancel ──────────────► Cancelled
+
+   DELETE: jen z terminálních (Completed/Failed/Cancelled) — smaže job + tasky + artefakty
+```
+
+- **update** (`PUT /jobs/{id}`) — nahradí request, jen dokud je `Queued` (před indexací).
+- **pause** (`Running → Paused`) — `CompareFilePair` handler kontroluje stav **před**
+  claimnutím tasku, takže nezpracované páry zůstanou `Queued`; rozpracované doběhnou.
+- **resume** (`Paused → Running`) — endpoint znovu publikuje `CompareFilePair` pro
+  `Queued` tasky (stejný princip jako retry / stale-recovery); když už bylo vše hotovo,
+  pošle `FinalizeBatch`.
+- **cancel** funguje z `Queued`/`Running`/`Paused`; **delete** jen z terminálních.
+
+> Pozn.: pause cílí na (dlouhou) fázi porovnávání. Pauza během milisekundové fáze
+> indexace není podporovaná.
+
 ## 4. Dva režimy nasazení (rozcestí v Program.cs)
 
 ```

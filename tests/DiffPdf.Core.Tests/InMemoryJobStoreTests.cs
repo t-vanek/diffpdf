@@ -73,4 +73,64 @@ public class InMemoryJobStoreTests
         Assert.Single(byInstance);
         Assert.Empty(other);
     }
+
+    [Fact]
+    public async Task UpdateRequest_OnlyWhenQueued()
+    {
+        var store = new InMemoryJobStore();
+        var job = await store.CreateAsync(NewJob());
+
+        var newRequest = job.Request with { OldFolder = "/changed" };
+        var updated = await store.UpdateRequestAsync(job.Id, newRequest);
+        Assert.NotNull(updated);
+        Assert.Equal("/changed", updated!.Request.OldFolder);
+
+        // Once running, update is rejected.
+        await store.TryStartAsync(job.Id, "w", TimeSpan.FromMinutes(5));
+        Assert.Null(await store.UpdateRequestAsync(job.Id, newRequest with { OldFolder = "/again" }));
+    }
+
+    [Fact]
+    public async Task Pause_Resume_RoundTrip()
+    {
+        var store = new InMemoryJobStore();
+        var job = await store.CreateAsync(NewJob());
+
+        Assert.Null(await store.PauseAsync(job.Id)); // not running yet
+
+        await store.TryStartAsync(job.Id, "w", TimeSpan.FromMinutes(5));
+        var paused = await store.PauseAsync(job.Id);
+        Assert.Equal(JobStatus.Paused, paused!.Status);
+
+        Assert.Null(await store.ResumeAsync(Guid.NewGuid())); // missing
+        var resumed = await store.ResumeAsync(job.Id);
+        Assert.Equal(JobStatus.Running, resumed!.Status);
+    }
+
+    [Fact]
+    public async Task Cancel_AllowedFromPaused()
+    {
+        var store = new InMemoryJobStore();
+        var job = await store.CreateAsync(NewJob());
+        await store.TryStartAsync(job.Id, "w", TimeSpan.FromMinutes(5));
+        await store.PauseAsync(job.Id);
+
+        var cancelled = await store.CancelAsync(job.Id);
+        Assert.Equal(JobStatus.Cancelled, cancelled!.Status);
+    }
+
+    [Fact]
+    public async Task Delete_OnlyWhenTerminal()
+    {
+        var store = new InMemoryJobStore();
+        var job = await store.CreateAsync(NewJob());
+
+        Assert.False(await store.DeleteAsync(job.Id)); // Queued = active
+
+        var started = await store.TryStartAsync(job.Id, "w", TimeSpan.FromMinutes(5));
+        await store.CompleteAsync(job.Id, Report(), started!.Version);
+
+        Assert.True(await store.DeleteAsync(job.Id));
+        Assert.Null(await store.GetAsync(job.Id));
+    }
 }

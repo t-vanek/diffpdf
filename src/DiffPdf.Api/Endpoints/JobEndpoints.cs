@@ -1,12 +1,14 @@
 using DiffPdf.Core.Abstractions;
+using DiffPdf.Core.Comparison;
 using DiffPdf.Core.Models;
+using DiffPdf.Core.Network;
 using DiffPdf.Messaging.Messages;
 using DiffPdf.Persistence;
 using Wolverine;
 
 namespace DiffPdf.Api.Endpoints;
 
-/// <summary>Job status, tasks, report, CI-gate result, artifacts, cancel and retry.</summary>
+/// <summary>Job lifecycle: status, tasks, report, gate, artifacts, update, delete, cancel, pause, resume, retry.</summary>
 public static class JobEndpoints
 {
     public static void MapJobEndpoints(this IEndpointRouteBuilder app)
@@ -109,6 +111,109 @@ public static class JobEndpoints
 
             return Results.Ok(new { retried = failed.Count, job = JobSummary.From(reopened) });
         }).WithSummary("Re-run the failed file-pairs of a finished job").ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
+
+        // --- Update (queued only) -----------------------------------------
+        group.MapPut("/{id:guid}", async (
+            Guid id, BatchComparisonRequest request,
+            IJobStore jobStore, INetworkShareResolver shareResolver, CancellationToken ct) =>
+        {
+            var job = await jobStore.GetAsync(id, ct);
+            if (job is null) return Results.NotFound();
+            if (job.Status != JobStatus.Queued)
+                return Results.Problem("Only a queued job can be updated.", statusCode: StatusCodes.Status409Conflict);
+
+            // Scope is fixed at creation; changing it would invalidate the job's IDs.
+            if (request.Scope.BusinessInstanceKey != job.BusinessInstanceKey || request.Scope.ProjectKey != job.ProjectKey)
+                return Results.Problem("Scope cannot be changed; submit a new job instead.", statusCode: StatusCodes.Status400BadRequest);
+
+            ResolvedFolder oldResolved, newResolved;
+            try
+            {
+                oldResolved = shareResolver.Resolve(request.OldFolder, request.OldFolderCredentials, request.OldFolderCredentialProfile);
+                newResolved = shareResolver.Resolve(request.NewFolder, request.NewFolderCredentials, request.NewFolderCredentialProfile);
+            }
+            catch (NetworkConfigurationException ex)
+            {
+                return Results.Problem(ex.Message, statusCode: StatusCodes.Status400BadRequest);
+            }
+
+            if (oldResolved.Credentials is null && !UncPath.IsUnc(oldResolved.Path) && !Directory.Exists(oldResolved.Path))
+                return Results.Problem($"Old folder not found: {oldResolved.Path}", statusCode: StatusCodes.Status400BadRequest);
+            if (newResolved.Credentials is null && !UncPath.IsUnc(newResolved.Path) && !Directory.Exists(newResolved.Path))
+                return Results.Problem($"New folder not found: {newResolved.Path}", statusCode: StatusCodes.Status400BadRequest);
+
+            var resolvedRequest = request with
+            {
+                OldFolder = oldResolved.Path,
+                NewFolder = newResolved.Path,
+                OldFolderCredentials = oldResolved.Credentials,
+                NewFolderCredentials = newResolved.Credentials,
+                OldFolderCredentialProfile = null,
+                NewFolderCredentialProfile = null,
+            };
+
+            var updated = await jobStore.UpdateRequestAsync(id, resolvedRequest, ct);
+            return updated is null
+                ? Results.Problem("Job is no longer queued.", statusCode: StatusCodes.Status409Conflict)
+                : Results.Ok(JobSummary.From(updated));
+        }).WithSummary("Update a queued job's request").Produces<JobSummary>()
+          .ProducesProblem(StatusCodes.Status400BadRequest).ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
+
+        // --- Delete (terminal only; removes tasks + artifacts) ------------
+        group.MapDelete("/{id:guid}", async (
+            Guid id, IJobStore jobStore, IFilePairTaskStore taskStore, IJobStoragePathProvider paths, CancellationToken ct) =>
+        {
+            var job = await jobStore.GetAsync(id, ct);
+            if (job is null) return Results.NotFound();
+            if (job.Status is not (JobStatus.Completed or JobStatus.Failed or JobStatus.Cancelled))
+                return Results.Problem("Only a finished (Completed/Failed/Cancelled) job can be deleted; cancel it first.",
+                    statusCode: StatusCodes.Status409Conflict);
+
+            try
+            {
+                string root = Path.GetFullPath(paths.GetJobRoot(job));
+                if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+            }
+            catch (IOException) { /* artefacts are best-effort */ }
+
+            await taskStore.DeleteByJobAsync(id, ct);
+            bool deleted = await jobStore.DeleteAsync(id, ct);
+            return deleted ? Results.NoContent() : Results.Problem("Job could not be deleted.", statusCode: StatusCodes.Status409Conflict);
+        }).WithSummary("Delete a finished job (and its tasks/artifacts)")
+          .Produces(StatusCodes.Status204NoContent).ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
+
+        // --- Pause (running -> paused) ------------------------------------
+        group.MapPost("/{id:guid}/pause", async (Guid id, IJobStore jobStore, CancellationToken ct) =>
+        {
+            if (await jobStore.GetAsync(id, ct) is null) return Results.NotFound();
+            var paused = await jobStore.PauseAsync(id, ct);
+            return paused is null
+                ? Results.Problem("Only a running job can be paused.", statusCode: StatusCodes.Status409Conflict)
+                : Results.Ok(JobSummary.From(paused));
+        }).WithSummary("Pause a running job").Produces<JobSummary>()
+          .ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
+
+        // --- Resume (paused -> running; re-dispatch pending pairs) --------
+        group.MapPost("/{id:guid}/resume", async (
+            Guid id, IJobStore jobStore, IFilePairTaskStore taskStore, IMessageBus bus, CancellationToken ct) =>
+        {
+            if (await jobStore.GetAsync(id, ct) is null) return Results.NotFound();
+            var resumed = await jobStore.ResumeAsync(id, ct);
+            if (resumed is null)
+                return Results.Problem("Only a paused job can be resumed.", statusCode: StatusCodes.Status409Conflict);
+
+            // Pairs that never ran while paused stayed Queued — re-dispatch them.
+            var tasks = await taskStore.ListByJobAsync(id, ct);
+            var pending = tasks.Where(t => t.Status == FilePairTaskStatus.Queued).ToList();
+            foreach (var t in pending)
+                await bus.PublishAsync(new CompareFilePair(id, t.Id));
+
+            // Everything already finished while paused (finalize was skipped) — close it out.
+            if (pending.Count == 0)
+                await bus.PublishAsync(new FinalizeBatch(id));
+
+            return Results.Ok(new { resumed = pending.Count, job = JobSummary.From(resumed) });
+        }).WithSummary("Resume a paused job").ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapGet("/{id:guid}/artifacts/{**relativePath}", async (
             Guid id, string relativePath, IJobStore jobStore, IJobStoragePathProvider paths, CancellationToken ct) =>

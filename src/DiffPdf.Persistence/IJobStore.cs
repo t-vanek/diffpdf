@@ -25,8 +25,20 @@ public interface IJobStore
 
     Task<ComparisonJob> FailAsync(Guid id, string error, long expectedVersion, CancellationToken ct = default);
 
-    /// <summary>Cancels a Queued/Running job. Returns the cancelled job, or null if it could not be cancelled.</summary>
+    /// <summary>Replaces the request of a not-yet-started (Queued) job. Null if it is not Queued / not found.</summary>
+    Task<ComparisonJob?> UpdateRequestAsync(Guid id, BatchComparisonRequest request, CancellationToken ct = default);
+
+    /// <summary>Deletes a finished (Completed/Failed/Cancelled) job. False if it is active / not found.</summary>
+    Task<bool> DeleteAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>Cancels a Queued/Running/Paused job. Returns the cancelled job, or null if it could not be cancelled.</summary>
     Task<ComparisonJob?> CancelAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>Pauses a Running job (Running → Paused), stopping further dispatch. Null if not Running.</summary>
+    Task<ComparisonJob?> PauseAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>Resumes a Paused job (Paused → Running). Null if not Paused; the caller re-dispatches pending pairs.</summary>
+    Task<ComparisonJob?> ResumeAsync(Guid id, CancellationToken ct = default);
 
     /// <summary>Reopens a finished (Completed/Failed) job for a retry, resetting its progress.</summary>
     Task<ComparisonJob?> ReopenAsync(Guid id, int processedCount, CancellationToken ct = default);

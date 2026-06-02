@@ -120,11 +120,79 @@ public sealed class InMemoryJobStore : IJobStore
         }
     }
 
+    public Task<ComparisonJob?> UpdateRequestAsync(Guid id, BatchComparisonRequest request, CancellationToken ct = default)
+    {
+        lock (_gate)
+        {
+            if (!_jobs.TryGetValue(id, out var job) || job.Status != JobStatus.Queued)
+                return Task.FromResult<ComparisonJob?>(null);
+
+            var updated = job with
+            {
+                Request = request,
+                UpdatedAt = DateTimeOffset.UtcNow,
+                Version = job.Version + 1,
+            };
+            _jobs[id] = updated;
+            return Task.FromResult<ComparisonJob?>(updated);
+        }
+    }
+
+    public Task<bool> DeleteAsync(Guid id, CancellationToken ct = default)
+    {
+        lock (_gate)
+        {
+            if (!_jobs.TryGetValue(id, out var job) ||
+                job.Status is not (JobStatus.Completed or JobStatus.Failed or JobStatus.Cancelled))
+                return Task.FromResult(false);
+
+            return Task.FromResult(_jobs.TryRemove(id, out _));
+        }
+    }
+
+    public Task<ComparisonJob?> PauseAsync(Guid id, CancellationToken ct = default)
+    {
+        lock (_gate)
+        {
+            if (!_jobs.TryGetValue(id, out var job) || job.Status != JobStatus.Running)
+                return Task.FromResult<ComparisonJob?>(null);
+
+            var paused = job with
+            {
+                Status = JobStatus.Paused,
+                UpdatedAt = DateTimeOffset.UtcNow,
+                LockedBy = null,
+                LockedUntil = null,
+                Version = job.Version + 1,
+            };
+            _jobs[id] = paused;
+            return Task.FromResult<ComparisonJob?>(paused);
+        }
+    }
+
+    public Task<ComparisonJob?> ResumeAsync(Guid id, CancellationToken ct = default)
+    {
+        lock (_gate)
+        {
+            if (!_jobs.TryGetValue(id, out var job) || job.Status != JobStatus.Paused)
+                return Task.FromResult<ComparisonJob?>(null);
+
+            var resumed = job with
+            {
+                Status = JobStatus.Running,
+                UpdatedAt = DateTimeOffset.UtcNow,
+                Version = job.Version + 1,
+            };
+            _jobs[id] = resumed;
+            return Task.FromResult<ComparisonJob?>(resumed);
+        }
+    }
+
     public Task<ComparisonJob?> CancelAsync(Guid id, CancellationToken ct = default)
     {
         lock (_gate)
         {
-            if (!_jobs.TryGetValue(id, out var job) || job.Status is not (JobStatus.Queued or JobStatus.Running))
+            if (!_jobs.TryGetValue(id, out var job) || job.Status is not (JobStatus.Queued or JobStatus.Running or JobStatus.Paused))
                 return Task.FromResult<ComparisonJob?>(null);
 
             var cancelled = job with
