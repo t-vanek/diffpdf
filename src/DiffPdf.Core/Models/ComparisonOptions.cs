@@ -32,20 +32,56 @@ public sealed record ComparisonOptions
     /// <summary>Render resolution for the visual comparison.</summary>
     public int Dpi { get; init; } = 150;
 
-    // ---- Pixel-level visual diff ----
+    /// <summary>
+    /// Overall engine strictness. Drives the default difference-reporting
+    /// tolerances (pixel tolerance, visual + text thresholds). Individual knobs
+    /// below override the preset when set explicitly.
+    /// </summary>
+    public Strictness Strictness { get; init; } = Strictness.Balanced;
+
+    // ---- Pixel-level visual diff (null => derived from Strictness) ----
 
     /// <summary>
     /// Per-pixel channel tolerance (0-255) before a pixel counts as different.
-    /// Set to 0 for an exact pixel-perfect comparison; higher values absorb
-    /// anti-aliasing noise.
+    /// 0 = exact pixel-perfect; higher values absorb anti-aliasing noise.
     /// </summary>
-    public byte PixelTolerance { get; init; } = 16;
+    public byte? PixelTolerance { get; init; }
 
     /// <summary>
     /// Fraction of differing pixels on a page (0-1) below which the page is still
-    /// considered visually identical. Set to 0 to flag a single differing pixel.
+    /// considered visually identical. 0 flags a single differing pixel.
     /// </summary>
-    public double VisualThreshold { get; init; } = 0.0005;
+    public double? VisualThreshold { get; init; }
+
+    /// <summary>
+    /// Fraction of changed words on a page (0-1) below which a text change is
+    /// ignored. 0 flags any text change.
+    /// </summary>
+    public double? TextDifferenceThreshold { get; init; }
+
+    // ---- Effective tolerances (preset + overrides) ----
+
+    public byte EffectivePixelTolerance => PixelTolerance ?? Strictness switch
+    {
+        Strictness.Exact => 0,
+        Strictness.Strict => 4,
+        Strictness.Lenient => 40,
+        _ => 16,
+    };
+
+    public double EffectiveVisualThreshold => VisualThreshold ?? Strictness switch
+    {
+        Strictness.Exact => 0.0,
+        Strictness.Strict => 0.0001,
+        Strictness.Lenient => 0.005,
+        _ => 0.0005,
+    };
+
+    public double EffectiveTextDifferenceThreshold => TextDifferenceThreshold ?? Strictness switch
+    {
+        Strictness.Lenient => 0.02,
+        _ => 0.0,
+    };
 
     /// <summary>
     /// Grid cell size (px) used to cluster differing pixels into highlight regions.
@@ -149,4 +185,17 @@ public enum HighlightLayout
     SideBySide,
     /// <summary>Only the changed side (new for added/changed, old for removed).</summary>
     Single,
+}
+
+/// <summary>Engine strictness presets, from pixel-perfect to forgiving.</summary>
+public enum Strictness
+{
+    /// <summary>Pixel-perfect: any differing pixel or word is reported.</summary>
+    Exact,
+    /// <summary>Tight tolerances; absorbs only minimal rendering noise.</summary>
+    Strict,
+    /// <summary>Sensible defaults for most report comparisons.</summary>
+    Balanced,
+    /// <summary>Forgiving; ignores small visual noise and tiny text changes.</summary>
+    Lenient,
 }

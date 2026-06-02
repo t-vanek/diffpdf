@@ -1,6 +1,7 @@
 using DiffPdf.Core.Abstractions;
 using DiffPdf.Core.Models;
 using PdfSharp.Drawing;
+using PdfSharp.Fonts;
 using PdfSharp.Pdf;
 
 namespace DiffPdf.Pdf;
@@ -14,13 +15,23 @@ namespace DiffPdf.Pdf;
 /// </summary>
 public sealed class RasterHighlightPdfWriter : IHighlightedPdfWriter
 {
-    private const double HeaderHeight = 16;
+    private const double HeaderHeight = 18;
     private const double Gap = 16;
 
     private static readonly XColor OldHeader = XColor.FromArgb(120, 220, 60, 60);
     private static readonly XColor NewHeader = XColor.FromArgb(120, 60, 200, 90);
     private static readonly XColor AbsentHeader = XColor.FromArgb(120, 170, 170, 170);
     private static readonly XColor AbsentFill = XColor.FromArgb(40, 170, 170, 170);
+
+    private static readonly XFont? HeaderFont = TryCreateFont();
+
+    private static XFont? TryCreateFont()
+    {
+        if (SansFontResolver.Instance is null) return null;
+        GlobalFontSettings.FontResolver ??= SansFontResolver.Instance;
+        try { return new XFont(SansFontResolver.FaceName, 9, XFontStyleEx.Bold); }
+        catch { return null; }
+    }
 
     public Task WriteAsync(
         string outputPath, IReadOnlyList<DiffSpread> spreads, HighlightLayout layout, CancellationToken ct = default)
@@ -55,7 +66,8 @@ public sealed class RasterHighlightPdfWriter : IHighlightedPdfWriter
         page.Height = XUnit.FromPoint(hPt + HeaderHeight);
 
         using var gfx = XGraphics.FromPdfPage(page);
-        DrawHeader(gfx, 0, wPt, isNew ? NewHeader : OldHeader);
+        string label = isNew ? NewLabel(spread.NewPageNumber) : OldLabel(spread.OldPageNumber);
+        DrawHeader(gfx, 0, wPt, isNew ? NewHeader : OldHeader, label);
         DrawSide(gfx, side, xOffset: 0, yOffset: HeaderHeight, wPt, hPt);
     }
 
@@ -75,7 +87,7 @@ public sealed class RasterHighlightPdfWriter : IHighlightedPdfWriter
         using var gfx = XGraphics.FromPdfPage(page);
 
         // Left = old.
-        DrawHeader(gfx, 0, oldW, spread.Old is not null ? OldHeader : AbsentHeader);
+        DrawHeader(gfx, 0, oldW, spread.Old is not null ? OldHeader : AbsentHeader, OldLabel(spread.OldPageNumber));
         if (spread.Old is not null)
             DrawSide(gfx, spread.Old, xOffset: 0, yOffset: HeaderHeight, oldW, oldH);
         else
@@ -83,15 +95,29 @@ public sealed class RasterHighlightPdfWriter : IHighlightedPdfWriter
 
         // Right = new.
         double rightX = oldW + Gap;
-        DrawHeader(gfx, rightX, newW, spread.New is not null ? NewHeader : AbsentHeader);
+        DrawHeader(gfx, rightX, newW, spread.New is not null ? NewHeader : AbsentHeader, NewLabel(spread.NewPageNumber));
         if (spread.New is not null)
             DrawSide(gfx, spread.New, xOffset: rightX, yOffset: HeaderHeight, newW, newH);
         else
             DrawAbsent(gfx, rightX, HeaderHeight, newW, newH);
     }
 
-    private static void DrawHeader(XGraphics gfx, double x, double width, XColor color) =>
+    private static string OldLabel(int? page) => page is int p ? $"OLD  p.{p}" : "(no old page)";
+    private static string NewLabel(int? page) => page is int p ? $"NEW  p.{p}" : "(no new page)";
+
+    private static void DrawHeader(XGraphics gfx, double x, double width, XColor color, string label)
+    {
         gfx.DrawRectangle(new XSolidBrush(color), new XRect(x, 0, width, HeaderHeight));
+        if (HeaderFont is not null)
+        {
+            try
+            {
+                gfx.DrawString(label, HeaderFont, XBrushes.Black,
+                    new XRect(x + 6, 0, width - 12, HeaderHeight), XStringFormats.CenterLeft);
+            }
+            catch { /* font drawing is best-effort */ }
+        }
+    }
 
     private static void DrawAbsent(XGraphics gfx, double x, double y, double width, double height) =>
         gfx.DrawRectangle(new XSolidBrush(AbsentFill), new XRect(x, y, width, height));

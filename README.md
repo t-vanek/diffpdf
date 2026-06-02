@@ -16,6 +16,9 @@ blank pages, and error messages baked into the output.
 - **Pixel-level visual comparison** — per-pixel diff with configurable tolerance
   (down to exact, 0-tolerance matching) and cluster granularity (down to a single
   pixel); Ghostscript by default, PDFium as a fallback.
+- **Configurable strictness** — an `Exact` / `Strict` / `Balanced` / `Lenient`
+  preset drives the difference-reporting tolerances, each of which can also be
+  overridden individually.
 - **Page alignment** — inserted/removed pages are detected (Needleman–Wunsch over
   page-text similarity) so they don't cascade into a run of false differences.
 - **Typed page classification** — each page is tagged `TextChanged`,
@@ -33,7 +36,8 @@ blank pages, and error messages baked into the output.
   reported as `Error` with a reason instead of crashing the batch.
 - **Two-sided highlighted diff PDF** — per differing file, a spread with the
   old page (left, removed content in red) beside the new page (right, added in
-  green, visual changes in orange); colored header strips mark each side.
+  green, visual changes in orange); header strips are labeled with the side and
+  page number (`OLD p.3` / `NEW p.4`).
 - **Bulk folder comparison** — pairs files by relative path, runs in parallel,
   classifies each pair as `Identical` / `Differs` / `OnlyInOld` / `OnlyInNew` / `Error`.
 - **Async job API** — submit a batch, poll status, download the report and
@@ -111,8 +115,10 @@ curl http://localhost:8080/api/jobs/<id>/report
 | `mode` | `Both` | `Text`, `Visual`, or `Both`. |
 | `pages` | all | `{ "from": 1, "to": 5 }`. |
 | `dpi` | `150` | Visual render resolution. |
-| `pixelTolerance` | `16` | Per-channel tolerance (0-255); `0` = exact pixel match. |
-| `visualThreshold` | `0.0005` | Min differing-pixel fraction to flag a page; `0` flags a single pixel. |
+| `strictness` | `Balanced` | Preset: `Exact` / `Strict` / `Balanced` / `Lenient`. Drives the tolerances below. |
+| `pixelTolerance` | *(preset)* | Override per-channel tolerance (0-255); `0` = exact pixel match. |
+| `visualThreshold` | *(preset)* | Override min differing-pixel fraction to flag a page; `0` flags a single pixel. |
+| `textDifferenceThreshold` | *(preset)* | Override min changed-word fraction to flag text; `0` flags any change. |
 | `visualClusterCellSize` | `24` | Highlight cluster size (px); `1` = per-pixel regions. |
 | `alignPages` | `true` | Align pages by content (detect insert/delete). |
 | `pageMatchThreshold` | `0.2` | Min word overlap to treat two pages as the same page changed (vs add+remove). |

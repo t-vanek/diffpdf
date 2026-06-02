@@ -47,10 +47,11 @@ public sealed class SkiaImageComparer : IImageComparer
 
                 // Pixels inside an ignore region never count as different.
                 // Exact match when PixelTolerance == 0; otherwise per-channel tolerance.
+                byte tol = options.EffectivePixelTolerance;
                 bool different = !InIgnore(x, y, ignore)
-                    && (Delta(a.Red, b.Red) > options.PixelTolerance
-                        || Delta(a.Green, b.Green) > options.PixelTolerance
-                        || Delta(a.Blue, b.Blue) > options.PixelTolerance);
+                    && (Delta(a.Red, b.Red) > tol
+                        || Delta(a.Green, b.Green) > tol
+                        || Delta(a.Blue, b.Blue) > tol);
 
                 if (different)
                 {

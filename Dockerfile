@@ -24,6 +24,7 @@ RUN apt-get update \
         ghostscript \
         libfontconfig1 \
         libfreetype6 \
+        fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /app ./

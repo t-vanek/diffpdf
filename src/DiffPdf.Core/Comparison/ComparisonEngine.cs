@@ -180,7 +180,7 @@ public sealed class ComparisonEngine(
         if (doText)
         {
             var td = textComparer.ComparePage(oldFiltered, newFiltered, options);
-            if (td.Score > 0 || td.Regions.Count > 0)
+            if (td.Score > 0 && td.Score >= options.EffectiveTextDifferenceThreshold)
             {
                 changes |= PageChangeType.TextChanged;
                 score = Math.Max(score, td.Score);
@@ -199,7 +199,7 @@ public sealed class ComparisonEngine(
         {
             var ignorePx = IgnoreFilter.PixelRegions(newNum, newRender, options);
             var img = imageComparer.Compare(oldRender.Png, newRender.Png, options, ignorePx);
-            if (img.DifferenceRatio >= options.VisualThreshold && img.DifferentPixels > 0)
+            if (img.DifferenceRatio >= options.EffectiveVisualThreshold && img.DifferentPixels > 0)
             {
                 changes |= PageChangeType.VisualChanged;
                 score = Math.Max(score, img.DifferenceRatio);
