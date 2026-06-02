@@ -187,6 +187,7 @@ Všechny aplikační cesty jsou pod prefixem **`/api/v1`**.
 | `GET`  | `/api/v1/branches/{branchKey}/instances` | Výpis instancí. |
 | `GET`  | `/api/v1/branches/{branchKey}/instances/{instanceKey}/structure` | Zjistí stav složek `old`/`new`/`reports` (bez zápisu). |
 | `POST` | `/api/v1/branches/{branchKey}/instances/{instanceKey}/structure` | Založí/opraví složky `old`/`new`/`reports`. |
+| `GET`  | `/api/v1/branches/{branchKey}/instances/{instanceKey}/readiness` | Připravenost dávky: párování `old`/`new` (matched/onlyInOld/onlyInNew) + verdikt `ready`. |
 | `POST` | `/api/v1/comparisons` | Porovná jednu dvojici (synchronně). |
 | `POST` | `/api/v1/batch` | Odešle úlohu porovnání složek (async, vrací `202`). |
 | `GET`  | `/api/v1/jobs` | Výpis úloh (filtr `branchKey` / `instanceKey` / `status`). |
@@ -432,6 +433,10 @@ Server umí strukturu `old`/`new`/`reports` pod `basePath` **zjistit i srovnat**
 
 Pro instance na **UNC/`share:`** to funguje přes stejný konektor jako batch, ale vyžaduje
 **write** přístup (a na Linuxu `Network:MountReadOnly = false`, protože se zapisuje).
+
+**Připravenost před dávkou:** `GET …/instances/{key}/readiness` udělá suchý běh párování
+`old` vs `new` (`matched` / `onlyInOld` / `onlyInNew` + ukázky) a vrátí `ready` (obě složky
+mají PDF) — ověření „co s čím se bude porovnávat", než odešleš `POST /batch`.
 
 ## Spuštění
 

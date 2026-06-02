@@ -137,6 +137,23 @@ public sealed record CreateInstanceRequest(string Key, string Name, string BaseP
 /// <summary>Response after creating an instance: the record plus the result of provisioning its folder skeleton (null when skipped).</summary>
 public sealed record CreatedInstanceResponse(ComparisonInstance Instance, InstanceStructureReport? Structure);
 
+/// <summary>
+/// Pre-flight readiness of an instance for a batch: how the old/new folders pair up
+/// and whether a job may be submitted. <see cref="Ready"/> mirrors the batch gate
+/// (both input folders must hold at least one PDF).
+/// </summary>
+public sealed record InstanceReadiness(
+    bool Reachable,
+    int OldPdfCount,
+    int NewPdfCount,
+    int Matched,
+    int OnlyInOld,
+    int OnlyInNew,
+    IReadOnlyList<string> SampleOnlyInOld,
+    IReadOnlyList<string> SampleOnlyInNew,
+    bool Ready,
+    string? Error);
+
 /// <summary>Per-file-pair task view.</summary>
 public sealed record FilePairTaskSummary
 {

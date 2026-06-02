@@ -61,9 +61,9 @@ public static class BatchEndpoints
             }
 
             string basePath = baseResolved.Path;
-            string oldFolder = CombineFolder(basePath, "old");
-            string newFolder = CombineFolder(basePath, "new");
-            string reportsFolder = CombineFolder(basePath, "reports");
+            string oldFolder = InstanceFolders.Old(basePath);
+            string newFolder = InstanceFolders.New(basePath);
+            string reportsFolder = InstanceFolders.Reports(basePath);
 
             var job = new ComparisonJob
             {
@@ -97,8 +97,4 @@ public static class BatchEndpoints
         .ProducesProblem(StatusCodes.Status404NotFound)
         .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
     }
-
-    /// <summary>Joins a base folder with a subfolder, preserving UNC separators for UNC roots.</summary>
-    private static string CombineFolder(string root, string sub) =>
-        UncPath.IsUnc(root) ? $@"{root.TrimEnd('\\', '/')}\{sub}" : Path.Combine(root, sub);
 }

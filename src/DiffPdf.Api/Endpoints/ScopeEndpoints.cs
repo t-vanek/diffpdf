@@ -1,3 +1,4 @@
+using DiffPdf.Core.Comparison;
 using DiffPdf.Core.Models;
 using DiffPdf.Core.Network;
 using DiffPdf.Core.Storage;
@@ -119,6 +120,44 @@ public static class ScopeEndpoints
                 : Results.Ok(await structure.EnsureAsync(instance.BasePath, instance.CredentialProfile, includeFiles ?? false, ct));
         }).WithSummary("Create/repair the structure (missing -> created, file collision -> replaced); reports old/new PDF content")
           .Produces<InstanceStructureReport>().ProducesProblem(StatusCodes.Status404NotFound);
+
+        group.MapGet("/{branchKey}/instances/{instanceKey}/readiness", async (
+            string branchKey, string instanceKey, int? sampleSize,
+            IBranchStore branches, IInstanceStore instances,
+            INetworkShareResolver shareResolver, INetworkDiscoveryService discovery, CancellationToken ct) =>
+        {
+            var instance = await ResolveInstanceAsync(branchKey, instanceKey, branches, instances, ct);
+            if (instance is null) return Results.NotFound();
+
+            // Derive the concrete old/new folders from the instance base (resolving a
+            // share alias / profile once), then dry-run the pairing to see what lines up.
+            string oldFolder, newFolder;
+            try
+            {
+                string basePath = shareResolver.Resolve(instance.BasePath, inlineCredentials: null, credentialProfile: instance.CredentialProfile).Path;
+                oldFolder = InstanceFolders.Old(basePath);
+                newFolder = InstanceFolders.New(basePath);
+            }
+            catch (NetworkConfigurationException ex)
+            {
+                return Results.Ok(new InstanceReadiness(false, 0, 0, 0, 0, 0, [], [], false, ex.Message));
+            }
+
+            var pairing = await discovery.PreviewPairingAsync(
+                oldFolder, newFolder,
+                oldInlineCredentials: null, oldCredentialProfile: instance.CredentialProfile,
+                newInlineCredentials: null, newCredentialProfile: instance.CredentialProfile,
+                searchPattern: "*.pdf", recursive: true, sampleSize: sampleSize ?? 20, ct: ct);
+
+            int oldCount = pairing.Matched + pairing.OnlyInOld;
+            int newCount = pairing.Matched + pairing.OnlyInNew;
+            bool ready = pairing.Reachable && oldCount > 0 && newCount > 0;
+
+            return Results.Ok(new InstanceReadiness(
+                pairing.Reachable, oldCount, newCount, pairing.Matched, pairing.OnlyInOld, pairing.OnlyInNew,
+                pairing.SampleOnlyInOld, pairing.SampleOnlyInNew, ready, pairing.Error));
+        }).WithSummary("Readiness for a batch: how old/new pair up and whether a job may be submitted")
+          .Produces<InstanceReadiness>().ProducesProblem(StatusCodes.Status404NotFound);
     }
 
     private static async Task<ComparisonInstance?> ResolveInstanceAsync(
