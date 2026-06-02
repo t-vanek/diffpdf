@@ -65,6 +65,7 @@ public sealed class BatchComparer(IComparisonEngine engine, ILogger<BatchCompare
             StartedAt = startedAt,
             CompletedAt = DateTimeOffset.UtcNow,
             Files = results.OrderBy(r => r.RelativePath).ToList(),
+            Gate = request.Gate,
         };
     }
 

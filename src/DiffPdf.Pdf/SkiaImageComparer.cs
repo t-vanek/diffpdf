@@ -36,6 +36,9 @@ public sealed class SkiaImageComparer : IImageComparer
         long diffPixels = 0;
         long totalPixels = (long)width * height;
 
+        byte tol = options.EffectivePixelTolerance;
+        int shift = options.EffectiveShiftTolerance;
+
         using var diffBmp = new SKBitmap(width, height);
 
         for (int y = 0; y < height; y++)
@@ -47,11 +50,17 @@ public sealed class SkiaImageComparer : IImageComparer
 
                 // Pixels inside an ignore region never count as different.
                 // Exact match when PixelTolerance == 0; otherwise per-channel tolerance.
-                byte tol = options.EffectivePixelTolerance;
-                bool different = !InIgnore(x, y, ignore)
-                    && (Delta(a.Red, b.Red) > tol
-                        || Delta(a.Green, b.Green) > tol
-                        || Delta(a.Blue, b.Blue) > tol);
+                bool different = !InIgnore(x, y, ignore) && !ColorClose(a, b, tol);
+
+                // Shift tolerance: a differing pixel that is mutually explained by a
+                // matching pixel within `shift` px in the other image is just a
+                // sub-pixel/anti-aliasing shift, not a real change.
+                if (different && shift > 0
+                    && NeighborhoodMatch(oldBmp, x, y, shift, b, tol)
+                    && NeighborhoodMatch(newBmp, x, y, shift, a, tol))
+                {
+                    different = false;
+                }
 
                 if (different)
                 {
@@ -87,6 +96,20 @@ public sealed class SkiaImageComparer : IImageComparer
     }
 
     private static int Delta(byte a, byte b) => Math.Abs(a - b);
+
+    private static bool ColorClose(SKColor a, SKColor b, byte tol) =>
+        Delta(a.Red, b.Red) <= tol && Delta(a.Green, b.Green) <= tol && Delta(a.Blue, b.Blue) <= tol;
+
+    /// <summary>True if any pixel within <paramref name="radius"/> of (x,y) matches <paramref name="target"/>.</summary>
+    private static bool NeighborhoodMatch(SKBitmap bmp, int x, int y, int radius, SKColor target, byte tol)
+    {
+        int x0 = Math.Max(0, x - radius), x1 = Math.Min(bmp.Width - 1, x + radius);
+        int y0 = Math.Max(0, y - radius), y1 = Math.Min(bmp.Height - 1, y + radius);
+        for (int yy = y0; yy <= y1; yy++)
+            for (int xx = x0; xx <= x1; xx++)
+                if (ColorClose(bmp.GetPixel(xx, yy), target, tol)) return true;
+        return false;
+    }
 
     private static bool InIgnore(int x, int y, IReadOnlyList<RectangleD> rects)
     {

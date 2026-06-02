@@ -15,6 +15,39 @@ public sealed record BatchComparisonRequest
 
     /// <summary>Maximum number of file pairs compared concurrently. 0 = processor count.</summary>
     public int MaxDegreeOfParallelism { get; init; } = 0;
+
+    /// <summary>Optional pass/fail criteria for CI gating. Null = no gating.</summary>
+    public BatchGate? Gate { get; init; }
+}
+
+/// <summary>
+/// Pass/fail thresholds for a batch run, for use as a CI gate. A null limit
+/// means "no limit". <see cref="FailOnAnyDifference"/> forces zero tolerance for
+/// differing files.
+/// </summary>
+public sealed record BatchGate
+{
+    public bool FailOnAnyDifference { get; init; }
+    public int? MaxDifferingFiles { get; init; }
+    public int? MaxErrors { get; init; }
+    public int? MaxFilesWithContentErrors { get; init; }
+
+    public IReadOnlyList<string> Evaluate(int differing, int errors, int filesWithContentErrors)
+    {
+        var violations = new List<string>();
+
+        int maxDiff = FailOnAnyDifference ? 0 : MaxDifferingFiles ?? int.MaxValue;
+        if (differing > maxDiff)
+            violations.Add($"differing files {differing} exceeds limit {maxDiff}");
+
+        if (errors > (MaxErrors ?? int.MaxValue))
+            violations.Add($"errored files {errors} exceeds limit {MaxErrors}");
+
+        if (filesWithContentErrors > (MaxFilesWithContentErrors ?? int.MaxValue))
+            violations.Add($"files with content errors {filesWithContentErrors} exceeds limit {MaxFilesWithContentErrors}");
+
+        return violations;
+    }
 }
 
 public enum FilePairStatus
@@ -57,6 +90,9 @@ public sealed record BatchComparisonReport
 
     public IReadOnlyList<FilePairResult> Files { get; init; } = [];
 
+    /// <summary>Gate evaluated against this report; null = no gating.</summary>
+    public BatchGate? Gate { get; init; }
+
     public int Total => Files.Count;
     public int Identical => Files.Count(f => f.Status == FilePairStatus.Identical);
     public int Differing => Files.Count(f => f.Status == FilePairStatus.Differs);
@@ -66,4 +102,11 @@ public sealed record BatchComparisonReport
 
     /// <summary>Files containing at least one detected content error.</summary>
     public int FilesWithContentErrors => Files.Count(f => f.ContentErrorCount > 0);
+
+    /// <summary>Gate violations for this run; empty when there is no gate or it passed.</summary>
+    public IReadOnlyList<string> GateViolations =>
+        Gate?.Evaluate(Differing, Errors, FilesWithContentErrors) ?? [];
+
+    /// <summary>True when no gate is configured or all its criteria are satisfied.</summary>
+    public bool Passed => GateViolations.Count == 0;
 }

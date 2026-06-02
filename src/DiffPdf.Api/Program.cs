@@ -15,10 +15,19 @@ Log.Logger = new LoggerConfiguration().WriteTo.Console().CreateBootstrapLogger()
 
 var builder = WebApplication.CreateBuilder(args);
 
+// File sink path is env-driven so logs can live on a mounted volume (e.g. /data/logs
+// in Docker) and survive container restarts. Console + levels stay in appsettings.
+string logDirectory = Environment.GetEnvironmentVariable("DIFFPDF_LOG_DIR") ?? "logs";
+
 builder.Services.AddSerilog((services, loggerConfiguration) => loggerConfiguration
     .ReadFrom.Configuration(builder.Configuration)
     .ReadFrom.Services(services)
-    .Enrich.FromLogContext());
+    .Enrich.FromLogContext()
+    .WriteTo.File(
+        Path.Combine(logDirectory, "diffpdf-.log"),
+        rollingInterval: RollingInterval.Day,
+        retainedFileCountLimit: 14,
+        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}"));
 
 builder.Services.ConfigureHttpJsonOptions(o =>
 {
@@ -93,6 +102,36 @@ app.MapGet("/api/jobs/{id:guid}/report", async (Guid id, IJobStore jobStore, Can
     if (job.Report is null)
         return Results.Json(new { status = job.Status.ToString(), message = "Report not ready." }, statusCode: 409);
     return Results.Ok(job.Report);
+});
+
+// --- CI gate: pass/fail verdict (200 = passed, 422 = failed) ---
+app.MapGet("/api/jobs/{id:guid}/result", async (Guid id, IJobStore jobStore, CancellationToken ct) =>
+{
+    var job = await jobStore.GetAsync(id, ct);
+    if (job is null) return Results.NotFound();
+    if (job.Report is null)
+        return Results.Json(new { status = job.Status.ToString(), message = "Report not ready." }, statusCode: 409);
+
+    var report = job.Report;
+    var payload = new
+    {
+        passed = report.Passed,
+        gated = report.Gate is not null,
+        violations = report.GateViolations,
+        summary = new
+        {
+            report.Total,
+            report.Identical,
+            report.Differing,
+            report.OnlyInOld,
+            report.OnlyInNew,
+            report.Errors,
+            report.FilesWithContentErrors,
+        },
+    };
+
+    // Unprocessable Entity is a convenient non-2xx for `curl --fail` CI gating.
+    return report.Passed ? Results.Ok(payload) : Results.Json(payload, statusCode: 422);
 });
 
 // --- Artifact download (highlighted diff PDFs) ---

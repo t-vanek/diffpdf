@@ -31,6 +31,7 @@ COPY --from=build /app ./
 
 ENV ASPNETCORE_URLS=http://+:8080
 ENV DIFFPDF_ARTIFACT_ROOT=/data/artifacts
+ENV DIFFPDF_LOG_DIR=/data/logs
 EXPOSE 8080
 VOLUME ["/data"]
 

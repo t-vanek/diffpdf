@@ -34,4 +34,14 @@ public class StrictnessTests
     {
         Assert.Equal(0.0, new ComparisonOptions { Strictness = Strictness.Exact }.EffectiveVisualThreshold);
     }
+
+    [Theory]
+    [InlineData(Strictness.Exact, 0)]
+    [InlineData(Strictness.Strict, 0)]
+    [InlineData(Strictness.Balanced, 1)]
+    [InlineData(Strictness.Lenient, 2)]
+    public void ShiftTolerance_DerivesFromStrictness(Strictness level, int expected)
+    {
+        Assert.Equal(expected, new ComparisonOptions { Strictness = level }.EffectiveShiftTolerance);
+    }
 }

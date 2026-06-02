@@ -71,6 +71,7 @@ writer converts to pixels at render time.
 | `GET`  | `/api/jobs` | List jobs. |
 | `GET`  | `/api/jobs/{id}` | Job status + progress. |
 | `GET`  | `/api/jobs/{id}/report` | Aggregate JSON report (`409` until ready). |
+| `GET`  | `/api/jobs/{id}/result` | CI gate verdict: `200` if passed, `422` if the gate failed. |
 | `GET`  | `/api/jobs/{id}/artifacts/{**path}` | Download a highlighted diff PDF. |
 
 OpenAPI document is served at `/openapi/v1.json`.
@@ -119,6 +120,7 @@ curl http://localhost:8080/api/jobs/<id>/report
 | `pixelTolerance` | *(preset)* | Override per-channel tolerance (0-255); `0` = exact pixel match. |
 | `visualThreshold` | *(preset)* | Override min differing-pixel fraction to flag a page; `0` flags a single pixel. |
 | `textDifferenceThreshold` | *(preset)* | Override min changed-word fraction to flag text; `0` flags any change. |
+| `shiftTolerance` | *(preset)* | Pixel radius for absorbing sub-pixel/anti-aliasing shifts; `0` = strict positional. |
 | `visualClusterCellSize` | `24` | Highlight cluster size (px); `1` = per-pixel regions. |
 | `alignPages` | `true` | Align pages by content (detect insert/delete). |
 | `pageMatchThreshold` | `0.2` | Min word overlap to treat two pages as the same page changed (vs add+remove). |
@@ -151,6 +153,26 @@ every report. Exclude it by area and/or by text pattern:
 
 `unit` is `Fraction` (0-1 of the page) or `Points`; `pages` (optional) limits a
 region to specific page numbers.
+
+#### CI gate (batch pass/fail)
+
+Add a `gate` to a batch request to turn the run into a pass/fail check. The
+`GET /api/jobs/{id}/result` endpoint then returns `200` when the run passes and
+`422` when it fails — ideal for `curl --fail` in a pipeline.
+
+```jsonc
+{
+  "oldFolder": "/pdfs/old",
+  "newFolder": "/pdfs/new",
+  "gate": {
+    "failOnAnyDifference": true,   // or set maxDifferingFiles
+    "maxErrors": 0,
+    "maxFilesWithContentErrors": 0
+  }
+}
+```
+
+A null limit means "no limit"; the report exposes `passed` and `gateViolations`.
 | `produceHighlightedPdf` | `true` | Emit diff PDF for differing files. |
 | `highlightLayout` | `SideBySide` | `SideBySide` (old left / new right) or `Single` (changed side only). |
 | `renderer` | `Ghostscript` | `Ghostscript` or `Pdfium`. |
@@ -194,6 +216,9 @@ section). Out of the box it writes structured logs to the console and to a
 daily-rolling file under `logs/` (14 days retained), enriches every event with
 the source context and an `Application` property, and logs one summary line per
 HTTP request. Adjust sinks/levels in `appsettings.json` — no code change needed.
+
+The file-log directory is set by `DIFFPDF_LOG_DIR` (default `logs/`); the Docker
+image points it at `/data/logs` so logs persist on the mounted volume.
 
 ## Licensing note
 

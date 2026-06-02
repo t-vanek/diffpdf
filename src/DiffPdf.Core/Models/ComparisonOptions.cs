@@ -59,6 +59,13 @@ public sealed record ComparisonOptions
     /// </summary>
     public double? TextDifferenceThreshold { get; init; }
 
+    /// <summary>
+    /// Radius (px) within which a differing pixel that has a matching pixel in
+    /// the other image is treated as merely shifted (anti-aliasing / sub-pixel
+    /// movement) rather than a real change. 0 = strict positional comparison.
+    /// </summary>
+    public int? ShiftTolerance { get; init; }
+
     // ---- Effective tolerances (preset + overrides) ----
 
     public byte EffectivePixelTolerance => PixelTolerance ?? Strictness switch
@@ -81,6 +88,13 @@ public sealed record ComparisonOptions
     {
         Strictness.Lenient => 0.02,
         _ => 0.0,
+    };
+
+    public int EffectiveShiftTolerance => ShiftTolerance ?? Strictness switch
+    {
+        Strictness.Lenient => 2,
+        Strictness.Balanced => 1,
+        _ => 0,
     };
 
     /// <summary>
