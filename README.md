@@ -41,6 +41,14 @@ a chybové hlášky vyrenderované přímo do PDF.
 - **Hromadné porovnání složek** — páruje soubory podle relativní cesty, běží
   paralelně, klasifikuje každou dvojici jako `Identical` / `Differs` /
   `OnlyInOld` / `OnlyInNew` / `Error`.
+- **Větve, instance a struktura složek** — scope je hierarchie **větev →
+  instance**, kde instance nese `basePath` se třemi podsložkami `old` / `new` /
+  `reports`. Server strukturu **zjistí, založí a opraví** (při startu serveru,
+  při zakládání instance i přes explicitní endpoint) a umí vrátit počet PDF
+  i kompletní seznam souborů v `old`/`new`.
+- **Readiness (pre-flight)** — `GET …/readiness` nad instancí ověří, že je
+  reálně co porovnávat (dostupnost cesty, počet PDF, spárování `old`/`new`),
+  takže prázdná nebo nekompletní dávka se zachytí dřív, než se vůbec spustí.
 - **Síťové složky** — porovnání lokálních, namountovaných nebo UNC
   (`\\server\share`) složek; přihlašovací údaje a sdílení se konfigurují
   centrálně (`Network` v appsettings: credential profily + pojmenované aliasy
@@ -49,8 +57,14 @@ a chybové hlášky vyrenderované přímo do PDF.
 - **Discovery režim** — suchý běh přes `/api/v1/discovery`: ověř existenci scope
   (větev + instance), dostupnost cesty, počet PDF a párování old/new
   ještě než odešleš dávku.
-- **Asynchronní job API** — odeslání dávky, polling stavu, stažení reportu a
-  artefaktů.
+- **Řízení životního cyklu úlohy** — vytvoření a spuštění jsou oddělené: dávka
+  vznikne jako `Draft`, samostatný `start` ji po pre-flight kontrole zařadí do
+  fronty. Běžící úlohu lze **pozastavit, obnovit, zrušit i restartovat**;
+  k dispozici je polling stavu/progressu, seznam úloh s filtry a stažení reportu
+  i artefaktů.
+- **Klientské SDK (.NET)** — typovaný `HttpClient` klient (`DiffPdf.Client`,
+  balitelný jako NuGet) pokrývající celý flow; registrace přes
+  `AddDiffPdfClient(...)` a celá dávka jedním voláním `RunBatchAsync(...)`.
 - **Volitelná OAuth2 autentizace** — vestavěný OpenIddict server s
   client-credentials (M2M) flow vydávajícím JWT bearer tokeny; zapíná se přes
   `Auth:Enabled`.
@@ -95,9 +109,10 @@ kreslení převede na pixely.
 
 ```
 Klient → POST /api/v1/batch
-   │  validace scope (větev + instance), kontrola složek
+   │  validace scope (větev + instance) → job vzniká jako Draft (nic se nepublikuje)
    ▼
-[API]  vloží job do PostgreSQL  +  publikuje RunBatchComparison   ← jedna transakce (outbox)
+Klient → POST /api/v1/jobs/{id}/start
+   │  pre-flight „je co porovnávat" → Draft→Queued + publikuje RunBatchComparison (outbox)
    ▼
 RabbitMQ  ──►  [Worker / handler]
    │   RunBatchComparison  → TryStart (Queued→Running, optimistic concurrency)
@@ -119,8 +134,15 @@ Principy:
 - **Wolverine** řídí publish/consume s durable inbox/outbox v PostgreSQL. Handler
   je idempotentní: opakovaně doručená zpráva najde job, který už není `Queued`, a
   přeskočí.
-- **Transakční outbox** — vložení jobu a zařazení příkazu proběhne v jedné EF
-  transakci; job nikdy neexistuje bez své zprávy a naopak.
+- **Oddělený create → start** — `POST /batch` jen založí job jako `Draft` (žádná
+  zpráva). Teprve `POST /jobs/{id}/start` po pre-flight kontrole („je co
+  porovnávat") přepne `Draft → Queued` a ve **stejné EF transakci** zařadí
+  `RunBatchComparison` do outboxu — od té chvíle job nikdy neexistuje bez své
+  zprávy a naopak.
+- **Pozastavení a obnovení (graceful)** — `pause` přepne běžící job na `Paused`;
+  handlery jsou kooperativní (před prací zkontrolují stav a `Paused` dávku nechají
+  být), takže rozběhnuté porovnání jedné dvojice doběhne, ale další se neberou.
+  `resume` vrátí job do `Running` a znovu rozešle nedokončené `file_pair_tasks`.
 - **Klasifikace retry** — transientní chyby (IO/síť/broker) se opakují s
   cooldownem, pak jdou do dead-letteru; permanentní (špatný request, chybějící
   složka, poškozený vstup) se zapíšou jako `Failed` a potvrdí (neopakují se).
