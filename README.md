@@ -421,6 +421,8 @@ Server umí strukturu `old`/`new`/`reports` pod `basePath` **zjistit i srovnat**
 
 - `GET …/instances/{key}/structure` — jen **zjistí** (bez zápisu): každá podsložka je
   `Present` / `Missing` / `WrongType` (na místě složky je soubor); `ok` je `true`, když nic nechybí.
+  U vstupních složek `old`/`new` navíc vrací **`pdfCount`** (0 = prázdná, jinak počet PDF rekurzivně);
+  s **`?includeFiles=true`** přidá kompletní seznam `files` (relativní cesty). `reports` se nelistuje.
 - `POST …/instances/{key}/structure` — **založí/opraví**: chybějící → `Created`; soubor
   kolidující s názvem se **smaže a nahradí složkou** (`Repaired`, s warning logem); existující → `Present`.
 - **Při zakládání instance** se ensure spustí automaticky (vypneš `?ensureStructure=false`);

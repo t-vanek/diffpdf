@@ -27,7 +27,7 @@ public sealed class InstanceStructureHostedService(
             {
                 foreach (var instance in await instances.ListAsync(branch.Id, cancellationToken))
                 {
-                    var report = await structure.EnsureAsync(instance.BasePath, instance.CredentialProfile, cancellationToken);
+                    var report = await structure.EnsureAsync(instance.BasePath, instance.CredentialProfile, ct: cancellationToken);
                     if (report.Ok)
                     {
                         ensured++;

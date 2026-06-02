@@ -19,7 +19,14 @@ public enum StructureItemState
 }
 
 /// <summary>State of one required subfolder after inspecting or ensuring it.</summary>
-public sealed record StructureItem(string Name, string Path, StructureItemState State, string? Detail = null);
+public sealed record StructureItem(string Name, string Path, StructureItemState State, string? Detail = null)
+{
+    /// <summary>Number of *.pdf files (recursive) in the folder; null for reports or a folder that does not exist. 0 = empty.</summary>
+    public int? PdfCount { get; init; }
+
+    /// <summary>Complete list of *.pdf relative paths; populated only when the caller requested files.</summary>
+    public IReadOnlyList<string>? Files { get; init; }
+}
 
 /// <summary>What inspecting / ensuring an instance's old/new/reports skeleton found or did.</summary>
 public sealed record InstanceStructureReport(
@@ -40,11 +47,15 @@ public sealed record InstanceStructureReport(
 /// </summary>
 public interface IInstanceStructureService
 {
-    /// <summary>Read-only: reports whether each required subfolder is present / missing / wrong-typed.</summary>
-    Task<InstanceStructureReport> InspectAsync(string basePath, string? credentialProfile, CancellationToken ct = default);
+    /// <summary>
+    /// Read-only: reports whether each required subfolder is present / missing / wrong-typed, and how
+    /// many PDFs the old/new input folders hold. Pass <paramref name="includeFiles"/> to also return the
+    /// complete file list for old/new.
+    /// </summary>
+    Task<InstanceStructureReport> InspectAsync(string basePath, string? credentialProfile, bool includeFiles = false, CancellationToken ct = default);
 
     /// <summary>Creates any missing subfolder and replaces a file occupying a subfolder name (destructive).</summary>
-    Task<InstanceStructureReport> EnsureAsync(string basePath, string? credentialProfile, CancellationToken ct = default);
+    Task<InstanceStructureReport> EnsureAsync(string basePath, string? credentialProfile, bool includeFiles = false, CancellationToken ct = default);
 }
 
 /// <inheritdoc />
@@ -56,13 +67,13 @@ public sealed class InstanceStructureService(
     /// <summary>The fixed subfolders every instance base must contain.</summary>
     public static readonly IReadOnlyList<string> RequiredSubfolders = ["old", "new", "reports"];
 
-    public Task<InstanceStructureReport> InspectAsync(string basePath, string? credentialProfile, CancellationToken ct = default) =>
-        RunAsync(basePath, credentialProfile, ensure: false, ct);
+    public Task<InstanceStructureReport> InspectAsync(string basePath, string? credentialProfile, bool includeFiles = false, CancellationToken ct = default) =>
+        RunAsync(basePath, credentialProfile, ensure: false, includeFiles, ct);
 
-    public Task<InstanceStructureReport> EnsureAsync(string basePath, string? credentialProfile, CancellationToken ct = default) =>
-        RunAsync(basePath, credentialProfile, ensure: true, ct);
+    public Task<InstanceStructureReport> EnsureAsync(string basePath, string? credentialProfile, bool includeFiles = false, CancellationToken ct = default) =>
+        RunAsync(basePath, credentialProfile, ensure: true, includeFiles, ct);
 
-    private Task<InstanceStructureReport> RunAsync(string basePath, string? credentialProfile, bool ensure, CancellationToken ct) =>
+    private Task<InstanceStructureReport> RunAsync(string basePath, string? credentialProfile, bool ensure, bool includeFiles, CancellationToken ct) =>
         Task.Run(() =>
         {
             ResolvedFolder resolved;
@@ -88,7 +99,17 @@ public sealed class InstanceStructureService(
                 {
                     ct.ThrowIfCancellationRequested();
                     string path = Path.Combine(connection.Path, name);
-                    items.Add(ensure ? Ensure(path, name) : Inspect(path, name));
+                    var item = ensure ? Ensure(path, name) : Inspect(path, name);
+
+                    // Report PDF content of the input folders (old/new) when they exist.
+                    if (name is "old" or "new" &&
+                        item.State is StructureItemState.Present or StructureItemState.Created or StructureItemState.Repaired)
+                    {
+                        var (count, files) = CountPdfs(path, includeFiles, ct);
+                        item = item with { PdfCount = count, Files = files };
+                    }
+
+                    items.Add(item);
                 }
 
                 return new InstanceStructureReport(true, resolved.Path, items, null);
@@ -127,5 +148,21 @@ public sealed class InstanceStructureService(
 
         Directory.CreateDirectory(path);
         return new StructureItem(name, path, StructureItemState.Created);
+    }
+
+    /// <summary>Counts *.pdf files (recursive) under a folder; collects their relative paths only when requested.</summary>
+    private static (int Count, IReadOnlyList<string>? Files) CountPdfs(string folder, bool includeFiles, CancellationToken ct)
+    {
+        int count = 0;
+        List<string>? files = includeFiles ? [] : null;
+
+        foreach (var file in Directory.EnumerateFiles(folder, "*.pdf", SearchOption.AllDirectories))
+        {
+            ct.ThrowIfCancellationRequested();
+            count++;
+            files?.Add(Path.GetRelativePath(folder, file).Replace('\\', '/'));
+        }
+
+        return (count, files);
     }
 }

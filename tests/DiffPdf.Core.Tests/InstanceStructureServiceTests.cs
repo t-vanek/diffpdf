@@ -87,6 +87,60 @@ public class InstanceStructureServiceTests : IDisposable
         Assert.Contains("Unknown share", report.Error);
     }
 
+    [Fact]
+    public async Task Ensure_ReportsEmptyInputFolders_NoFileList()
+    {
+        string b = Base("content-empty");
+
+        var report = await Service().EnsureAsync(b, null);
+
+        Assert.Equal(0, report.Items.Single(i => i.Name == "old").PdfCount);
+        Assert.Equal(0, report.Items.Single(i => i.Name == "new").PdfCount);
+        Assert.Null(report.Items.Single(i => i.Name == "old").Files);    // includeFiles default false
+        Assert.Null(report.Items.Single(i => i.Name == "reports").PdfCount); // not an input folder
+    }
+
+    [Fact]
+    public async Task Inspect_CountsPdfsRecursively_AndListsWhenRequested()
+    {
+        string b = Base("content-full");
+        Directory.CreateDirectory(Path.Combine(b, "old", "sub"));
+        Directory.CreateDirectory(Path.Combine(b, "new"));
+        File.WriteAllText(Path.Combine(b, "old", "a.pdf"), "%PDF-1.4");
+        File.WriteAllText(Path.Combine(b, "old", "sub", "bb.pdf"), "%PDF-1.4");
+        File.WriteAllText(Path.Combine(b, "old", "notes.txt"), "x");
+
+        var report = await Service().InspectAsync(b, null, includeFiles: true);
+
+        var old = report.Items.Single(i => i.Name == "old");
+        Assert.Equal(2, old.PdfCount); // only *.pdf, recursive
+        Assert.NotNull(old.Files);
+        Assert.Contains("a.pdf", old.Files!);
+        Assert.Contains("sub/bb.pdf", old.Files!);
+        Assert.DoesNotContain(old.Files!, f => f.EndsWith(".txt"));
+
+        var @new = report.Items.Single(i => i.Name == "new");
+        Assert.Equal(0, @new.PdfCount);
+        Assert.NotNull(@new.Files);  // includeFiles true -> empty list, not null
+        Assert.Empty(@new.Files!);
+
+        Assert.Null(report.Items.Single(i => i.Name == "reports").PdfCount);
+    }
+
+    [Fact]
+    public async Task Inspect_WithoutIncludeFiles_ReportsCount_ButOmitsList()
+    {
+        string b = Base("content-countonly");
+        Directory.CreateDirectory(Path.Combine(b, "old"));
+        File.WriteAllText(Path.Combine(b, "old", "a.pdf"), "%PDF-1.4");
+
+        var report = await Service().InspectAsync(b, null); // includeFiles default false
+
+        var old = report.Items.Single(i => i.Name == "old");
+        Assert.Equal(1, old.PdfCount);
+        Assert.Null(old.Files);
+    }
+
     public void Dispose()
     {
         try { if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true); }

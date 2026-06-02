@@ -69,7 +69,7 @@ public static class ScopeEndpoints
             // unreachable share does not undo the (valid) instance record.
             InstanceStructureReport? report = null;
             if (ensureStructure != false)
-                report = await structure.EnsureAsync(created.BasePath, created.CredentialProfile, ct);
+                report = await structure.EnsureAsync(created.BasePath, created.CredentialProfile, ct: ct);
 
             return Results.Created(
                 $"/api/v1/branches/{branchKey}/instances/{created.Key}",
@@ -98,24 +98,26 @@ public static class ScopeEndpoints
 
         group.MapGet("/{branchKey}/instances/{instanceKey}/structure", async (
             string branchKey, string instanceKey,
-            IBranchStore branches, IInstanceStore instances, IInstanceStructureService structure, CancellationToken ct) =>
+            IBranchStore branches, IInstanceStore instances, IInstanceStructureService structure,
+            bool? includeFiles, CancellationToken ct) =>
         {
             var instance = await ResolveInstanceAsync(branchKey, instanceKey, branches, instances, ct);
             return instance is null
                 ? Results.NotFound()
-                : Results.Ok(await structure.InspectAsync(instance.BasePath, instance.CredentialProfile, ct));
-        }).WithSummary("Inspect the instance's old/new/reports structure")
+                : Results.Ok(await structure.InspectAsync(instance.BasePath, instance.CredentialProfile, includeFiles ?? false, ct));
+        }).WithSummary("Inspect the structure + old/new PDF content (?includeFiles=true returns the full file list)")
           .Produces<InstanceStructureReport>().ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPost("/{branchKey}/instances/{instanceKey}/structure", async (
             string branchKey, string instanceKey,
-            IBranchStore branches, IInstanceStore instances, IInstanceStructureService structure, CancellationToken ct) =>
+            IBranchStore branches, IInstanceStore instances, IInstanceStructureService structure,
+            bool? includeFiles, CancellationToken ct) =>
         {
             var instance = await ResolveInstanceAsync(branchKey, instanceKey, branches, instances, ct);
             return instance is null
                 ? Results.NotFound()
-                : Results.Ok(await structure.EnsureAsync(instance.BasePath, instance.CredentialProfile, ct));
-        }).WithSummary("Create/repair the instance's old/new/reports structure (missing -> created, file collision -> replaced)")
+                : Results.Ok(await structure.EnsureAsync(instance.BasePath, instance.CredentialProfile, includeFiles ?? false, ct));
+        }).WithSummary("Create/repair the structure (missing -> created, file collision -> replaced); reports old/new PDF content")
           .Produces<InstanceStructureReport>().ProducesProblem(StatusCodes.Status404NotFound);
     }
 
