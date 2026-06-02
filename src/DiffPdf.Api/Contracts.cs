@@ -27,6 +27,41 @@ public sealed record DiscoverFolderRequest
 
     /// <summary>Maximum number of relative paths returned as a sample.</summary>
     public int SampleSize { get; init; } = 20;
+
+    /// <summary>
+    /// Optional business-instance key. When set (together with <see cref="ProjectKey"/>),
+    /// the probe also verifies the scope exists. Leave both null to skip the scope check.
+    /// </summary>
+    public string? BusinessInstanceKey { get; init; }
+
+    /// <summary>Optional project key under the business instance; validated alongside it.</summary>
+    public string? ProjectKey { get; init; }
+}
+
+/// <summary>Result of validating that a business-instance/project scope exists.</summary>
+public sealed record ScopeCheck(
+    string BusinessInstanceKey,
+    bool BusinessInstanceExists,
+    string? BusinessInstanceName,
+    string ProjectKey,
+    bool ProjectExists,
+    string? ProjectName)
+{
+    /// <summary>True only when both the instance and the project under it exist.</summary>
+    public bool Ok => BusinessInstanceExists && ProjectExists;
+}
+
+/// <summary>A folder probe enriched with an optional scope check and an overall readiness verdict.</summary>
+public sealed record FolderDiscoveryResult(ScopeCheck? Scope, FolderDiscovery Folder)
+{
+    /// <summary>Whether the folder contains at least one matching PDF.</summary>
+    public bool HasPdfs => Folder.FileCount > 0;
+
+    /// <summary>
+    /// True when the folder is reachable and contains PDFs, and — if a scope was
+    /// requested — the instance and project both exist. The "OK to submit a batch" signal.
+    /// </summary>
+    public bool Ready => Folder.Reachable && HasPdfs && (Scope?.Ok ?? true);
 }
 
 /// <summary>Dry-run a batch: how an old/new folder pair lines up, without comparing.</summary>

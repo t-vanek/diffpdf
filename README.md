@@ -46,8 +46,9 @@ a chybové hlášky vyrenderované přímo do PDF.
   centrálně (`Network` v appsettings: credential profily + pojmenované aliasy
   `share:<jméno>`), nebo volitelně inline per složka (Windows `WNetAddConnection2`,
   Linux CIFS mount).
-- **Discovery režim** — suchý běh přes `/api/v1/discovery`: ověř dostupnost cesty,
-  počet PDF a párování old/new ještě než odešleš dávku.
+- **Discovery režim** — suchý běh přes `/api/v1/discovery`: ověř existenci scope
+  (business instance + projekt), dostupnost cesty, počet PDF a párování old/new
+  ještě než odešleš dávku.
 - **Asynchronní job API** — odeslání dávky, polling stavu, stažení reportu a
   artefaktů.
 - **Volitelná OAuth2 autentizace** — vestavěný OpenIddict server s
@@ -195,7 +196,7 @@ Všechny aplikační cesty jsou pod prefixem **`/api/v1`**.
 | `POST` | `/api/v1/jobs/{id}/retry` | Znovu spustí failed file-pairs hotové úlohy. |
 | `GET`  | `/api/v1/jobs/{id}/artifacts/{**path}` | Stažení zvýrazněného diff-PDF. |
 | `GET`  | `/api/v1/discovery/shares` | Výpis nakonfigurovaných sdílení a jmen credential profilů. |
-| `POST` | `/api/v1/discovery/folder` | Probe složky — dostupnost + počet PDF + ukázka cest. |
+| `POST` | `/api/v1/discovery/folder` | Probe složky — dostupnost + počet PDF + ukázka cest; volitelně ověří i scope (instance/projekt) a vrátí `ready`. |
 | `POST` | `/api/v1/discovery/preview` | Suchý běh párování old/new (bez porovnání). |
 
 OpenAPI dokument je na `/openapi/v1.json`, interaktivní **Swagger UI** na `/swagger`.
@@ -394,6 +395,12 @@ curl -X POST http://localhost:8080/api/v1/discovery/folder \
   -H 'Content-Type: application/json' \
   -d '{ "folder": "share:reports/baseline" }'
 
+# pre-flight: ověř i existenci scope (business instance + projekt) k téže složce
+curl -X POST http://localhost:8080/api/v1/discovery/folder \
+  -H 'Content-Type: application/json' \
+  -d '{ "folder": "share:reports/baseline",
+        "businessInstanceKey": "Alfa", "projectKey": "LamaEnergyAlfa" }'
+
 # suchý běh párování old vs new — kolik matched / onlyInOld / onlyInNew
 curl -X POST http://localhost:8080/api/v1/discovery/preview \
   -H 'Content-Type: application/json' \
@@ -402,6 +409,11 @@ curl -X POST http://localhost:8080/api/v1/discovery/preview \
 
 Discovery přijímá stejné odkazy na sdílení/profily jako dávka. Nedostupná cesta
 nebo neznámý alias vrátí `reachable: false` s důvodem v `error`, ne chybu 500.
+
+Když do `/discovery/folder` přidáš `businessInstanceKey` + `projectKey` (oba, nebo
+žádný), odpověď navíc nese `scope` s příznaky `businessInstanceExists` /
+`projectExists` a celkový `ready` (složka dostupná, obsahuje PDF a scope existuje)
+— jediný pre-flight check, než pošleš dávku.
 
 ### Business instance, projekty a struktura úložiště
 
