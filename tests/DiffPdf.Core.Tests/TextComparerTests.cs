@@ -6,7 +6,7 @@ namespace DiffPdf.Core.Tests;
 
 public class TextComparerTests
 {
-    private static PageText Page(int number, params string[] words) => new()
+    internal static PageText Page(int number, params string[] words) => new()
     {
         PageNumber = number,
         Width = 612,
@@ -15,44 +15,31 @@ public class TextComparerTests
     };
 
     [Fact]
-    public void IdenticalPages_HaveNoDifferences()
+    public void IdenticalPage_HasNoDifferences()
     {
         var cmp = new TextComparer();
-        var result = cmp.Compare(
-            [Page(1, "hello", "world")],
-            [Page(1, "hello", "world")],
-            new ComparisonOptions());
+        var diff = cmp.ComparePage(Page(1, "hello", "world"), Page(1, "hello", "world"), new ComparisonOptions());
 
-        var page = Assert.Single(result);
-        Assert.False(page.IsDifferent);
-        Assert.Empty(page.Regions);
+        Assert.Equal(0, diff.Score);
+        Assert.Empty(diff.Regions);
     }
 
     [Fact]
     public void ChangedWord_ProducesAddedAndRemovedRegions()
     {
         var cmp = new TextComparer();
-        var result = cmp.Compare(
-            [Page(1, "hello", "world")],
-            [Page(1, "hello", "there")],
-            new ComparisonOptions());
+        var diff = cmp.ComparePage(Page(1, "hello", "world"), Page(1, "hello", "there"), new ComparisonOptions());
 
-        var page = Assert.Single(result);
-        Assert.True(page.IsDifferent);
-        Assert.Contains(page.Regions, r => r.Kind == DifferenceKind.Removed && r.OldText == "world");
-        Assert.Contains(page.Regions, r => r.Kind == DifferenceKind.Added && r.NewText == "there");
+        Assert.True(diff.Score > 0);
+        Assert.Contains(diff.Regions, r => r.Kind == DifferenceKind.Removed && r.OldText == "world");
+        Assert.Contains(diff.Regions, r => r.Kind == DifferenceKind.Added && r.NewText == "there");
     }
 
     [Fact]
-    public void ExtraPage_IsReportedAsDifferent()
+    public void Similarity_IsOneForIdentical_ZeroForDisjoint()
     {
         var cmp = new TextComparer();
-        var result = cmp.Compare(
-            [Page(1, "a")],
-            [Page(1, "a"), Page(2, "b")],
-            new ComparisonOptions());
-
-        Assert.Equal(2, result.Count);
-        Assert.True(result.First(p => p.PageNumber == 2).IsDifferent);
+        Assert.Equal(1.0, cmp.Similarity(Page(1, "a", "b", "c"), Page(1, "a", "b", "c")));
+        Assert.Equal(0.0, cmp.Similarity(Page(1, "a", "b"), Page(1, "x", "y")));
     }
 }

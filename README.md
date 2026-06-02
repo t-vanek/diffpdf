@@ -4,15 +4,42 @@ A server-side replacement for [diffpdf](https://mark-summerfield.github.io/diffp
 built in **C# / .NET 10** as a REST API. Designed to compare large numbers of
 PDFs in bulk (an `old` folder vs a `new` folder), in addition to single pairs.
 
+**Primary use case — print/report regression testing.** Testers compare a
+freshly generated batch of report PDFs (`new`) against a known-good baseline
+(`old`) to confirm a new build did not break existing printouts. The engine is
+built to surface exactly those regressions: changed content, broken layouts,
+blank pages, and error messages baked into the output.
+
 ## Features
 
 - **Text comparison** — word-level diff with positional highlights (PdfPig).
-- **Visual comparison** — page rendering + pixel/region diff (Ghostscript by
-  default, PDFium as a fallback).
-- **Highlighted diff PDF** — per differing file, a raster diff PDF with
-  added / removed / changed regions colored.
+- **Pixel-level visual comparison** — per-pixel diff with configurable tolerance
+  (down to exact, 0-tolerance matching) and cluster granularity (down to a single
+  pixel); Ghostscript by default, PDFium as a fallback.
+- **Configurable strictness** — an `Exact` / `Strict` / `Balanced` / `Lenient`
+  preset drives the difference-reporting tolerances, each of which can also be
+  overridden individually.
+- **Page alignment** — inserted/removed pages are detected (Needleman–Wunsch over
+  page-text similarity) so they don't cascade into a run of false differences.
+- **Typed page classification** — each page is tagged `TextChanged`,
+  `VisualChanged`, `PageAdded`, `PageRemoved`, `SizeChanged`, `BecameBlank` or
+  `WasBlank`.
+- **Blank page detection** — flags pages that became (or stopped being) blank,
+  inspecting pixels so it works for scanned pages too.
+- **Content-error detection** — scans the rendered text for error messages a
+  report engine may have printed into the PDF (e.g. `subreport error`, `#error`);
+  patterns are configurable.
+- **Ignore dynamic content** — exclude regions (footer date/time, page numbers,
+  watermarks) and/or text patterns (timestamps) from both the text and visual
+  diff, so legitimately changing content doesn't flag every report.
+- **Robust error handling** — corrupt, encrypted, missing or empty PDFs are
+  reported as `Error` with a reason instead of crashing the batch.
+- **Two-sided highlighted diff PDF** — per differing file, a spread with the
+  old page (left, removed content in red) beside the new page (right, added in
+  green, visual changes in orange); header strips are labeled with the side and
+  page number (`OLD p.3` / `NEW p.4`).
 - **Bulk folder comparison** — pairs files by relative path, runs in parallel,
-  classifies each pair as `Identical` / `Differs` / `OnlyInOld` / `OnlyInNew`.
+  classifies each pair as `Identical` / `Differs` / `OnlyInOld` / `OnlyInNew` / `Error`.
 - **Async job API** — submit a batch, poll status, download the report and
   artifacts.
 
@@ -20,14 +47,15 @@ PDFs in bulk (an `old` folder vs a `new` folder), in addition to single pairs.
 
 ```
 DiffPdf.Core         Domain models, abstractions, comparison orchestration
-                     (WordDiff, TextComparer, VisualComparer, ComparisonEngine,
-                      BatchComparer) — no PDF-library dependencies.
+                     (WordDiff, TextComparer, PageAligner, ContentErrorDetector,
+                      IgnoreFilter, ComparisonEngine, BatchComparer) — no
+                      PDF-library dependencies.
 DiffPdf.Pdf          Implementations: PdfPig text extraction, Ghostscript &
-                     PDFium renderers, SkiaSharp image diff, PdfSharp highlight
-                     writer.
+                     PDFium renderers, SkiaSharp pixel diff + blank detector,
+                     PdfSharp side-by-side highlight writer.
 DiffPdf.Persistence  Job store (in-memory for the MVP).
 DiffPdf.Worker       Channel-backed queue + background service.
-DiffPdf.Api          ASP.NET Core Minimal API.
+DiffPdf.Api          ASP.NET Core Minimal API (Serilog, OpenAPI).
 ```
 
 The engine stores all difference regions in **PDF points (bottom-left origin)**
@@ -44,6 +72,7 @@ writer converts to pixels at render time.
 | `GET`  | `/api/jobs` | List jobs. |
 | `GET`  | `/api/jobs/{id}` | Job status + progress. |
 | `GET`  | `/api/jobs/{id}/report` | Aggregate JSON report (`409` until ready). |
+| `GET`  | `/api/jobs/{id}/result` | CI gate verdict: `200` if passed, `422` if the gate failed. |
 | `GET`  | `/api/jobs/{id}/artifacts/{**path}` | Download a highlighted diff PDF. |
 
 OpenAPI document is served at `/openapi/v1.json`.
@@ -88,10 +117,72 @@ curl http://localhost:8080/api/jobs/<id>/report
 | `mode` | `Both` | `Text`, `Visual`, or `Both`. |
 | `pages` | all | `{ "from": 1, "to": 5 }`. |
 | `dpi` | `150` | Visual render resolution. |
-| `pixelTolerance` | `16` | Per-channel tolerance (0-255). |
-| `visualThreshold` | `0.0005` | Min differing-pixel fraction to flag a page. |
+| `strictness` | `Balanced` | Preset: `Exact` / `Strict` / `Balanced` / `Lenient`. Drives the tolerances below. |
+| `pixelTolerance` | *(preset)* | Override per-channel tolerance (0-255); `0` = exact pixel match. |
+| `visualThreshold` | *(preset)* | Override min differing-pixel fraction to flag a page; `0` flags a single pixel. |
+| `textDifferenceThreshold` | *(preset)* | Override min changed-word fraction to flag text; `0` flags any change. |
+| `shiftTolerance` | *(preset)* | Pixel radius for absorbing sub-pixel/anti-aliasing shifts; `0` = strict positional. |
+| `visualClusterCellSize` | `24` | Highlight cluster size (px); `1` = per-pixel regions. |
+| `alignPages` | `true` | Align pages by content (detect insert/delete). |
+| `pageMatchThreshold` | `0.2` | Min word overlap to treat two pages as the same page changed (vs add+remove). |
+| `detectBlankPages` | `true` | Flag blank/non-blank transitions. |
+| `blankPageThreshold` | `0.0002` | Max non-white pixel fraction to count as blank. |
+| `detectContentErrors` | `true` | Scan text for error messages. |
+| `contentErrorPatterns` | see below | Case-insensitive regexes; defaults include `subreport error`, `#error`. |
+| `ignoreRegions` | `[]` | Areas excluded from comparison (see below). |
+| `ignoreTextPatterns` | `[]` | Regexes; matching words are dropped before the text diff. |
 | `produceHighlightedPdf` | `true` | Emit diff PDF for differing files. |
+| `highlightLayout` | `SideBySide` | `SideBySide` (old left / new right) or `Single` (changed side only). |
 | `renderer` | `Ghostscript` | `Ghostscript` or `Pdfium`. |
+
+The single-pair result (`POST /api/comparisons`) returns `outcome`
+(`Compared`/`Failed`), per-document status, a typed per-page breakdown
+(`changes`, `differenceScore`, blank flags, regions) and any `contentErrors`.
+The batch report aggregates counts (`identical`, `differing`, `errors`,
+`filesWithContentErrors`) plus `passed` / `gateViolations`.
+
+#### Ignoring dynamic content
+
+A footer timestamp or page number changes on every run and would otherwise flag
+every report. Exclude it by area and/or by text pattern:
+
+```jsonc
+{
+  "oldPath": "/pdfs/old/report.pdf",
+  "newPath": "/pdfs/new/report.pdf",
+  "options": {
+    "ignoreRegions": [
+      // bottom 8% of every page; coordinates are top-left origin
+      { "area": { "x": 0, "y": 0.92, "width": 1, "height": 0.08 },
+        "unit": "Fraction", "label": "footer" }
+    ],
+    "ignoreTextPatterns": ["\\d{4}-\\d{2}-\\d{2}"]   // ISO dates
+  }
+}
+```
+
+`unit` is `Fraction` (0-1 of the page) or `Points`; `pages` (optional) limits a
+region to specific page numbers.
+
+#### CI gate (batch pass/fail)
+
+Add a `gate` to a batch request to turn the run into a pass/fail check. The
+`GET /api/jobs/{id}/result` endpoint then returns `200` when the run passes and
+`422` when it fails — ideal for `curl --fail` in a pipeline.
+
+```jsonc
+{
+  "oldFolder": "/pdfs/old",
+  "newFolder": "/pdfs/new",
+  "gate": {
+    "failOnAnyDifference": true,   // or set maxDifferingFiles
+    "maxErrors": 0,
+    "maxFilesWithContentErrors": 0
+  }
+}
+```
+
+A null limit means "no limit"; the report exposes `passed` and `gateViolations`.
 
 ## Running
 
@@ -118,6 +209,17 @@ visual mode. Override the artifact directory with `DIFFPDF_ARTIFACT_ROOT`.
 ```bash
 dotnet test
 ```
+
+### Logging
+
+Logging uses **Serilog**, configured in `appsettings.json` (the `Serilog`
+section). Out of the box it writes structured logs to the console and to a
+daily-rolling file under `logs/` (14 days retained), enriches every event with
+the source context and an `Application` property, and logs one summary line per
+HTTP request. Adjust sinks/levels in `appsettings.json` — no code change needed.
+
+The file-log directory is set by `DIFFPDF_LOG_DIR` (default `logs/`); the Docker
+image points it at `/data/logs` so logs persist on the mounted volume.
 
 ## Licensing note
 
