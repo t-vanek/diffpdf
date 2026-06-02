@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\DiffPdf.Core\DiffPdf.Core.csproj" />
+    <ProjectReference Include="..\DiffPdf.Pdf\DiffPdf.Pdf.csproj" />
+    <ProjectReference Include="..\DiffPdf.Persistence\DiffPdf.Persistence.csproj" />
+    <ProjectReference Include="..\DiffPdf.Worker\DiffPdf.Worker.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.8" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+</Project>

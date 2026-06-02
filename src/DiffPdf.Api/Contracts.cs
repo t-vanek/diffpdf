@@ -1,0 +1,36 @@
+using DiffPdf.Core.Models;
+
+namespace DiffPdf.Api;
+
+/// <summary>Request body for comparing a single old/new PDF pair.</summary>
+public sealed record SingleComparisonRequest
+{
+    public required string OldPath { get; init; }
+    public required string NewPath { get; init; }
+    public ComparisonOptions Options { get; init; } = new();
+}
+
+/// <summary>Lightweight job view returned by the API.</summary>
+public sealed record JobSummary
+{
+    public required Guid Id { get; init; }
+    public required string Status { get; init; }
+    public double Progress { get; init; }
+    public int ProcessedCount { get; init; }
+    public int TotalCount { get; init; }
+    public DateTimeOffset CreatedAt { get; init; }
+    public DateTimeOffset? CompletedAt { get; init; }
+    public string? Error { get; init; }
+
+    public static JobSummary From(ComparisonJob job) => new()
+    {
+        Id = job.Id,
+        Status = job.Status.ToString(),
+        Progress = job.Progress,
+        ProcessedCount = job.ProcessedCount,
+        TotalCount = job.TotalCount,
+        CreatedAt = job.CreatedAt,
+        CompletedAt = job.CompletedAt,
+        Error = job.Error,
+    };
+}
