@@ -183,8 +183,10 @@ Všechny aplikační cesty jsou pod prefixem **`/api/v1`**.
 | `*` | `/connect/revocation` | Zneplatnění access tokenu (RFC 7009). |
 | `POST` | `/api/v1/branches` | Vytvoří větev (`Alfa`, `RNew`, `ROld`). |
 | `GET`  | `/api/v1/branches` | Výpis větví. |
-| `POST` | `/api/v1/branches/{branchKey}/instances` | Vytvoří instanci pod větví (nese `basePath`). |
+| `POST` | `/api/v1/branches/{branchKey}/instances` | Vytvoří instanci pod větví (nese `basePath`); založí strukturu (`?ensureStructure=false` vypne). |
 | `GET`  | `/api/v1/branches/{branchKey}/instances` | Výpis instancí. |
+| `GET`  | `/api/v1/branches/{branchKey}/instances/{instanceKey}/structure` | Zjistí stav složek `old`/`new`/`reports` (bez zápisu). |
+| `POST` | `/api/v1/branches/{branchKey}/instances/{instanceKey}/structure` | Založí/opraví složky `old`/`new`/`reports`. |
 | `POST` | `/api/v1/comparisons` | Porovná jednu dvojici (synchronně). |
 | `POST` | `/api/v1/batch` | Odešle úlohu porovnání složek (async, vrací `202`). |
 | `GET`  | `/api/v1/jobs` | Výpis úloh (filtr `branchKey` / `instanceKey` / `status`). |
@@ -412,6 +414,24 @@ PostgreSQL — nikdy ne natvrdo v kódu. Každá instance nese **základní cest
 Klíče větve/instance se validují (`[a-zA-Z0-9_.-]`, ≤64 znaků, žádné `..`);
 `basePath` zadává operátor při zakládání instance (lokál / UNC / `share:` alias).
 Aplikace zapisuje **jen** do `reports/`; `old/` a `new/` pouze čte.
+
+#### Provisioning struktury instance
+
+Server umí strukturu `old`/`new`/`reports` pod `basePath` **zjistit i srovnat**:
+
+- `GET …/instances/{key}/structure` — jen **zjistí** (bez zápisu): každá podsložka je
+  `Present` / `Missing` / `WrongType` (na místě složky je soubor); `ok` je `true`, když nic nechybí.
+  U vstupních složek `old`/`new` navíc vrací **`pdfCount`** (0 = prázdná, jinak počet PDF rekurzivně);
+  s **`?includeFiles=true`** přidá kompletní seznam `files` (relativní cesty). `reports` se nelistuje.
+- `POST …/instances/{key}/structure` — **založí/opraví**: chybějící → `Created`; soubor
+  kolidující s názvem se **smaže a nahradí složkou** (`Repaired`, s warning logem); existující → `Present`.
+- **Při zakládání instance** se ensure spustí automaticky (vypneš `?ensureStructure=false`);
+  odpověď nese pole `structure` s reportem.
+- **Při startu serveru** projde server všechny registrované instance a strukturu zajistí
+  (best-effort — nedostupný share jen zaloguje, start nezhatí).
+
+Pro instance na **UNC/`share:`** to funguje přes stejný konektor jako batch, ale vyžaduje
+**write** přístup (a na Linuxu `Network:MountReadOnly = false`, protože se zapisuje).
 
 ## Spuštění
 

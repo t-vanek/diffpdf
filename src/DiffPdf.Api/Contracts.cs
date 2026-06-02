@@ -134,6 +134,9 @@ public sealed record CreateBranchRequest(string Key, string Name);
 /// <summary>Create an instance under a branch. <paramref name="BasePath"/> holds the old/new/reports subfolders.</summary>
 public sealed record CreateInstanceRequest(string Key, string Name, string BasePath, string? CredentialProfile = null);
 
+/// <summary>Response after creating an instance: the record plus the result of provisioning its folder skeleton (null when skipped).</summary>
+public sealed record CreatedInstanceResponse(ComparisonInstance Instance, InstanceStructureReport? Structure);
+
 /// <summary>Per-file-pair task view.</summary>
 public sealed record FilePairTaskSummary
 {

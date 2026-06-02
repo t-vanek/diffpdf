@@ -37,13 +37,13 @@ public static class DiffPdfServiceCollectionExtensions
         services.AddSingleton<IPageAligner, PageAligner>();
         services.AddSingleton<IContentErrorDetector, ContentErrorDetector>();
         services.AddSingleton<IComparisonEngine, ComparisonEngine>();
-        services.AddSingleton<IBatchComparer, BatchComparer>();
 
         // Network share access (no-op for local / already-mounted paths) + the
         // config-driven resolver and the discovery service.
         services.AddSingleton<INetworkShareConnector, PlatformShareConnector>();
         services.AddSingleton<INetworkShareResolver, NetworkShareResolver>();
         services.AddSingleton<INetworkDiscoveryService, NetworkDiscoveryService>();
+        services.AddSingleton<IInstanceStructureService, InstanceStructureService>();
 
         return services;
     }

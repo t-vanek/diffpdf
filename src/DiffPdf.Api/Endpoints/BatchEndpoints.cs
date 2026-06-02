@@ -16,6 +16,7 @@ public static class BatchEndpoints
             SubmitBatchRequest request,
             IBranchStore branches,
             IInstanceStore instances,
+            IInstanceStructureService structure,
             INetworkShareResolver shareResolver,
             IJobSubmissionService submission,
             CancellationToken ct) =>
@@ -32,8 +33,23 @@ public static class BatchEndpoints
             if (instance is null)
                 return Results.Problem($"Instance '{scope.InstanceKey}' not found.", statusCode: StatusCodes.Status404NotFound);
 
-            // Resolve the instance's base path (share alias / credential profile) once,
-            // then derive the conventional old/new/reports subfolders from it.
+            // Pre-flight: the structure must be reachable and both input folders must hold
+            // PDFs, otherwise the job would run with nothing to compare. Inspecting also
+            // covers existence (a missing old/new yields a null PdfCount, caught below).
+            var structureReport = await structure.InspectAsync(instance.BasePath, instance.CredentialProfile, ct: ct);
+            if (!structureReport.Reachable)
+                return Results.Problem(
+                    $"Instance base path is not reachable: {structureReport.Error}", statusCode: StatusCodes.Status400BadRequest);
+
+            int oldPdfs = structureReport.Items.FirstOrDefault(i => i.Name == "old")?.PdfCount ?? 0;
+            int newPdfs = structureReport.Items.FirstOrDefault(i => i.Name == "new")?.PdfCount ?? 0;
+            if (oldPdfs == 0 || newPdfs == 0)
+                return Results.Problem(
+                    $"Nothing to compare: 'old' has {oldPdfs} PDF(s), 'new' has {newPdfs}. Both folders must contain at least one PDF.",
+                    statusCode: StatusCodes.Status422UnprocessableEntity);
+
+            // Resolve the instance's base path (share alias / credential profile) for the
+            // durable job, then derive the conventional old/new/reports subfolders.
             ResolvedFolder baseResolved;
             try
             {
@@ -48,12 +64,6 @@ public static class BatchEndpoints
             string oldFolder = CombineFolder(basePath, "old");
             string newFolder = CombineFolder(basePath, "new");
             string reportsFolder = CombineFolder(basePath, "reports");
-
-            // Authenticated UNC shares are validated in the worker; only check plain local paths up front.
-            if (baseResolved.Credentials is null && !UncPath.IsUnc(oldFolder) && !Directory.Exists(oldFolder))
-                return Results.Problem($"Old folder not found: {oldFolder}", statusCode: StatusCodes.Status400BadRequest);
-            if (baseResolved.Credentials is null && !UncPath.IsUnc(newFolder) && !Directory.Exists(newFolder))
-                return Results.Problem($"New folder not found: {newFolder}", statusCode: StatusCodes.Status400BadRequest);
 
             var job = new ComparisonJob
             {
@@ -84,7 +94,8 @@ public static class BatchEndpoints
         .WithSummary("Submit a folder comparison job (folders derived from the instance)")
         .Produces<JobSummary>(StatusCodes.Status202Accepted)
         .ProducesProblem(StatusCodes.Status400BadRequest)
-        .ProducesProblem(StatusCodes.Status404NotFound);
+        .ProducesProblem(StatusCodes.Status404NotFound)
+        .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
     }
 
     /// <summary>Joins a base folder with a subfolder, preserving UNC separators for UNC roots.</summary>

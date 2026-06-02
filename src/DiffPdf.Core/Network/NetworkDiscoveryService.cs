@@ -88,7 +88,7 @@ public sealed class NetworkDiscoveryService(
             try
             {
                 using var connection = shareConnector.Connect(resolved.Path, resolved.Credentials);
-                var files = Enumerate(connection.Path, searchPattern, recursive, sampleSize, out int count, ct);
+                var (count, files) = PdfFolderScanner.Scan(connection.Path, searchPattern, recursive, sampleSize, ct);
                 return new FolderDiscovery(true, resolved.Path, resolved.ShareName, count, files, null);
             }
             catch (OperationCanceledException)
@@ -159,27 +159,6 @@ public sealed class NetworkDiscoveryService(
                 return Empty(oldResolved.Path, newResolved.Path, ex.Message);
             }
         }, ct);
-
-    private static IReadOnlyList<string> Enumerate(
-        string root, string pattern, bool recursive, int sampleSize, out int count, CancellationToken ct)
-    {
-        if (!Directory.Exists(root))
-            throw new DirectoryNotFoundException($"Folder not found: {root}");
-
-        var option = recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
-        var sample = new List<string>(Math.Max(0, sampleSize));
-        count = 0;
-
-        foreach (var file in Directory.EnumerateFiles(root, pattern, option))
-        {
-            ct.ThrowIfCancellationRequested();
-            count++;
-            if (sample.Count < sampleSize)
-                sample.Add(Path.GetRelativePath(root, file).Replace('\\', '/'));
-        }
-
-        return sample;
-    }
 
     private static PairingPreview Empty(string oldPath, string newPath, string error) =>
         new(false, oldPath, newPath, 0, 0, 0, 0, [], [], error);
