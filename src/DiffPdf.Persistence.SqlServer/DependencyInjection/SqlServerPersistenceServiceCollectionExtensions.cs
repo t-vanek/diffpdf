@@ -18,8 +18,8 @@ public static class SqlServerPersistenceServiceCollectionExtensions
         services.AddSingleton<EntityMapper>();
         services.AddScoped<IJobStore, SqlServerJobStore>();
         services.AddScoped<IFilePairTaskStore, SqlServerFilePairTaskStore>();
-        services.AddScoped<IBusinessInstanceStore, SqlServerBusinessInstanceStore>();
-        services.AddScoped<IProjectStore, SqlServerProjectStore>();
+        services.AddScoped<IBranchStore, SqlServerBranchStore>();
+        services.AddScoped<IInstanceStore, SqlServerInstanceStore>();
         services.AddScoped<IJobSubmissionService, SqlServerJobSubmissionService>();
 
         services.AddHostedService(sp => new SqlServerMigrationHostedService(

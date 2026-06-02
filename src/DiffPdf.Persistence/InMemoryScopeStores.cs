@@ -4,48 +4,51 @@ using DiffPdf.Core.Storage;
 
 namespace DiffPdf.Persistence;
 
-public sealed class InMemoryBusinessInstanceStore : IBusinessInstanceStore
+public sealed class InMemoryBranchStore : IBranchStore
 {
-    private readonly ConcurrentDictionary<string, BusinessInstance> _byKey = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, Branch> _byKey = new(StringComparer.Ordinal);
 
-    public Task<BusinessInstance> CreateAsync(string key, string name, CancellationToken ct = default)
+    public Task<Branch> CreateAsync(string key, string name, CancellationToken ct = default)
     {
-        var instance = new BusinessInstance { Id = Guid.NewGuid(), Key = key, Name = name };
-        if (!_byKey.TryAdd(key, instance))
-            throw new DuplicateKeyException($"Business instance '{key}' already exists.");
+        var branch = new Branch { Id = Guid.NewGuid(), Key = key, Name = name };
+        if (!_byKey.TryAdd(key, branch))
+            throw new DuplicateKeyException($"Branch '{key}' already exists.");
+        return Task.FromResult(branch);
+    }
+
+    public Task<Branch?> GetByKeyAsync(string key, CancellationToken ct = default) =>
+        Task.FromResult(_byKey.TryGetValue(key, out var b) ? b : null);
+
+    public Task<IReadOnlyList<Branch>> ListAsync(CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<Branch>>(_byKey.Values.OrderBy(b => b.Key).ToList());
+}
+
+public sealed class InMemoryInstanceStore : IInstanceStore
+{
+    // key: (branchId, instanceKey)
+    private readonly ConcurrentDictionary<(Guid, string), ComparisonInstance> _byKey = new();
+
+    public Task<ComparisonInstance> CreateAsync(
+        Guid branchId, string key, string name, string basePath, string? credentialProfile, CancellationToken ct = default)
+    {
+        var instance = new ComparisonInstance
+        {
+            Id = Guid.NewGuid(),
+            BranchId = branchId,
+            Key = key,
+            Name = name,
+            BasePath = basePath,
+            CredentialProfile = credentialProfile,
+        };
+        if (!_byKey.TryAdd((branchId, key), instance))
+            throw new DuplicateKeyException($"Instance '{key}' already exists in this branch.");
         return Task.FromResult(instance);
     }
 
-    public Task<BusinessInstance?> GetByKeyAsync(string key, CancellationToken ct = default) =>
-        Task.FromResult(_byKey.TryGetValue(key, out var i) ? i : null);
+    public Task<ComparisonInstance?> GetByKeyAsync(Guid branchId, string key, CancellationToken ct = default) =>
+        Task.FromResult(_byKey.TryGetValue((branchId, key), out var i) ? i : null);
 
-    public Task<IReadOnlyList<BusinessInstance>> ListAsync(CancellationToken ct = default) =>
-        Task.FromResult<IReadOnlyList<BusinessInstance>>(_byKey.Values.OrderBy(i => i.Key).ToList());
-}
-
-public sealed class InMemoryProjectStore : IProjectStore
-{
-    // key: (businessInstanceId, projectKey)
-    private readonly ConcurrentDictionary<(Guid, string), ComparisonProject> _byKey = new();
-
-    public Task<ComparisonProject> CreateAsync(Guid businessInstanceId, string key, string name, CancellationToken ct = default)
-    {
-        var project = new ComparisonProject
-        {
-            Id = Guid.NewGuid(),
-            BusinessInstanceId = businessInstanceId,
-            Key = key,
-            Name = name,
-        };
-        if (!_byKey.TryAdd((businessInstanceId, key), project))
-            throw new DuplicateKeyException($"Project '{key}' already exists in this business instance.");
-        return Task.FromResult(project);
-    }
-
-    public Task<ComparisonProject?> GetByKeyAsync(Guid businessInstanceId, string key, CancellationToken ct = default) =>
-        Task.FromResult(_byKey.TryGetValue((businessInstanceId, key), out var p) ? p : null);
-
-    public Task<IReadOnlyList<ComparisonProject>> ListAsync(Guid businessInstanceId, CancellationToken ct = default) =>
-        Task.FromResult<IReadOnlyList<ComparisonProject>>(
-            _byKey.Values.Where(p => p.BusinessInstanceId == businessInstanceId).OrderBy(p => p.Key).ToList());
+    public Task<IReadOnlyList<ComparisonInstance>> ListAsync(Guid branchId, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<ComparisonInstance>>(
+            _byKey.Values.Where(i => i.BranchId == branchId).OrderBy(i => i.Key).ToList());
 }

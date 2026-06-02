@@ -27,10 +27,10 @@ public sealed class InMemoryJobStore : IJobStore
     public Task<IReadOnlyList<ComparisonJob>> ListAsync(JobListQuery query, CancellationToken ct = default)
     {
         IEnumerable<ComparisonJob> q = _jobs.Values;
-        if (!string.IsNullOrEmpty(query.BusinessInstanceKey))
-            q = q.Where(j => j.BusinessInstanceKey == query.BusinessInstanceKey);
-        if (!string.IsNullOrEmpty(query.ProjectKey))
-            q = q.Where(j => j.ProjectKey == query.ProjectKey);
+        if (!string.IsNullOrEmpty(query.BranchKey))
+            q = q.Where(j => j.BranchKey == query.BranchKey);
+        if (!string.IsNullOrEmpty(query.InstanceKey))
+            q = q.Where(j => j.InstanceKey == query.InstanceKey);
         if (query.Status is { } s)
             q = q.Where(j => j.Status == s);
 

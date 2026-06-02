@@ -9,35 +9,37 @@ namespace DiffPdf.Persistence.SqlServer;
 public static class SqlServerMigrator
 {
     private const string Schema = """
-        if object_id(N'business_instances', N'U') is null
-        create table business_instances (
+        if object_id(N'branches', N'U') is null
+        create table branches (
             id uniqueidentifier not null primary key,
             [key] nvarchar(256) not null unique,
             name nvarchar(max) not null,
-            enabled bit not null constraint df_business_instances_enabled default 1,
-            created_at datetimeoffset not null constraint df_business_instances_created_at default sysdatetimeoffset(),
+            enabled bit not null constraint df_branches_enabled default 1,
+            created_at datetimeoffset not null constraint df_branches_created_at default sysdatetimeoffset(),
             updated_at datetimeoffset null,
-            version bigint not null constraint df_business_instances_version default 1
+            version bigint not null constraint df_branches_version default 1
         );
 
-        if object_id(N'projects', N'U') is null
-        create table projects (
+        if object_id(N'instances', N'U') is null
+        create table instances (
             id uniqueidentifier not null primary key,
-            business_instance_id uniqueidentifier not null references business_instances(id),
+            branch_id uniqueidentifier not null references branches(id),
             [key] nvarchar(256) not null,
             name nvarchar(max) not null,
-            enabled bit not null constraint df_projects_enabled default 1,
-            created_at datetimeoffset not null constraint df_projects_created_at default sysdatetimeoffset(),
+            base_path nvarchar(max) not null,
+            credential_profile nvarchar(256) null,
+            enabled bit not null constraint df_instances_enabled default 1,
+            created_at datetimeoffset not null constraint df_instances_created_at default sysdatetimeoffset(),
             updated_at datetimeoffset null,
-            version bigint not null constraint df_projects_version default 1,
-            constraint uq_projects_business_instance_key unique (business_instance_id, [key])
+            version bigint not null constraint df_instances_version default 1,
+            constraint uq_instances_branch_key unique (branch_id, [key])
         );
 
         if object_id(N'jobs', N'U') is null
         create table jobs (
             id uniqueidentifier not null primary key,
-            business_instance_id uniqueidentifier not null references business_instances(id),
-            project_id uniqueidentifier not null references projects(id),
+            branch_id uniqueidentifier not null references branches(id),
+            instance_id uniqueidentifier not null references instances(id),
             status nvarchar(32) not null,
             created_at datetimeoffset not null constraint df_jobs_created_at default sysdatetimeoffset(),
             updated_at datetimeoffset null,
@@ -53,8 +55,8 @@ public static class SqlServerMigrator
             locked_until datetimeoffset null
         );
 
-        if not exists (select 1 from sys.indexes where name = 'ix_jobs_business_project_created_at' and object_id = object_id(N'jobs'))
-        create index ix_jobs_business_project_created_at on jobs (business_instance_id, project_id, created_at desc);
+        if not exists (select 1 from sys.indexes where name = 'ix_jobs_branch_instance_created_at' and object_id = object_id(N'jobs'))
+        create index ix_jobs_branch_instance_created_at on jobs (branch_id, instance_id, created_at desc);
 
         if not exists (select 1 from sys.indexes where name = 'ix_jobs_status_created_at' and object_id = object_id(N'jobs'))
         create index ix_jobs_status_created_at on jobs (status, created_at desc);

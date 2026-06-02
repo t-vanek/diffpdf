@@ -2,20 +2,21 @@ using DiffPdf.Core.Models;
 
 namespace DiffPdf.Persistence;
 
-/// <summary>Persistence for business instances.</summary>
-public interface IBusinessInstanceStore
+/// <summary>Persistence for branches (the top-level scope).</summary>
+public interface IBranchStore
 {
-    /// <summary>Creates a business instance; throws DuplicateKeyException if the key exists.</summary>
-    Task<BusinessInstance> CreateAsync(string key, string name, CancellationToken ct = default);
-    Task<BusinessInstance?> GetByKeyAsync(string key, CancellationToken ct = default);
-    Task<IReadOnlyList<BusinessInstance>> ListAsync(CancellationToken ct = default);
+    /// <summary>Creates a branch; throws DuplicateKeyException if the key exists.</summary>
+    Task<Branch> CreateAsync(string key, string name, CancellationToken ct = default);
+    Task<Branch?> GetByKeyAsync(string key, CancellationToken ct = default);
+    Task<IReadOnlyList<Branch>> ListAsync(CancellationToken ct = default);
 }
 
-/// <summary>Persistence for projects under a business instance.</summary>
-public interface IProjectStore
+/// <summary>Persistence for instances under a branch.</summary>
+public interface IInstanceStore
 {
-    /// <summary>Creates a project; throws DuplicateKeyException if the key exists in the instance.</summary>
-    Task<ComparisonProject> CreateAsync(Guid businessInstanceId, string key, string name, CancellationToken ct = default);
-    Task<ComparisonProject?> GetByKeyAsync(Guid businessInstanceId, string key, CancellationToken ct = default);
-    Task<IReadOnlyList<ComparisonProject>> ListAsync(Guid businessInstanceId, CancellationToken ct = default);
+    /// <summary>Creates an instance; throws DuplicateKeyException if the key exists in the branch.</summary>
+    Task<ComparisonInstance> CreateAsync(
+        Guid branchId, string key, string name, string basePath, string? credentialProfile, CancellationToken ct = default);
+    Task<ComparisonInstance?> GetByKeyAsync(Guid branchId, string key, CancellationToken ct = default);
+    Task<IReadOnlyList<ComparisonInstance>> ListAsync(Guid branchId, CancellationToken ct = default);
 }

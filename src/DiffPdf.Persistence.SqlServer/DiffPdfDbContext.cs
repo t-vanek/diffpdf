@@ -5,16 +5,16 @@ namespace DiffPdf.Persistence.SqlServer;
 
 public sealed class DiffPdfDbContext(DbContextOptions<DiffPdfDbContext> options) : DbContext(options)
 {
-    public DbSet<BusinessInstanceEntity> BusinessInstances => Set<BusinessInstanceEntity>();
-    public DbSet<ProjectEntity> Projects => Set<ProjectEntity>();
+    public DbSet<BranchEntity> Branches => Set<BranchEntity>();
+    public DbSet<InstanceEntity> Instances => Set<InstanceEntity>();
     public DbSet<JobEntity> Jobs => Set<JobEntity>();
     public DbSet<FilePairTaskEntity> FilePairTasks => Set<FilePairTaskEntity>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
-        b.Entity<BusinessInstanceEntity>(e =>
+        b.Entity<BranchEntity>(e =>
         {
-            e.ToTable("business_instances");
+            e.ToTable("branches");
             e.HasKey(x => x.Id);
             e.Property(x => x.Id).HasColumnName("id");
             e.Property(x => x.Key).HasColumnName("key").HasMaxLength(256);
@@ -26,19 +26,21 @@ public sealed class DiffPdfDbContext(DbContextOptions<DiffPdfDbContext> options)
             e.HasIndex(x => x.Key).IsUnique();
         });
 
-        b.Entity<ProjectEntity>(e =>
+        b.Entity<InstanceEntity>(e =>
         {
-            e.ToTable("projects");
+            e.ToTable("instances");
             e.HasKey(x => x.Id);
             e.Property(x => x.Id).HasColumnName("id");
-            e.Property(x => x.BusinessInstanceId).HasColumnName("business_instance_id");
+            e.Property(x => x.BranchId).HasColumnName("branch_id");
             e.Property(x => x.Key).HasColumnName("key").HasMaxLength(256);
             e.Property(x => x.Name).HasColumnName("name");
+            e.Property(x => x.BasePath).HasColumnName("base_path");
+            e.Property(x => x.CredentialProfile).HasColumnName("credential_profile");
             e.Property(x => x.Enabled).HasColumnName("enabled");
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
             e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
             e.Property(x => x.Version).HasColumnName("version");
-            e.HasIndex(x => new { x.BusinessInstanceId, x.Key }).IsUnique();
+            e.HasIndex(x => new { x.BranchId, x.Key }).IsUnique();
         });
 
         b.Entity<JobEntity>(e =>
@@ -46,8 +48,8 @@ public sealed class DiffPdfDbContext(DbContextOptions<DiffPdfDbContext> options)
             e.ToTable("jobs");
             e.HasKey(x => x.Id);
             e.Property(x => x.Id).HasColumnName("id");
-            e.Property(x => x.BusinessInstanceId).HasColumnName("business_instance_id");
-            e.Property(x => x.ProjectId).HasColumnName("project_id");
+            e.Property(x => x.BranchId).HasColumnName("branch_id");
+            e.Property(x => x.InstanceId).HasColumnName("instance_id");
             e.Property(x => x.Status).HasColumnName("status").HasMaxLength(32);
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
             e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
@@ -61,7 +63,7 @@ public sealed class DiffPdfDbContext(DbContextOptions<DiffPdfDbContext> options)
             e.Property(x => x.Version).HasColumnName("version");
             e.Property(x => x.LockedBy).HasColumnName("locked_by").HasMaxLength(256);
             e.Property(x => x.LockedUntil).HasColumnName("locked_until");
-            e.HasIndex(x => new { x.BusinessInstanceId, x.ProjectId, x.CreatedAt });
+            e.HasIndex(x => new { x.BranchId, x.InstanceId, x.CreatedAt });
             e.HasIndex(x => new { x.Status, x.CreatedAt });
         });
 
