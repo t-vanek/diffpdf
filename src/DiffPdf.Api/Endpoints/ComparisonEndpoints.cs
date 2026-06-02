@@ -9,8 +9,8 @@ public static class ComparisonEndpoints
 {
     public static void MapComparisonEndpoints(this WebApplication app)
     {
-        app.MapGet("/", () => Results.Ok(new { service = "diffpdf", status = "ok" }));
-        app.MapGet("/health", () => Results.Ok(new { status = "healthy" }));
+        app.MapGet("/", () => Results.Ok(new { service = "diffpdf", status = "ok" })).AllowAnonymous();
+        app.MapGet("/health", () => Results.Ok(new { status = "healthy" })).AllowAnonymous();
 
         app.MapPost("/api/comparisons", async (
             SingleComparisonRequest request,

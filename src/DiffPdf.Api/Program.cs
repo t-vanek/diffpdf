@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using DiffPdf.Api.Auth;
 using DiffPdf.Api.Endpoints;
 using DiffPdf.Api.Hubs;
 using DiffPdf.Core.Abstractions;
@@ -71,10 +72,26 @@ else
 // Recovers file-pair tasks abandoned by a crashed worker (works with either store).
 builder.Services.AddHostedService<StaleTaskRecoveryService>();
 
+var auth = builder.Configuration.GetSection("Auth").Get<AuthOptions>() ?? new AuthOptions();
+builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection("Auth"));
+bool authEnabled = auth.Enabled && !string.IsNullOrWhiteSpace(postgres);
+if (auth.Enabled && string.IsNullOrWhiteSpace(postgres))
+    Log.Warning("Auth:Enabled is set but no PostgreSQL connection is configured — authentication is disabled.");
+if (authEnabled)
+    builder.Services.AddDiffPdfAuth(postgres!, auth);
+
 var app = builder.Build();
 
 app.UseSerilogRequestLogging();
-app.MapOpenApi();
+
+if (authEnabled)
+{
+    app.UseAuthentication();
+    app.UseAuthorization();
+    app.MapTokenEndpoint(auth);
+}
+
+app.MapOpenApi().AllowAnonymous();
 
 app.MapComparisonEndpoints();
 app.MapScopeEndpoints();
