@@ -47,14 +47,15 @@ blank pages, and error messages baked into the output.
 
 ```
 DiffPdf.Core         Domain models, abstractions, comparison orchestration
-                     (WordDiff, TextComparer, VisualComparer, ComparisonEngine,
-                      BatchComparer) — no PDF-library dependencies.
+                     (WordDiff, TextComparer, PageAligner, ContentErrorDetector,
+                      IgnoreFilter, ComparisonEngine, BatchComparer) — no
+                      PDF-library dependencies.
 DiffPdf.Pdf          Implementations: PdfPig text extraction, Ghostscript &
-                     PDFium renderers, SkiaSharp image diff, PdfSharp highlight
-                     writer.
+                     PDFium renderers, SkiaSharp pixel diff + blank detector,
+                     PdfSharp side-by-side highlight writer.
 DiffPdf.Persistence  Job store (in-memory for the MVP).
 DiffPdf.Worker       Channel-backed queue + background service.
-DiffPdf.Api          ASP.NET Core Minimal API.
+DiffPdf.Api          ASP.NET Core Minimal API (Serilog, OpenAPI).
 ```
 
 The engine stores all difference regions in **PDF points (bottom-left origin)**
@@ -130,6 +131,15 @@ curl http://localhost:8080/api/jobs/<id>/report
 | `contentErrorPatterns` | see below | Case-insensitive regexes; defaults include `subreport error`, `#error`. |
 | `ignoreRegions` | `[]` | Areas excluded from comparison (see below). |
 | `ignoreTextPatterns` | `[]` | Regexes; matching words are dropped before the text diff. |
+| `produceHighlightedPdf` | `true` | Emit diff PDF for differing files. |
+| `highlightLayout` | `SideBySide` | `SideBySide` (old left / new right) or `Single` (changed side only). |
+| `renderer` | `Ghostscript` | `Ghostscript` or `Pdfium`. |
+
+The single-pair result (`POST /api/comparisons`) returns `outcome`
+(`Compared`/`Failed`), per-document status, a typed per-page breakdown
+(`changes`, `differenceScore`, blank flags, regions) and any `contentErrors`.
+The batch report aggregates counts (`identical`, `differing`, `errors`,
+`filesWithContentErrors`) plus `passed` / `gateViolations`.
 
 #### Ignoring dynamic content
 
@@ -173,15 +183,6 @@ Add a `gate` to a batch request to turn the run into a pass/fail check. The
 ```
 
 A null limit means "no limit"; the report exposes `passed` and `gateViolations`.
-| `produceHighlightedPdf` | `true` | Emit diff PDF for differing files. |
-| `highlightLayout` | `SideBySide` | `SideBySide` (old left / new right) or `Single` (changed side only). |
-| `renderer` | `Ghostscript` | `Ghostscript` or `Pdfium`. |
-
-The single-pair result (`POST /api/comparisons`) returns `outcome`
-(`Compared`/`Failed`), per-document status, a typed per-page breakdown
-(`changes`, `differenceScore`, blank flags, regions) and any `contentErrors`.
-The batch report aggregates counts (`identical`, `differing`, `errors`,
-`filesWithContentErrors`).
 
 ## Running
 
