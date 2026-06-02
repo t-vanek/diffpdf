@@ -5,8 +5,16 @@ using Wolverine.EntityFrameworkCore;
 using Wolverine.ErrorHandling;
 using Wolverine.Postgresql;
 using Wolverine.RabbitMQ;
+using Wolverine.SqlServer;
 
 namespace DiffPdf.Messaging;
+
+/// <summary>Relational database backing Wolverine's durable inbox/outbox.</summary>
+public enum DiffPdfDatabase
+{
+    Postgres,
+    SqlServer,
+}
 
 public static class DiffPdfWolverineConfiguration
 {
@@ -14,20 +22,24 @@ public static class DiffPdfWolverineConfiguration
 
     /// <summary>
     /// Wires Wolverine for diffpdf: RabbitMQ transport for the batch command,
-    /// PostgreSQL-backed durable inbox/outbox, and handler discovery for this
-    /// assembly.
+    /// a relational durable inbox/outbox (PostgreSQL or SQL Server), and handler
+    /// discovery for this assembly.
     /// </summary>
     public static void ConfigureDiffPdfMessaging(
         this WolverineOptions opts,
         string rabbitConnectionString,
-        string postgresConnectionString,
+        string databaseConnectionString,
+        DiffPdfDatabase database = DiffPdfDatabase.Postgres,
         int listenerCount = 2,
         int preFetchCount = 4)
     {
         opts.UseRuntimeCompilation();
         opts.Discovery.IncludeAssembly(typeof(RunBatchComparisonHandler).Assembly);
 
-        opts.PersistMessagesWithPostgresql(postgresConnectionString);
+        if (database == DiffPdfDatabase.SqlServer)
+            opts.PersistMessagesWithSqlServer(databaseConnectionString);
+        else
+            opts.PersistMessagesWithPostgresql(databaseConnectionString);
         opts.UseEntityFrameworkCoreTransactions();
 
         // Transient failures (IO / network / broker blips) are retried with

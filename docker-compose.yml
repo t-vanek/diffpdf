@@ -10,6 +10,20 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
 
+  # Optional Microsoft SQL Server alternative to PostgreSQL. Start it with
+  #   docker compose --profile sqlserver up
+  # and switch diffpdf-api to use ConnectionStrings__SqlServer (see below).
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    profiles: ["sqlserver"]
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "Your_password123"
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+
   rabbitmq:
     image: rabbitmq:4-management
     environment:
@@ -31,6 +45,9 @@ services:
     environment:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=diffpdf;Username=diffpdf;Password=diffpdf
+      # To use SQL Server instead, start the sqlserver profile, comment out the
+      # Postgres line above and uncomment the next one (SqlServer takes priority):
+      # ConnectionStrings__SqlServer: Server=sqlserver,1433;Database=diffpdf;User Id=sa;Password=Your_password123;TrustServerCertificate=True
       ConnectionStrings__RabbitMq: amqp://diffpdf:diffpdf@rabbitmq:5672/
       Storage__RootPath: /data/storage
       DIFFPDF_LOG_DIR: /data/logs
@@ -42,5 +59,6 @@ services:
 
 volumes:
   postgres-data:
+  sqlserver-data:
   rabbitmq-data:
   diffpdf-data:
