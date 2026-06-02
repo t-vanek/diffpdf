@@ -20,3 +20,7 @@ diffpdf-artifacts/
 
 # Serilog output
 logs/
+
+# Job storage (artifacts/reports/logs per scope)
+storage/
+samples/storage/

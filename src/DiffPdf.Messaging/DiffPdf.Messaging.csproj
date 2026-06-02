@@ -1,0 +1,22 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\DiffPdf.Core\DiffPdf.Core.csproj" />
+    <ProjectReference Include="..\DiffPdf.Persistence\DiffPdf.Persistence.csproj" />
+    <ProjectReference Include="..\DiffPdf.Worker\DiffPdf.Worker.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="WolverineFx" Version="6.3.2" />
+    <PackageReference Include="WolverineFx.Postgresql" Version="6.3.2" />
+    <PackageReference Include="WolverineFx.RabbitMQ" Version="6.3.2" />
+    <PackageReference Include="WolverineFx.RuntimeCompilation" Version="6.3.2" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

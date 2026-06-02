@@ -126,12 +126,15 @@ public interface INetworkShareConnector
     NetworkShareConnection Connect(string folder, NetworkCredentials? credentials);
 }
 
+/// <summary>Progress of a running batch: pairs processed out of the total discovered.</summary>
+public readonly record struct BatchProgress(int Processed, int Total);
+
 /// <summary>Compares whole folders of PDFs (old vs new).</summary>
 public interface IBatchComparer
 {
     Task<BatchComparisonReport> CompareAsync(
         BatchComparisonRequest request,
         string artifactDirectory,
-        IProgress<int>? progress = null,
+        IProgress<BatchProgress>? progress = null,
         CancellationToken ct = default);
 }

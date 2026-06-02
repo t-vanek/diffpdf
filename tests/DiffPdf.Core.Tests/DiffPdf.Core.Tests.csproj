@@ -21,6 +21,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\DiffPdf.Core\DiffPdf.Core.csproj" />
     <ProjectReference Include="..\..\src\DiffPdf.Pdf\DiffPdf.Pdf.csproj" />
+    <ProjectReference Include="..\..\src\DiffPdf.Persistence\DiffPdf.Persistence.csproj" />
   </ItemGroup>
 
 </Project>
