@@ -17,3 +17,6 @@ Thumbs.db
 
 # Local diff artifacts
 diffpdf-artifacts/
+
+# Serilog output
+logs/

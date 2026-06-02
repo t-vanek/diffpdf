@@ -7,8 +7,18 @@ using DiffPdf.Persistence;
 using DiffPdf.Worker;
 using DiffPdf.Worker.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Serilog;
+
+// Bootstrap logger captures failures during host construction; replaced below
+// by the fully-configured logger read from appsettings.
+Log.Logger = new LoggerConfiguration().WriteTo.Console().CreateBootstrapLogger();
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddSerilog((services, loggerConfiguration) => loggerConfiguration
+    .ReadFrom.Configuration(builder.Configuration)
+    .ReadFrom.Services(services)
+    .Enrich.FromLogContext());
 
 builder.Services.ConfigureHttpJsonOptions(o =>
 {
@@ -21,6 +31,8 @@ builder.Services.AddDiffPdf();
 builder.Services.AddDiffPdfWorker();
 
 var app = builder.Build();
+
+app.UseSerilogRequestLogging();
 
 app.MapOpenApi();
 
@@ -102,6 +114,7 @@ app.MapGet("/api/jobs/{id:guid}/artifacts/{**relativePath}", (
 });
 
 app.Run();
+Log.CloseAndFlush();
 
 /// <summary>Exposed for integration testing via WebApplicationFactory.</summary>
 public partial class Program;

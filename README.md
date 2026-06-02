@@ -187,6 +187,14 @@ visual mode. Override the artifact directory with `DIFFPDF_ARTIFACT_ROOT`.
 dotnet test
 ```
 
+### Logging
+
+Logging uses **Serilog**, configured in `appsettings.json` (the `Serilog`
+section). Out of the box it writes structured logs to the console and to a
+daily-rolling file under `logs/` (14 days retained), enriches every event with
+the source context and an `Application` property, and logs one summary line per
+HTTP request. Adjust sinks/levels in `appsettings.json` — no code change needed.
+
 ## Licensing note
 
 The default renderer shells out to **Ghostscript (AGPL v3)**. For internal /
