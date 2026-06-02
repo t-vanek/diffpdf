@@ -1,0 +1,58 @@
+name: Package
+
+# Packs the client SDK NuGet and builds the API Docker image, uploading both as
+# workflow artifacts. No registry/feed publishing (no secrets required).
+on:
+  push:
+    branches: ["main"]
+    tags: ["v*"]
+
+jobs:
+  nuget:
+    name: Pack SDK NuGet (artifact)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Compute version
+        id: ver
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=0.0.0-ci.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Pack
+        run: dotnet pack src/DiffPdf.Client/DiffPdf.Client.csproj -c Release -o nupkg -p:Version=${{ steps.ver.outputs.version }}
+
+      - name: Upload .nupkg
+        uses: actions/upload-artifact@v4
+        with:
+          name: DiffPdf.Client-nupkg
+          path: nupkg/*.nupkg
+          if-no-files-found: error
+
+  docker-image:
+    name: Build API image (artifact)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t diffpdf-api:ci .
+
+      - name: Save image
+        run: docker save diffpdf-api:ci | gzip > diffpdf-api-image.tar.gz
+
+      - name: Upload image
+        uses: actions/upload-artifact@v4
+        with:
+          name: diffpdf-api-image
+          path: diffpdf-api-image.tar.gz
+          if-no-files-found: error

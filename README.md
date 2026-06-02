@@ -443,6 +443,42 @@ Pro instance na **UNC/`share:`** to funguje přes stejný konektor jako batch, a
 `old` vs `new` (`matched` / `onlyInOld` / `onlyInNew` + ukázky) a vrátí `ready` (obě složky
 mají PDF) — ověření „co s čím se bude porovnávat", než odešleš `POST /batch`.
 
+## Klientské SDK (.NET)
+
+Balíček **`DiffPdf.Client`** ([src/DiffPdf.Client](src/DiffPdf.Client)) je typovaný .NET
+klient pokrývající celý flow — větve, instance, strukturu, readiness i celý životní
+cyklus dávky. Je **self-contained** (vlastní modely, žádná závislost na server projektech).
+
+```csharp
+using DiffPdf.Client;
+
+// registrace (bez auth):
+services.AddDiffPdfClient(new Uri("http://localhost:8080"));
+// nebo s M2M tokenem (OpenIddict client-credentials):
+services.AddDiffPdfClient(new Uri("http://localhost:8080"), "diffpdf-ci", "secret", "diffpdf.api");
+
+// použití (DiffPdfClient injectnutý z DI):
+await diff.CreateBranchAsync(new("Alfa", "Alfa"));
+await diff.CreateInstanceAsync("Alfa", new("LamaEnergy", "Lama Energy", "/pdfs/LamaEnergy"));
+var report = await diff.RunBatchAsync(new JobScope("Alfa", "LamaEnergy")); // create→start→poll→report
+Console.WriteLine($"{report.Differing}/{report.Total} se liší");
+```
+
+Nebo lifecycle ručně: `CreateBatchAsync` (Draft) → `StartJobAsync` → `GetJobAsync`
+(poll) → `PauseJobAsync` / `ResumeJobAsync` / `CancelJobAsync` → `GetReportAsync` /
+`GetResultAsync` / `DownloadArtifactAsync`. Non-2xx odpovědi vyhodí `DiffPdfApiException`
+(s HTTP statusem a `detail` z problem+json).
+
+## Continuous Integration (GitHub Actions)
+
+- **`.github/workflows/ci.yml`** — na každý push/PR: `restore` → `build` → `test`
+  (vč. integračního testu SDK ↔ in-memory API přes `WebApplicationFactory`).
+- **`.github/workflows/package.yml`** — na push do `main` a tag `v*`:
+  - `dotnet pack` SDK → `.nupkg` jako **artefakt** (verze z tagu `vX.Y.Z`, jinak `0.0.0-ci.<run>`),
+  - `docker build` API image → uloží jako **artefakt** (`docker save | gzip`).
+
+  Bez publikace do NuGet feedu / registry — žádné secrets.
+
 ## Spuštění
 
 ### Docker (doporučeno)
