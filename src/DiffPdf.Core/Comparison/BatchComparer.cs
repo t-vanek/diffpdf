@@ -18,7 +18,7 @@ public sealed class BatchComparer(
     public async Task<BatchComparisonReport> CompareAsync(
         BatchComparisonRequest request,
         string artifactDirectory,
-        IProgress<int>? progress = null,
+        IProgress<BatchProgress>? progress = null,
         CancellationToken ct = default)
     {
         var startedAt = DateTimeOffset.UtcNow;
@@ -62,7 +62,7 @@ public sealed class BatchComparer(
 
                 results.Add(result);
                 int done = Interlocked.Increment(ref processed);
-                progress?.Report(done);
+                progress?.Report(new BatchProgress(done, allKeys.Count));
             });
 
         return new BatchComparisonReport

@@ -10,10 +10,16 @@ public sealed record SingleComparisonRequest
     public ComparisonOptions Options { get; init; } = new();
 }
 
+public sealed record CreateBusinessInstanceRequest(string Key, string Name);
+
+public sealed record CreateProjectRequest(string Key, string Name);
+
 /// <summary>Lightweight job view returned by the API.</summary>
 public sealed record JobSummary
 {
     public required Guid Id { get; init; }
+    public required string BusinessInstanceKey { get; init; }
+    public required string ProjectKey { get; init; }
     public required string Status { get; init; }
     public double Progress { get; init; }
     public int ProcessedCount { get; init; }
@@ -25,6 +31,8 @@ public sealed record JobSummary
     public static JobSummary From(ComparisonJob job) => new()
     {
         Id = job.Id,
+        BusinessInstanceKey = job.BusinessInstanceKey,
+        ProjectKey = job.ProjectKey,
         Status = job.Status.ToString(),
         Progress = job.Progress,
         ProcessedCount = job.ProcessedCount,

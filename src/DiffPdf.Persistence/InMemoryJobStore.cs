@@ -1,33 +1,133 @@
 using System.Collections.Concurrent;
 using DiffPdf.Core.Models;
+using DiffPdf.Core.Storage;
 
 namespace DiffPdf.Persistence;
 
 /// <summary>
-/// Thread-safe in-memory job store for the single-instance MVP. Swap for a
-/// SQLite/PostgreSQL-backed store to survive restarts and scale out.
+/// Thread-safe in-memory job store for single-instance / dev use. Mirrors the
+/// optimistic-concurrency semantics of the Postgres store so handlers behave
+/// identically. Does not survive restart; use the Postgres store in production.
 /// </summary>
 public sealed class InMemoryJobStore : IJobStore
 {
     private readonly ConcurrentDictionary<Guid, ComparisonJob> _jobs = new();
+    private readonly object _gate = new();
 
-    public Task<ComparisonJob> CreateAsync(BatchComparisonRequest request, CancellationToken ct = default)
+    public Task<ComparisonJob> CreateAsync(ComparisonJob job, CancellationToken ct = default)
     {
-        var job = new ComparisonJob { Id = Guid.NewGuid(), Request = request };
-        _jobs[job.Id] = job;
-        return Task.FromResult(job);
+        var created = job with { Version = 1, CreatedAt = job.CreatedAt };
+        _jobs[created.Id] = created;
+        return Task.FromResult(created);
     }
 
     public Task<ComparisonJob?> GetAsync(Guid id, CancellationToken ct = default) =>
         Task.FromResult(_jobs.TryGetValue(id, out var job) ? job : null);
 
-    public Task<IReadOnlyList<ComparisonJob>> ListAsync(CancellationToken ct = default) =>
-        Task.FromResult<IReadOnlyList<ComparisonJob>>(
-            _jobs.Values.OrderByDescending(j => j.CreatedAt).ToList());
-
-    public Task UpdateAsync(ComparisonJob job, CancellationToken ct = default)
+    public Task<IReadOnlyList<ComparisonJob>> ListAsync(JobListQuery query, CancellationToken ct = default)
     {
-        _jobs[job.Id] = job;
-        return Task.CompletedTask;
+        IEnumerable<ComparisonJob> q = _jobs.Values;
+        if (!string.IsNullOrEmpty(query.BusinessInstanceKey))
+            q = q.Where(j => j.BusinessInstanceKey == query.BusinessInstanceKey);
+        if (!string.IsNullOrEmpty(query.ProjectKey))
+            q = q.Where(j => j.ProjectKey == query.ProjectKey);
+        if (query.Status is { } s)
+            q = q.Where(j => j.Status == s);
+
+        var result = q.OrderByDescending(j => j.CreatedAt).Take(query.Limit).ToList();
+        return Task.FromResult<IReadOnlyList<ComparisonJob>>(result);
+    }
+
+    public Task<ComparisonJob?> TryStartAsync(Guid id, string workerId, TimeSpan lease, CancellationToken ct = default)
+    {
+        lock (_gate)
+        {
+            if (!_jobs.TryGetValue(id, out var job) || job.Status != JobStatus.Queued)
+                return Task.FromResult<ComparisonJob?>(null);
+
+            var started = job with
+            {
+                Status = JobStatus.Running,
+                StartedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow,
+                LockedBy = workerId,
+                LockedUntil = DateTimeOffset.UtcNow.Add(lease),
+                Version = job.Version + 1,
+            };
+            _jobs[id] = started;
+            return Task.FromResult<ComparisonJob?>(started);
+        }
+    }
+
+    public Task<ComparisonJob> UpdateProgressAsync(Guid id, int processedCount, int totalCount, long expectedVersion, CancellationToken ct = default)
+    {
+        lock (_gate)
+        {
+            var job = Guard(id, expectedVersion, JobStatus.Running);
+            var updated = job with
+            {
+                ProcessedCount = processedCount,
+                TotalCount = totalCount,
+                UpdatedAt = DateTimeOffset.UtcNow,
+                LockedUntil = DateTimeOffset.UtcNow.AddMinutes(5),
+                Version = job.Version + 1,
+            };
+            _jobs[id] = updated;
+            return Task.FromResult(updated);
+        }
+    }
+
+    public Task<ComparisonJob> CompleteAsync(Guid id, BatchComparisonReport report, long expectedVersion, CancellationToken ct = default)
+    {
+        lock (_gate)
+        {
+            var job = Guard(id, expectedVersion, JobStatus.Running);
+            var completed = job with
+            {
+                Status = JobStatus.Completed,
+                CompletedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow,
+                Report = report,
+                ProcessedCount = report.Total,
+                TotalCount = report.Total,
+                Error = null,
+                LockedBy = null,
+                LockedUntil = null,
+                Version = job.Version + 1,
+            };
+            _jobs[id] = completed;
+            return Task.FromResult(completed);
+        }
+    }
+
+    public Task<ComparisonJob> FailAsync(Guid id, string error, long expectedVersion, CancellationToken ct = default)
+    {
+        lock (_gate)
+        {
+            var job = Guard(id, expectedVersion, JobStatus.Running, JobStatus.Queued);
+            var failed = job with
+            {
+                Status = JobStatus.Failed,
+                CompletedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow,
+                Error = error,
+                LockedBy = null,
+                LockedUntil = null,
+                Version = job.Version + 1,
+            };
+            _jobs[id] = failed;
+            return Task.FromResult(failed);
+        }
+    }
+
+    private ComparisonJob Guard(Guid id, long expectedVersion, params JobStatus[] allowed)
+    {
+        if (!_jobs.TryGetValue(id, out var job))
+            throw new ConcurrencyConflictException($"Job {id} not found.");
+        if (job.Version != expectedVersion)
+            throw new ConcurrencyConflictException($"Job {id} version {job.Version} != expected {expectedVersion}.");
+        if (!allowed.Contains(job.Status))
+            throw new ConcurrencyConflictException($"Job {id} is {job.Status}, expected one of [{string.Join(",", allowed)}].");
+        return job;
     }
 }

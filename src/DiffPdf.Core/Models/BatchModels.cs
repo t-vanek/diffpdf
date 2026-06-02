@@ -3,6 +3,9 @@ namespace DiffPdf.Core.Models;
 /// <summary>Request to compare every PDF under <see cref="OldFolder"/> against <see cref="NewFolder"/>.</summary>
 public sealed record BatchComparisonRequest
 {
+    /// <summary>Business instance + project this job belongs to.</summary>
+    public required JobScope Scope { get; init; }
+
     public required string OldFolder { get; init; }
     public required string NewFolder { get; init; }
 

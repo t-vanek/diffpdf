@@ -49,17 +49,42 @@ blank pages, and error messages baked into the output.
 ## Architecture
 
 ```
-DiffPdf.Core         Domain models, abstractions, comparison orchestration
-                     (WordDiff, TextComparer, PageAligner, ContentErrorDetector,
-                      IgnoreFilter, ComparisonEngine, BatchComparer) — no
-                      PDF-library dependencies.
-DiffPdf.Pdf          Implementations: PdfPig text extraction, Ghostscript &
-                     PDFium renderers, SkiaSharp pixel diff + blank detector,
-                     PdfSharp side-by-side highlight writer.
-DiffPdf.Persistence  Job store (in-memory for the MVP).
-DiffPdf.Worker       Channel-backed queue + background service.
-DiffPdf.Api          ASP.NET Core Minimal API (Serilog, OpenAPI).
+DiffPdf.Core                Domain models, abstractions, comparison orchestration
+                            (WordDiff, TextComparer, PageAligner, ContentErrorDetector,
+                            IgnoreFilter, ComparisonEngine, BatchComparer), scope models,
+                            storage path provider — no PDF-library dependencies.
+DiffPdf.Pdf                 PdfPig text extraction, Ghostscript & PDFium renderers,
+                            SkiaSharp pixel diff + blank detector, PdfSharp side-by-side
+                            highlight writer, network-share connectors.
+DiffPdf.Persistence         Job / business-instance / project store abstractions +
+                            in-memory (dev) implementations.
+DiffPdf.Persistence.Postgres PostgreSQL stores (Npgsql) with optimistic concurrency.
+DiffPdf.Messaging           Wolverine handler + RabbitMQ wiring (RunBatchComparison).
+DiffPdf.Worker              Worker-side infrastructure (storage, worker identity, options).
+DiffPdf.Api                 ASP.NET Core Minimal API (Serilog, OpenAPI, endpoint groups).
 ```
+
+### Durable job processing (multi-instance)
+
+For running many jobs across multiple worker instances, the async pipeline is
+backed by durable infrastructure rather than in-process state:
+
+- **PostgreSQL is the source of truth** for jobs, business instances, projects,
+  progress and report metadata. State transitions use optimistic concurrency
+  (`version`) and a lease (`locked_by` / `locked_until`); only one worker can
+  move a job `Queued → Running`.
+- **RabbitMQ is the transport** for the `RunBatchComparison` command — it never
+  holds job state.
+- **Wolverine** orchestrates publish/consume with a PostgreSQL durable
+  inbox/outbox, so the handler is safe under duplicate delivery: a redelivered
+  message simply finds the job is no longer `Queued` and skips.
+- The handler runs the comparison with bounded parallelism and writes
+  version-checked progress; a completed job can never be overwritten by a late
+  progress update.
+
+If `ConnectionStrings:Postgres` and `ConnectionStrings:RabbitMq` are configured
+the full stack is used; otherwise the API falls back to in-memory stores with an
+in-process Wolverine transport (single-instance dev mode).
 
 The engine stores all difference regions in **PDF points (bottom-left origin)**
 so text and visual results share one coordinate space; the raster highlight
@@ -70,6 +95,10 @@ writer converts to pixels at render time.
 | Method | Route | Purpose |
 |---|---|---|
 | `GET`  | `/health` | Liveness probe. |
+| `POST` | `/api/business-instances` | Create a business instance (`Alfa`, `RNew`, …). |
+| `GET`  | `/api/business-instances` | List business instances. |
+| `POST` | `/api/business-instances/{key}/projects` | Create a project under an instance. |
+| `GET`  | `/api/business-instances/{key}/projects` | List projects. |
 | `POST` | `/api/comparisons` | Compare a single pair (synchronous). |
 | `POST` | `/api/batch` | Submit a folder comparison job (async, returns `202`). |
 | `GET`  | `/api/jobs` | List jobs. |
@@ -95,10 +124,15 @@ curl -X POST http://localhost:8080/api/comparisons \
 ### Example — batch folder comparison
 
 ```bash
-# 1. submit
+# 0. create the scope once (business instance + project)
+curl -X POST http://localhost:8080/api/business-instances -d '{"key":"Alfa","name":"Alfa"}' -H 'Content-Type: application/json'
+curl -X POST http://localhost:8080/api/business-instances/Alfa/projects -d '{"key":"LamaEnergyAlfa","name":"Lama Energy Alfa"}' -H 'Content-Type: application/json'
+
+# 1. submit a batch under that scope
 curl -X POST http://localhost:8080/api/batch \
   -H 'Content-Type: application/json' \
   -d '{
+        "scope": { "businessInstanceKey": "Alfa", "projectKey": "LamaEnergyAlfa" },
         "oldFolder": "/pdfs/old",
         "newFolder": "/pdfs/new",
         "recursive": true,
@@ -212,16 +246,32 @@ authentication takes optional credentials per folder:
   or UNC under the service account) are used as-is. Send credentials only over
   HTTPS; they are never written to logs or comparison reports.
 
+### Business instances, projects & storage layout
+
+Jobs are scoped to a **business instance** (e.g. `Alfa`, `RNew`, `ROld`) and a
+**project** under it (e.g. `LamaEnergyAlfa`). These are data created via the API
+and stored in PostgreSQL — never hardcoded. Artifacts live under the scope:
+
+```
+storage/{businessInstanceKey}/{projectKey}/jobs/{jobId}/artifacts|reports|logs
+```
+
+Keys are validated (`[a-zA-Z0-9_.-]`, ≤64 chars, no `..`) so they can never
+escape the storage root. The structure above is example data, not application
+behavior.
+
 ## Running
 
 ### Docker (recommended)
 
 ```bash
 docker compose up --build
-# API on http://localhost:8080, compares ./samples/old vs ./samples/new
+# Brings up PostgreSQL + RabbitMQ + the API on http://localhost:8080,
+# comparing ./samples/old vs ./samples/new. Data persists in named volumes.
 ```
 
-The image installs Ghostscript and the native deps SkiaSharp/PDFium need.
+The image installs Ghostscript and the native deps SkiaSharp/PDFium need;
+compose wires `ConnectionStrings__Postgres` / `__RabbitMq` and `Storage__RootPath`.
 
 ### Local
 

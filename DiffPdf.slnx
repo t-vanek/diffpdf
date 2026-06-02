@@ -2,7 +2,9 @@
   <Folder Name="/src/">
     <Project Path="src/DiffPdf.Api/DiffPdf.Api.csproj" />
     <Project Path="src/DiffPdf.Core/DiffPdf.Core.csproj" />
+    <Project Path="src/DiffPdf.Messaging/DiffPdf.Messaging.csproj" />
     <Project Path="src/DiffPdf.Pdf/DiffPdf.Pdf.csproj" />
+    <Project Path="src/DiffPdf.Persistence.Postgres/DiffPdf.Persistence.Postgres.csproj" />
     <Project Path="src/DiffPdf.Persistence/DiffPdf.Persistence.csproj" />
     <Project Path="src/DiffPdf.Worker/DiffPdf.Worker.csproj" />
   </Folder>
