@@ -78,12 +78,23 @@ public interface IContentErrorDetector
         ComparisonOptions options);
 }
 
-/// <summary>Assembles a highlighted diff PDF.</summary>
-public sealed record HighlightedPage(RenderedPage Background, IReadOnlyList<DifferenceRegion> Regions);
+/// <summary>One side (old or new) of a diff spread: a rendered page plus its regions.</summary>
+public sealed record HighlightSide(RenderedPage Render, IReadOnlyList<DifferenceRegion> Regions);
 
+/// <summary>
+/// A single differing page presented as an old/new pair. Either side may be
+/// null for an added (no old) or removed (no new) page.
+/// </summary>
+public sealed record DiffSpread(int? OldPageNumber, int? NewPageNumber, HighlightSide? Old, HighlightSide? New);
+
+/// <summary>Assembles a highlighted diff PDF.</summary>
 public interface IHighlightedPdfWriter
 {
-    Task WriteAsync(string outputPath, IReadOnlyList<HighlightedPage> pages, CancellationToken ct = default);
+    Task WriteAsync(
+        string outputPath,
+        IReadOnlyList<DiffSpread> spreads,
+        HighlightLayout layout,
+        CancellationToken ct = default);
 }
 
 /// <summary>Top-level orchestrator: compares a single old/new PDF pair.</summary>

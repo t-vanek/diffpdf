@@ -67,23 +67,23 @@ public sealed class ComparisonEngine(
         var pairs = pageAligner.Align(oldText, newText, options);
 
         var pageComparisons = new List<PageComparison>(pairs.Count);
-        var highlightPages = new List<HighlightedPage>();
+        var spreads = new List<DiffSpread>();
 
         foreach (var pair in pairs)
         {
             ct.ThrowIfCancellationRequested();
-            var (comparison, highlight) = await ComparePairAsync(
+            var (comparison, spread) = await ComparePairAsync(
                 pair, oldPath, newPath, oldByNum, newByNum, oldGeom, newGeom, options, artifactDirectory is not null, ct);
             pageComparisons.Add(comparison);
-            if (highlight is not null) highlightPages.Add(highlight);
+            if (spread is not null) spreads.Add(spread);
         }
 
         string? highlightedPath = null;
-        if (options.ProduceHighlightedPdf && artifactDirectory is not null && highlightPages.Count > 0)
+        if (options.ProduceHighlightedPdf && artifactDirectory is not null && spreads.Count > 0)
         {
             try
             {
-                highlightedPath = await WriteHighlightedAsync(newPath, highlightPages, artifactDirectory, ct);
+                highlightedPath = await WriteHighlightedAsync(newPath, spreads, options.HighlightLayout, artifactDirectory, ct);
             }
             catch (Exception ex)
             {
@@ -106,7 +106,7 @@ public sealed class ComparisonEngine(
         };
     }
 
-    private async Task<(PageComparison, HighlightedPage?)> ComparePairAsync(
+    private async Task<(PageComparison, DiffSpread?)> ComparePairAsync(
         AlignedPagePair pair,
         string oldPath,
         string newPath,
@@ -135,10 +135,11 @@ public sealed class ComparisonEngine(
                 DifferenceScore = 1.0,
                 NewBlank = blank,
             };
-            var highlight = wantHighlight && render is not null
-                ? new HighlightedPage(render, [FullPageRegion(render, DifferenceKind.Added)])
+            var spread = wantHighlight && render is not null
+                ? new DiffSpread(null, addedNum, Old: null,
+                    New: new HighlightSide(render, [FullPageRegion(render, DifferenceKind.Added)]))
                 : null;
-            return (comparison, highlight);
+            return (comparison, spread);
         }
 
         // --- Page removed (only in old) ---
@@ -153,10 +154,11 @@ public sealed class ComparisonEngine(
                 DifferenceScore = 1.0,
                 OldBlank = blank,
             };
-            var highlight = wantHighlight && render is not null
-                ? new HighlightedPage(render, [FullPageRegion(render, DifferenceKind.Removed)])
+            var spread = wantHighlight && render is not null
+                ? new DiffSpread(removedNum, null,
+                    Old: new HighlightSide(render, [FullPageRegion(render, DifferenceKind.Removed)]), New: null)
                 : null;
-            return (comparison, highlight);
+            return (comparison, spread);
         }
 
         // --- Matched pair ---
@@ -173,6 +175,8 @@ public sealed class ComparisonEngine(
         var oldFiltered = oldPage is null ? null : IgnoreFilter.FilterWords(oldPage, options);
         var newFiltered = newPage is null ? null : IgnoreFilter.FilterWords(newPage, options);
 
+        var visualRegions = new List<DifferenceRegion>();
+
         if (doText)
         {
             var td = textComparer.ComparePage(oldFiltered, newFiltered, options);
@@ -180,8 +184,7 @@ public sealed class ComparisonEngine(
             {
                 changes |= PageChangeType.TextChanged;
                 score = Math.Max(score, td.Score);
-                // Only "added" text maps onto the new-page background.
-                regions.AddRange(td.Regions.Where(r => r.Kind == DifferenceKind.Added));
+                regions.AddRange(td.Regions); // added + removed, split per side below
             }
         }
 
@@ -201,9 +204,10 @@ public sealed class ComparisonEngine(
                 changes |= PageChangeType.VisualChanged;
                 score = Math.Max(score, img.DifferenceRatio);
                 foreach (var px in img.Regions)
-                    regions.Add(new DifferenceRegion(
+                    visualRegions.Add(new DifferenceRegion(
                         DifferenceKind.Changed,
                         CoordinateConverter.PixelToPoints(px, options.Dpi, newRender.HeightPx)));
+                regions.AddRange(visualRegions);
             }
         }
 
@@ -232,12 +236,20 @@ public sealed class ComparisonEngine(
             Regions = regions,
         };
 
-        HighlightedPage? matchedHighlight =
-            wantHighlight && changes != PageChangeType.None && newRender is not null
-                ? new HighlightedPage(newRender, regions)
-                : null;
+        DiffSpread? matchedSpread = null;
+        if (wantHighlight && changes != PageChangeType.None && (oldRender is not null || newRender is not null))
+        {
+            // Removed text -> old side; added text -> new side; visual changes -> both.
+            var oldRegions = regions.Where(r => r.Kind == DifferenceKind.Removed).Concat(visualRegions).ToList();
+            var newRegions = regions.Where(r => r.Kind == DifferenceKind.Added).Concat(visualRegions).ToList();
 
-        return (pageComparison, matchedHighlight);
+            matchedSpread = new DiffSpread(
+                oldNum, newNum,
+                Old: oldRender is null ? null : new HighlightSide(oldRender, oldRegions),
+                New: newRender is null ? null : new HighlightSide(newRender, newRegions));
+        }
+
+        return (pageComparison, matchedSpread);
     }
 
     private static bool SameSize(PageGeometry a, PageGeometry b)
@@ -255,11 +267,11 @@ public sealed class ComparisonEngine(
     }
 
     private async Task<string> WriteHighlightedAsync(
-        string newPath, IReadOnlyList<HighlightedPage> pages, string artifactDirectory, CancellationToken ct)
+        string newPath, IReadOnlyList<DiffSpread> spreads, HighlightLayout layout, string artifactDirectory, CancellationToken ct)
     {
         Directory.CreateDirectory(artifactDirectory);
         string outPath = Path.Combine(artifactDirectory, Path.GetFileNameWithoutExtension(newPath) + ".diff.pdf");
-        await highlightedPdfWriter.WriteAsync(outPath, pages, ct);
+        await highlightedPdfWriter.WriteAsync(outPath, spreads, layout, ct);
         return outPath;
     }
 

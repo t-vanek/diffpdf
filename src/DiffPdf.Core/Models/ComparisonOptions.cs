@@ -126,6 +126,13 @@ public sealed record ComparisonOptions
     /// <summary>Produce a highlighted diff PDF artifact for differing files.</summary>
     public bool ProduceHighlightedPdf { get; init; } = true;
 
+    /// <summary>
+    /// Layout of the highlighted diff PDF. <see cref="HighlightLayout.SideBySide"/>
+    /// shows old (left) and new (right) on one spread; <see cref="HighlightLayout.Single"/>
+    /// shows only the changed side.
+    /// </summary>
+    public HighlightLayout HighlightLayout { get; init; } = HighlightLayout.SideBySide;
+
     /// <summary>Preferred renderer backend for the visual mode.</summary>
     public RendererBackend Renderer { get; init; } = RendererBackend.Ghostscript;
 }
@@ -134,4 +141,12 @@ public enum RendererBackend
 {
     Ghostscript,
     Pdfium,
+}
+
+public enum HighlightLayout
+{
+    /// <summary>Old (left) and new (right) side by side on one spread.</summary>
+    SideBySide,
+    /// <summary>Only the changed side (new for added/changed, old for removed).</summary>
+    Single,
 }

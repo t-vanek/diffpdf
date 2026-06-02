@@ -31,8 +31,9 @@ blank pages, and error messages baked into the output.
   diff, so legitimately changing content doesn't flag every report.
 - **Robust error handling** — corrupt, encrypted, missing or empty PDFs are
   reported as `Error` with a reason instead of crashing the batch.
-- **Highlighted diff PDF** — per differing file, a raster diff PDF with
-  added / removed / changed regions colored.
+- **Two-sided highlighted diff PDF** — per differing file, a spread with the
+  old page (left, removed content in red) beside the new page (right, added in
+  green, visual changes in orange); colored header strips mark each side.
 - **Bulk folder comparison** — pairs files by relative path, runs in parallel,
   classifies each pair as `Identical` / `Differs` / `OnlyInOld` / `OnlyInNew` / `Error`.
 - **Async job API** — submit a batch, poll status, download the report and
@@ -145,6 +146,7 @@ every report. Exclude it by area and/or by text pattern:
 `unit` is `Fraction` (0-1 of the page) or `Points`; `pages` (optional) limits a
 region to specific page numbers.
 | `produceHighlightedPdf` | `true` | Emit diff PDF for differing files. |
+| `highlightLayout` | `SideBySide` | `SideBySide` (old left / new right) or `Single` (changed side only). |
 | `renderer` | `Ghostscript` | `Ghostscript` or `Pdfium`. |
 
 The single-pair result (`POST /api/comparisons`) returns `outcome`
