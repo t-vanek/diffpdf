@@ -3,6 +3,7 @@ using DiffPdf.Api.Auth;
 using DiffPdf.Api.Endpoints;
 using DiffPdf.Api.Hubs;
 using DiffPdf.Core.Abstractions;
+using DiffPdf.Core.Network;
 using DiffPdf.Core.Storage;
 using DiffPdf.Messaging;
 using DiffPdf.Pdf.DependencyInjection;
@@ -38,6 +39,7 @@ builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
 builder.Services.Configure<StorageOptions>(builder.Configuration.GetSection("Storage"));
 builder.Services.Configure<PdfWorkLimiterOptions>(builder.Configuration.GetSection("Pdf"));
+builder.Services.Configure<NetworkOptions>(builder.Configuration.GetSection(NetworkOptions.SectionName));
 
 // SignalR realtime progress. Registering the publisher before AddDiffPdfWorker
 // means the worker's no-op fallback is not used.
@@ -104,6 +106,7 @@ if (authEnabled)
     app.UseAuthentication();
     app.UseAuthorization();
     app.MapTokenEndpoint(auth);
+    app.MapInteractiveAuthEndpoints();
 }
 
 app.MapOpenApi().AllowAnonymous();
@@ -122,6 +125,7 @@ api.MapComparisonEndpoints();
 api.MapScopeEndpoints();
 api.MapBatchEndpoints();
 api.MapJobEndpoints();
+api.MapDiscoveryEndpoints();
 
 app.MapHub<JobsHub>("/hubs/jobs");
 

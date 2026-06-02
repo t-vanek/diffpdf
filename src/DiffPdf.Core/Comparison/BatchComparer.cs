@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using DiffPdf.Core.Abstractions;
 using DiffPdf.Core.Models;
+using DiffPdf.Core.Network;
 using Microsoft.Extensions.Logging;
 
 namespace DiffPdf.Core.Comparison;
@@ -13,6 +14,7 @@ namespace DiffPdf.Core.Comparison;
 public sealed class BatchComparer(
     IComparisonEngine engine,
     INetworkShareConnector shareConnector,
+    INetworkShareResolver shareResolver,
     ILogger<BatchComparer> logger) : IBatchComparer
 {
     public async Task<BatchComparisonReport> CompareAsync(
@@ -23,9 +25,13 @@ public sealed class BatchComparer(
     {
         var startedAt = DateTimeOffset.UtcNow;
 
-        // Establish access to each folder (no-op for local / already-mounted paths).
-        using var oldShare = shareConnector.Connect(request.OldFolder, request.OldFolderCredentials);
-        using var newShare = shareConnector.Connect(request.NewFolder, request.NewFolderCredentials);
+        // Resolve share aliases / credential profiles, then establish access to each
+        // folder (no-op for local / already-mounted paths).
+        var oldResolved = shareResolver.Resolve(request.OldFolder, request.OldFolderCredentials, request.OldFolderCredentialProfile);
+        var newResolved = shareResolver.Resolve(request.NewFolder, request.NewFolderCredentials, request.NewFolderCredentialProfile);
+
+        using var oldShare = shareConnector.Connect(oldResolved.Path, oldResolved.Credentials);
+        using var newShare = shareConnector.Connect(newResolved.Path, newResolved.Credentials);
 
         var oldFiles = Index(oldShare.Path, request.SearchPattern, request.Recursive);
         var newFiles = Index(newShare.Path, request.SearchPattern, request.Recursive);

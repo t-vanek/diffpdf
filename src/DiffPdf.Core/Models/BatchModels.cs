@@ -22,11 +22,20 @@ public sealed record BatchComparisonRequest
     /// <summary>Optional pass/fail criteria for CI gating. Null = no gating.</summary>
     public BatchGate? Gate { get; init; }
 
-    /// <summary>Credentials for the old folder if it is an authenticated network share.</summary>
+    /// <summary>Inline credentials for the old folder if it is an authenticated network share.</summary>
     public NetworkCredentials? OldFolderCredentials { get; init; }
 
-    /// <summary>Credentials for the new folder if it is an authenticated network share.</summary>
+    /// <summary>Inline credentials for the new folder if it is an authenticated network share.</summary>
     public NetworkCredentials? NewFolderCredentials { get; init; }
+
+    /// <summary>
+    /// Name of a configured credential profile for the old folder. Preferred over
+    /// <see cref="OldFolderCredentials"/> so passwords stay in configuration.
+    /// </summary>
+    public string? OldFolderCredentialProfile { get; init; }
+
+    /// <summary>Name of a configured credential profile for the new folder.</summary>
+    public string? NewFolderCredentialProfile { get; init; }
 }
 
 /// <summary>
