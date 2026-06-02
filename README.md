@@ -1,5 +1,7 @@
 # diffpdf — server-side PDF comparison
 
+🌐 **Jazyk / Language:** [English](README.md) · [Čeština](README.cs.md)
+
 A server-side replacement for [diffpdf](https://mark-summerfield.github.io/diffpdf.html),
 built in **C# / .NET 10** as a REST API. Designed to compare large numbers of
 PDFs in bulk (an `old` folder vs a `new` folder), in addition to single pairs.
@@ -45,6 +47,54 @@ blank pages, and error messages baked into the output.
   `WNetAddConnection2`, Linux CIFS mount).
 - **Async job API** — submit a batch, poll status, download the report and
   artifacts.
+
+## How it works
+
+### A) The comparison engine (core)
+
+Comparing one PDF pair (`old` vs `new`), `ComparisonEngine` runs:
+
+1. **Probe** — both PDFs are opened defensively (page count, sizes, status:
+   `Ok` / `Encrypted` / `Unreadable` / `Empty`). An unreadable side yields a
+   `Failed` result with a reason — never a crash.
+2. **Text extraction** — PdfPig pulls words with their bounding boxes.
+3. **Content-error detection** — the text is scanned with configurable regexes
+   (`subreport error`, `#error`, …); hits are recorded with side/page/snippet.
+4. **Page alignment** — pages are aligned by text similarity (Needleman–Wunsch)
+   instead of by index, so an inserted page becomes `PageAdded`, a deleted one
+   `PageRemoved`, with no cascade of false diffs.
+5. **Per-page-pair comparison**: ignore-filter (drop words in ignore regions /
+   matching ignore patterns) → word-level text diff → pixel-level visual diff
+   (render + tolerance + shift-tolerance + region clustering) → blank/size
+   checks → a **typed page classification** + score.
+6. **Highlighted diff PDF** — differing pages become a spread: old (removed in
+   red) left, new (added green, visual orange) right, with page-number headers.
+
+All difference regions are stored in **PDF points (bottom-left origin)** so text
+and visual results share one coordinate space; the raster writer converts to
+pixels at draw time. Bulk comparison just applies this engine to every paired
+file and aggregates the results.
+
+### B) The durable job lifecycle
+
+```
+Client → POST /api/batch
+   │  validate scope (business instance + project), check folders
+   ▼
+[API]  insert job into PostgreSQL  +  publish RunBatchComparison   ← one transaction (outbox)
+   ▼
+RabbitMQ  ──►  [Worker / handler]
+   │   RunBatchComparison  → TryStart (Queued→Running, optimistic concurrency)
+   │   IndexBatch          → pair folders, create file_pair_tasks, set total
+   │   CompareFilePair × N → compare one pair, store result, ++processed
+   │   FinalizeBatch       → aggregate results into the report, job → Completed
+   ▼
+PostgreSQL (state) + storage (artifacts)
+   ▼
+SignalR (live progress)  +  REST polling (source of truth)
+```
+
+See **Durable job processing** below for the guarantees behind each step.
 
 ## Architecture
 
@@ -343,6 +393,6 @@ SkiaSharp (MIT).
 ## Roadmap / not yet implemented
 
 - Vector highlight overlay on the original PDF (keeps text selectable).
-- Persistent job store (SQLite/PostgreSQL) + horizontal scaling.
 - SSIM-based perceptual scoring; structural region clustering.
 - Authentication / multi-tenant artifact isolation.
+- Network-share credentials in the per-file-pair path (currently pre-mounted only).
