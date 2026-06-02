@@ -35,7 +35,11 @@ public sealed class CompareFilePairHandler
             return; // already claimed / completed (idempotent)
 
         var job = await jobStore.GetAsync(command.JobId, ct);
-        if (job is null) return;
+        if (job is null || job.Status != JobStatus.Running)
+        {
+            // Job was cancelled or finished; stop processing this pair.
+            return;
+        }
 
         FilePairResult result;
         try

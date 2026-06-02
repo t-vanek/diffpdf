@@ -92,6 +92,21 @@ public sealed class PostgresFilePairTaskStore(DiffPdfDbContext db, EntityMapper 
         return stale.Select(x => (x.JobId, x.Id)).ToList();
     }
 
+    public async Task RequeueForRetryAsync(Guid taskId, CancellationToken ct = default)
+    {
+        await db.FilePairTasks
+            .Where(t => t.Id == taskId)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(t => t.Status, "Queued")
+                .SetProperty(t => t.ResultJson, (string?)null)
+                .SetProperty(t => t.Error, (string?)null)
+                .SetProperty(t => t.AttemptCount, 0)
+                .SetProperty(t => t.CompletedAt, (DateTimeOffset?)null)
+                .SetProperty(t => t.LockedBy, (string?)null)
+                .SetProperty(t => t.LockedUntil, (DateTimeOffset?)null)
+                .SetProperty(t => t.Version, t => t.Version + 1), ct);
+    }
+
     public async Task<IReadOnlyList<FilePairTask>> ListByJobAsync(Guid jobId, CancellationToken ct = default)
     {
         var rows = await db.FilePairTasks.AsNoTracking()

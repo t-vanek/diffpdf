@@ -14,6 +14,27 @@ public sealed record CreateBusinessInstanceRequest(string Key, string Name);
 
 public sealed record CreateProjectRequest(string Key, string Name);
 
+/// <summary>Per-file-pair task view.</summary>
+public sealed record FilePairTaskSummary
+{
+    public required Guid Id { get; init; }
+    public required string RelativePath { get; init; }
+    public required string Status { get; init; }
+    public int AttemptCount { get; init; }
+    public string? ResultStatus { get; init; }
+    public string? Error { get; init; }
+
+    public static FilePairTaskSummary From(FilePairTask t) => new()
+    {
+        Id = t.Id,
+        RelativePath = t.RelativePath,
+        Status = t.Status.ToString(),
+        AttemptCount = t.AttemptCount,
+        ResultStatus = t.Result?.Status.ToString(),
+        Error = t.Error,
+    };
+}
+
 /// <summary>Lightweight job view returned by the API.</summary>
 public sealed record JobSummary
 {

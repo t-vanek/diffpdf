@@ -120,6 +120,50 @@ public sealed class InMemoryJobStore : IJobStore
         }
     }
 
+    public Task<ComparisonJob?> CancelAsync(Guid id, CancellationToken ct = default)
+    {
+        lock (_gate)
+        {
+            if (!_jobs.TryGetValue(id, out var job) || job.Status is not (JobStatus.Queued or JobStatus.Running))
+                return Task.FromResult<ComparisonJob?>(null);
+
+            var cancelled = job with
+            {
+                Status = JobStatus.Cancelled,
+                CompletedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow,
+                LockedBy = null,
+                LockedUntil = null,
+                Version = job.Version + 1,
+            };
+            _jobs[id] = cancelled;
+            return Task.FromResult<ComparisonJob?>(cancelled);
+        }
+    }
+
+    public Task<ComparisonJob?> ReopenAsync(Guid id, int processedCount, CancellationToken ct = default)
+    {
+        lock (_gate)
+        {
+            if (!_jobs.TryGetValue(id, out var job) || job.Status is not (JobStatus.Completed or JobStatus.Failed))
+                return Task.FromResult<ComparisonJob?>(null);
+
+            var reopened = job with
+            {
+                Status = JobStatus.Running,
+                ProcessedCount = processedCount,
+                Report = null,
+                Error = null,
+                StartedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow,
+                CompletedAt = null,
+                Version = job.Version + 1,
+            };
+            _jobs[id] = reopened;
+            return Task.FromResult<ComparisonJob?>(reopened);
+        }
+    }
+
     public Task SetTotalAsync(Guid id, int total, CancellationToken ct = default)
     {
         lock (_gate)

@@ -87,6 +87,26 @@ public sealed class InMemoryFilePairTaskStore : IFilePairTaskStore
         return Task.CompletedTask;
     }
 
+    public Task RequeueForRetryAsync(Guid taskId, CancellationToken ct = default)
+    {
+        lock (_gate)
+        {
+            if (_tasks.TryGetValue(taskId, out var t))
+                _tasks[taskId] = t with
+                {
+                    Status = FilePairTaskStatus.Queued,
+                    Result = null,
+                    Error = null,
+                    AttemptCount = 0,
+                    CompletedAt = null,
+                    LockedBy = null,
+                    LockedUntil = null,
+                    Version = t.Version + 1,
+                };
+        }
+        return Task.CompletedTask;
+    }
+
     public Task<IReadOnlyList<(Guid JobId, Guid TaskId)>> RequeueStaleAsync(CancellationToken ct = default)
     {
         var now = DateTimeOffset.UtcNow;

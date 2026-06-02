@@ -25,6 +25,12 @@ public interface IJobStore
 
     Task<ComparisonJob> FailAsync(Guid id, string error, long expectedVersion, CancellationToken ct = default);
 
+    /// <summary>Cancels a Queued/Running job. Returns the cancelled job, or null if it could not be cancelled.</summary>
+    Task<ComparisonJob?> CancelAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>Reopens a finished (Completed/Failed) job for a retry, resetting its progress.</summary>
+    Task<ComparisonJob?> ReopenAsync(Guid id, int processedCount, CancellationToken ct = default);
+
     /// <summary>Sets the total file-pair count once indexing is done.</summary>
     Task SetTotalAsync(Guid id, int total, CancellationToken ct = default);
 
