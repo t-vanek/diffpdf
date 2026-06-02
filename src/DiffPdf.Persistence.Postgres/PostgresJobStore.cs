@@ -118,13 +118,54 @@ public sealed class PostgresJobStore(DiffPdfDbContext db, EntityMapper mapper) :
     {
         var now = DateTimeOffset.UtcNow;
         int rows = await db.Jobs
-            .Where(j => j.Id == id && (j.Status == "Queued" || j.Status == "Running"))
+            .Where(j => j.Id == id && (j.Status == "Draft" || j.Status == "Queued" || j.Status == "Running" || j.Status == "Paused"))
             .ExecuteUpdateAsync(s => s
                 .SetProperty(j => j.Status, "Cancelled")
                 .SetProperty(j => j.CompletedAt, now)
                 .SetProperty(j => j.UpdatedAt, now)
                 .SetProperty(j => j.LockedBy, (string?)null)
                 .SetProperty(j => j.LockedUntil, (DateTimeOffset?)null)
+                .SetProperty(j => j.Version, j => j.Version + 1), ct);
+
+        return rows == 0 ? null : await GetAsync(id, ct);
+    }
+
+    public async Task<ComparisonJob?> EnqueueAsync(Guid id, CancellationToken ct = default)
+    {
+        var now = DateTimeOffset.UtcNow;
+        int rows = await db.Jobs
+            .Where(j => j.Id == id && j.Status == "Draft")
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(j => j.Status, "Queued")
+                .SetProperty(j => j.UpdatedAt, now)
+                .SetProperty(j => j.Version, j => j.Version + 1), ct);
+
+        return rows == 0 ? null : await GetAsync(id, ct);
+    }
+
+    public async Task<ComparisonJob?> PauseAsync(Guid id, CancellationToken ct = default)
+    {
+        var now = DateTimeOffset.UtcNow;
+        int rows = await db.Jobs
+            .Where(j => j.Id == id && j.Status == "Running")
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(j => j.Status, "Paused")
+                .SetProperty(j => j.UpdatedAt, now)
+                .SetProperty(j => j.LockedBy, (string?)null)
+                .SetProperty(j => j.LockedUntil, (DateTimeOffset?)null)
+                .SetProperty(j => j.Version, j => j.Version + 1), ct);
+
+        return rows == 0 ? null : await GetAsync(id, ct);
+    }
+
+    public async Task<ComparisonJob?> ResumeAsync(Guid id, CancellationToken ct = default)
+    {
+        var now = DateTimeOffset.UtcNow;
+        int rows = await db.Jobs
+            .Where(j => j.Id == id && j.Status == "Paused")
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(j => j.Status, "Running")
+                .SetProperty(j => j.UpdatedAt, now)
                 .SetProperty(j => j.Version, j => j.Version + 1), ct);
 
         return rows == 0 ? null : await GetAsync(id, ct);
