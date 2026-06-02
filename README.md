@@ -178,8 +178,8 @@ Všechny aplikační cesty jsou pod prefixem **`/api/v1`**.
 | Metoda | Cesta | Účel |
 |---|---|---|
 | `GET`  | `/health` | Liveness probe (anonymní). |
-| `POST` | `/connect/token` | OAuth2 token endpoint (client-credentials / refresh-token). |
-| `*` | `/connect/revocation` | Zneplatnění access/refresh tokenu (RFC 7009). |
+| `POST` | `/connect/token` | OAuth2 token endpoint (client-credentials). |
+| `*` | `/connect/revocation` | Zneplatnění access tokenu (RFC 7009). |
 | `POST` | `/api/v1/business-instances` | Vytvoří business instanci (`Alfa`, `RNew`, …). |
 | `GET`  | `/api/v1/business-instances` | Výpis business instancí. |
 | `POST` | `/api/v1/business-instances/{key}/projects` | Vytvoří projekt pod instancí. |
@@ -466,8 +466,8 @@ Vestavěný OpenIddict server vystavuje standardní auto-generované endpointy:
 
 | Endpoint | Účel |
 | --- | --- |
-| `POST /connect/token` | Vydání access (a refresh) tokenu. |
-| `POST /connect/revocation` | Zneplatnění access/refresh tokenu (RFC 7009). |
+| `POST /connect/token` | Vydání access tokenu. |
+| `POST /connect/revocation` | Zneplatnění access tokenu (RFC 7009). |
 
 **Client-credentials (M2M / CI).** Klient se autentizuje vůči serveru jako
 confidential klient `Auth:ClientId` / `Auth:ClientSecret` / `Auth:Scope`. Strojoví
@@ -483,17 +483,15 @@ curl -X POST http://localhost:8080/connect/token \
 curl -H "Authorization: Bearer <access_token>" http://localhost:8080/api/v1/jobs
 ```
 
-Existující tokeny se zneplatňují přes `/connect/revocation`. Server má povolený i
-**refresh-token** grant (`grant_type=refresh_token`, rotující tokeny, lifetime
-`Auth:RefreshTokenDays`); pozn.: client-credentials grant ze své podstaty refresh
-token nevydává, takže ho lze využít až po přidání flow, který refresh token vystaví.
+Existující tokeny se zneplatňují přes `/connect/revocation`. Tokeny jsou
+krátkodobé (lifetime `Auth:AccessTokenMinutes`); klient si po expiraci vyžádá
+nový přes client-credentials.
 
 ```jsonc
 "Auth": {
   "Enabled": true,
   "ClientId": "diffpdf-ci", "ClientSecret": "…", "Scope": "diffpdf.api",
-  "AccessTokenMinutes": 60,
-  "RefreshTokenDays": 14
+  "AccessTokenMinutes": 60
 }
 ```
 

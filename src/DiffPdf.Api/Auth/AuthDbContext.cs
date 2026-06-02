@@ -27,7 +27,4 @@ public sealed class AuthOptions
 
     /// <summary>Access-token lifetime (minutes).</summary>
     public int AccessTokenMinutes { get; set; } = 60;
-
-    /// <summary>Refresh-token lifetime (days). Refresh tokens rotate on each use.</summary>
-    public int RefreshTokenDays { get; set; } = 14;
 }

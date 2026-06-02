@@ -1,6 +1,5 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore; // OpenIddictServerAspNetCoreHelpers.GetOpenIddictServerRequest
-using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using OpenIddict.Abstractions;
@@ -15,8 +14,8 @@ public static class AuthSetup
     /// <summary>
     /// Wires OpenIddict as an embedded OAuth2 server exposing the standard
     /// auto-generated endpoints — token and revocation — supporting the
-    /// client-credentials (M2M) and refresh-token flows, plus token validation.
-    /// Every endpoint requires a valid token by default.
+    /// client-credentials (M2M) flow, plus token validation. Every endpoint
+    /// requires a valid token by default.
     /// </summary>
     public static void AddDiffPdfAuth(this IServiceCollection services, string connectionString, bool useSqlServer, AuthOptions auth)
     {
@@ -38,14 +37,12 @@ public static class AuthSetup
                 o.SetTokenEndpointUris("connect/token");
                 o.SetRevocationEndpointUris("connect/revocation"); // fully handled by OpenIddict
 
-                // Machine-to-machine client authentication plus refresh tokens.
+                // Machine-to-machine client authentication.
                 o.AllowClientCredentialsFlow();
-                o.AllowRefreshTokenFlow();
 
-                o.RegisterScopes(auth.Scope, Scopes.OfflineAccess);
+                o.RegisterScopes(auth.Scope);
 
                 o.SetAccessTokenLifetime(TimeSpan.FromMinutes(auth.AccessTokenMinutes));
-                o.SetRefreshTokenLifetime(TimeSpan.FromDays(auth.RefreshTokenDays));
 
                 // Ephemeral keys are fine for short-lived tokens validated by this same
                 // server; use real certificates for multi-instance production.
@@ -79,51 +76,31 @@ public static class AuthSetup
     }
 
     /// <summary>
-    /// Token endpoint for the enabled grants: client-credentials (M2M) plus the
-    /// refresh-token grant. For the latter the subject identity is recovered from
-    /// the incoming refresh token.
+    /// Token endpoint for the client-credentials (M2M) grant. The client id/secret
+    /// are validated by OpenIddict; this handler mints the access token.
     /// </summary>
     public static void MapTokenEndpoint(this WebApplication app, AuthOptions auth)
     {
-        app.MapPost("/connect/token", async (HttpContext context) =>
+        app.MapPost("/connect/token", (HttpContext context) =>
         {
             var request = context.GetOpenIddictServerRequest()
                 ?? throw new InvalidOperationException("The OpenIddict request cannot be retrieved.");
 
-            if (request.IsClientCredentialsGrantType())
-            {
-                // Client id/secret are already validated by OpenIddict against the store.
-                var identity = new ClaimsIdentity(
-                    OpenIddictServerAspNetCoreDefaults.AuthenticationScheme,
-                    Claims.Name, Claims.Role);
-                identity.AddClaim(Claims.Subject, request.ClientId!);
-                identity.AddClaim(Claims.Name, request.ClientId!);
+            if (!request.IsClientCredentialsGrantType())
+                return Results.BadRequest(new { error = Errors.UnsupportedGrantType });
 
-                var principal = new ClaimsPrincipal(identity);
-                principal.SetScopes(request.GetScopes().Any() ? request.GetScopes() : [auth.Scope]);
-                principal.SetDestinations(GetDestinations);
+            // Client id/secret are already validated by OpenIddict against the store.
+            var identity = new ClaimsIdentity(
+                OpenIddictServerAspNetCoreDefaults.AuthenticationScheme,
+                Claims.Name, Claims.Role);
+            identity.AddClaim(Claims.Subject, request.ClientId!);
+            identity.AddClaim(Claims.Name, request.ClientId!);
 
-                return Results.SignIn(principal, properties: null, OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
-            }
+            var principal = new ClaimsPrincipal(identity);
+            principal.SetScopes(request.GetScopes().Any() ? request.GetScopes() : [auth.Scope]);
+            principal.SetDestinations(GetDestinations);
 
-            if (request.IsRefreshTokenGrantType())
-            {
-                // Recover the principal persisted with the refresh token.
-                var result = await context.AuthenticateAsync(OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
-                if (result.Principal is null)
-                    return Results.Forbid(
-                        authenticationSchemes: [OpenIddictServerAspNetCoreDefaults.AuthenticationScheme],
-                        properties: new AuthenticationProperties(new Dictionary<string, string?>
-                        {
-                            [OpenIddictServerAspNetCoreConstants.Properties.Error] = Errors.InvalidGrant,
-                            [OpenIddictServerAspNetCoreConstants.Properties.ErrorDescription] = "The token is no longer valid.",
-                        }));
-
-                result.Principal.SetDestinations(GetDestinations);
-                return Results.SignIn(result.Principal, properties: null, OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
-            }
-
-            return Results.BadRequest(new { error = Errors.UnsupportedGrantType });
+            return Results.SignIn(principal, properties: null, OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
         }).AllowAnonymous();
     }
 
