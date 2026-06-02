@@ -48,6 +48,9 @@ blank pages, and error messages baked into the output.
   `WNetAddConnection2`, Linux CIFS mount).
 - **Async job API** — submit a batch, poll status, download the report and
   artifacts.
+- **Optional OAuth2 authentication** — embedded OpenIddict server with the
+  client-credentials (machine-to-machine) flow issuing JWT bearer tokens; toggle
+  with `Auth:Enabled`.
 
 ## How it works
 
@@ -177,7 +180,8 @@ writer converts to pixels at render time.
 
 | Method | Route | Purpose |
 |---|---|---|
-| `GET`  | `/health` | Liveness probe. |
+| `GET`  | `/health` | Liveness probe (anonymous). |
+| `POST` | `/connect/token` | OAuth2 token endpoint (client-credentials), when auth is enabled. |
 | `POST` | `/api/business-instances` | Create a business instance (`Alfa`, `RNew`, …). |
 | `GET`  | `/api/business-instances` | List business instances. |
 | `POST` | `/api/business-instances/{key}/projects` | Create a project under an instance. |
@@ -382,6 +386,31 @@ HTTP request. Adjust sinks/levels in `appsettings.json` — no code change neede
 
 The file-log directory is set by `DIFFPDF_LOG_DIR` (default `logs/`); the Docker
 image points it at `/data/logs` so logs persist on the mounted volume.
+
+### Authentication (OAuth2)
+
+Authentication is **off by default**. Enable it with `Auth:Enabled=true` (requires
+a PostgreSQL connection — OpenIddict stores its clients/tokens there). When on,
+**every endpoint requires a bearer token** except `/health`, `/connect/token` and
+the OpenAPI document.
+
+A client-credentials application is seeded on startup (`Auth:ClientId` /
+`Auth:ClientSecret` / `Auth:Scope`). Machine clients (CI, testers) get a token
+and call the API with it:
+
+```bash
+# 1. get a token
+curl -X POST http://localhost:8080/connect/token \
+  -d 'grant_type=client_credentials&client_id=diffpdf-ci&client_secret=diffpdf-secret&scope=diffpdf.api'
+# -> { "access_token": "...", "token_type": "Bearer", "expires_in": 3599 }
+
+# 2. call the API with it
+curl -H "Authorization: Bearer <access_token>" http://localhost:8080/api/jobs
+```
+
+Tokens are JWTs signed with ephemeral keys (fine for short-lived M2M tokens;
+use real certificates and HTTPS in production). Change the seeded secret via
+`Auth:ClientSecret` and keep it out of source control.
 
 ## Licensing note
 

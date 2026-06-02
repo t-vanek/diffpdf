@@ -48,6 +48,9 @@ a chybové hlášky vyrenderované přímo do PDF.
   (Windows `WNetAddConnection2`, Linux CIFS mount).
 - **Asynchronní job API** — odeslání dávky, polling stavu, stažení reportu a
   artefaktů.
+- **Volitelná OAuth2 autentizace** — vestavěný OpenIddict server s
+  client-credentials (M2M) flow vydávajícím JWT bearer tokeny; zapíná se přes
+  `Auth:Enabled`.
 
 ## Jak software funguje
 
@@ -158,7 +161,8 @@ DiffPdf.Api                  ASP.NET Core Minimal API (Serilog, OpenAPI, skupiny
 
 | Metoda | Cesta | Účel |
 |---|---|---|
-| `GET`  | `/health` | Liveness probe. |
+| `GET`  | `/health` | Liveness probe (anonymní). |
+| `POST` | `/connect/token` | OAuth2 token endpoint (client-credentials), když je auth zapnutá. |
 | `POST` | `/api/business-instances` | Vytvoří business instanci (`Alfa`, `RNew`, …). |
 | `GET`  | `/api/business-instances` | Výpis business instancí. |
 | `POST` | `/api/business-instances/{key}/projects` | Vytvoří projekt pod instancí. |
@@ -361,6 +365,31 @@ vlastnost `Application` a loguje jeden souhrnný řádek na HTTP request. Sinky 
 
 Adresář souborového logu nastavuje `DIFFPDF_LOG_DIR` (default `logs/`); Docker
 image ho míří na `/data/logs`, aby logy přežily na namountovaném volume.
+
+### Autentizace (OAuth2)
+
+Autentizace je **ve výchozím stavu vypnutá**. Zapne se přes `Auth:Enabled=true`
+(vyžaduje připojení k PostgreSQL — OpenIddict tam ukládá klienty/tokeny). Když je
+zapnutá, **každý endpoint vyžaduje bearer token** kromě `/health`,
+`/connect/token` a OpenAPI dokumentu.
+
+Při startu se vytvoří client-credentials aplikace (`Auth:ClientId` /
+`Auth:ClientSecret` / `Auth:Scope`). Strojoví klienti (CI, testeři) si vyžádají
+token a volají s ním API:
+
+```bash
+# 1. získej token
+curl -X POST http://localhost:8080/connect/token \
+  -d 'grant_type=client_credentials&client_id=diffpdf-ci&client_secret=diffpdf-secret&scope=diffpdf.api'
+# -> { "access_token": "...", "token_type": "Bearer", "expires_in": 3599 }
+
+# 2. volej API s tokenem
+curl -H "Authorization: Bearer <access_token>" http://localhost:8080/api/jobs
+```
+
+Tokeny jsou JWT podepsané ephemerálními klíči (pro krátkodobé M2M tokeny v
+pořádku; v produkci použij reálné certifikáty a HTTPS). Seedovaný secret změň
+přes `Auth:ClientSecret` a nedávej ho do gitu.
 
 ## Licenční poznámka
 
