@@ -25,6 +25,7 @@ RUN apt-get update \
         libfontconfig1 \
         libfreetype6 \
         fonts-dejavu-core \
+        cifs-utils \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /app ./
