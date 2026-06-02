@@ -1,0 +1,16 @@
+services:
+  diffpdf-api:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - ASPNETCORE_URLS=http://+:8080
+      - DIFFPDF_ARTIFACT_ROOT=/data/artifacts
+    volumes:
+      # Mount the folders you want to compare (read-only) and a writable data dir.
+      - ./samples/old:/pdfs/old:ro
+      - ./samples/new:/pdfs/new:ro
+      - diffpdf-data:/data
+
+volumes:
+  diffpdf-data:

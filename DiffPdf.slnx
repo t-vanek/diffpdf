@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/DiffPdf.Api/DiffPdf.Api.csproj" />
+    <Project Path="src/DiffPdf.Core/DiffPdf.Core.csproj" />
+    <Project Path="src/DiffPdf.Pdf/DiffPdf.Pdf.csproj" />
+    <Project Path="src/DiffPdf.Persistence/DiffPdf.Persistence.csproj" />
+    <Project Path="src/DiffPdf.Worker/DiffPdf.Worker.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/DiffPdf.Core.Tests/DiffPdf.Core.Tests.csproj" />
+  </Folder>
+</Solution>
