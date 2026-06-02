@@ -114,6 +114,40 @@ public sealed class PostgresJobStore(DiffPdfDbContext db, EntityMapper mapper) :
             : (await GetAsync(id, ct))!;
     }
 
+    public async Task<ComparisonJob?> CancelAsync(Guid id, CancellationToken ct = default)
+    {
+        var now = DateTimeOffset.UtcNow;
+        int rows = await db.Jobs
+            .Where(j => j.Id == id && (j.Status == "Queued" || j.Status == "Running"))
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(j => j.Status, "Cancelled")
+                .SetProperty(j => j.CompletedAt, now)
+                .SetProperty(j => j.UpdatedAt, now)
+                .SetProperty(j => j.LockedBy, (string?)null)
+                .SetProperty(j => j.LockedUntil, (DateTimeOffset?)null)
+                .SetProperty(j => j.Version, j => j.Version + 1), ct);
+
+        return rows == 0 ? null : await GetAsync(id, ct);
+    }
+
+    public async Task<ComparisonJob?> ReopenAsync(Guid id, int processedCount, CancellationToken ct = default)
+    {
+        var now = DateTimeOffset.UtcNow;
+        int rows = await db.Jobs
+            .Where(j => j.Id == id && (j.Status == "Completed" || j.Status == "Failed"))
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(j => j.Status, "Running")
+                .SetProperty(j => j.ProcessedCount, processedCount)
+                .SetProperty(j => j.ReportJson, (string?)null)
+                .SetProperty(j => j.Error, (string?)null)
+                .SetProperty(j => j.StartedAt, now)
+                .SetProperty(j => j.UpdatedAt, now)
+                .SetProperty(j => j.CompletedAt, (DateTimeOffset?)null)
+                .SetProperty(j => j.Version, j => j.Version + 1), ct);
+
+        return rows == 0 ? null : await GetAsync(id, ct);
+    }
+
     public async Task SetTotalAsync(Guid id, int total, CancellationToken ct = default)
     {
         var now = DateTimeOffset.UtcNow;

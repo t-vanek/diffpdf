@@ -89,7 +89,7 @@ kreslení převede na pixely.
 ### B) Životní cyklus dávkové úlohy (durable pipeline)
 
 ```
-Klient → POST /api/batch
+Klient → POST /api/v1/batch
    │  validace scope (business instance + projekt), kontrola složek
    ▼
 [API]  vloží job do PostgreSQL  +  publikuje RunBatchComparison   ← jedna transakce (outbox)
@@ -151,28 +151,34 @@ Wolverine transport (jednoinstanční dev režim).
 
 ## REST API
 
+Všechny aplikační cesty jsou pod prefixem **`/api/v1`**.
+
 | Metoda | Cesta | Účel |
 |---|---|---|
 | `GET`  | `/health` | Liveness probe (anonymní). |
 | `POST` | `/connect/token` | OAuth2 token endpoint (client-credentials), když je auth zapnutá. |
-| `POST` | `/api/business-instances` | Vytvoří business instanci (`Alfa`, `RNew`, …). |
-| `GET`  | `/api/business-instances` | Výpis business instancí. |
-| `POST` | `/api/business-instances/{key}/projects` | Vytvoří projekt pod instancí. |
-| `GET`  | `/api/business-instances/{key}/projects` | Výpis projektů. |
-| `POST` | `/api/comparisons` | Porovná jednu dvojici (synchronně). |
-| `POST` | `/api/batch` | Odešle úlohu porovnání složek (async, vrací `202`). |
-| `GET`  | `/api/jobs` | Výpis úloh. |
-| `GET`  | `/api/jobs/{id}` | Stav úlohy + progress. |
-| `GET`  | `/api/jobs/{id}/report` | Agregovaný JSON report (`409` než je hotovo). |
-| `GET`  | `/api/jobs/{id}/result` | Verdikt CI brány: `200` když prošlo, `422` když selhalo. |
-| `GET`  | `/api/jobs/{id}/artifacts/{**path}` | Stažení zvýrazněného diff-PDF. |
+| `POST` | `/api/v1/business-instances` | Vytvoří business instanci (`Alfa`, `RNew`, …). |
+| `GET`  | `/api/v1/business-instances` | Výpis business instancí. |
+| `POST` | `/api/v1/business-instances/{key}/projects` | Vytvoří projekt pod instancí. |
+| `GET`  | `/api/v1/business-instances/{key}/projects` | Výpis projektů. |
+| `POST` | `/api/v1/comparisons` | Porovná jednu dvojici (synchronně). |
+| `POST` | `/api/v1/batch` | Odešle úlohu porovnání složek (async, vrací `202`). |
+| `GET`  | `/api/v1/jobs` | Výpis úloh (filtr `businessInstanceKey` / `projectKey` / `status`). |
+| `GET`  | `/api/v1/jobs/{id}` | Stav úlohy + progress. |
+| `GET`  | `/api/v1/jobs/{id}/tasks` | Výpis file-pair tasků úlohy. |
+| `GET`  | `/api/v1/jobs/{id}/report` | Agregovaný JSON report (`409` než je hotovo). |
+| `GET`  | `/api/v1/jobs/{id}/result` | Verdikt CI brány: `200` když prošlo, `422` když selhalo. |
+| `POST` | `/api/v1/jobs/{id}/cancel` | Zruší queued/running úlohu (`409` jinak). |
+| `POST` | `/api/v1/jobs/{id}/retry` | Znovu spustí failed file-pairs hotové úlohy. |
+| `GET`  | `/api/v1/jobs/{id}/artifacts/{**path}` | Stažení zvýrazněného diff-PDF. |
 
-OpenAPI dokument je na `/openapi/v1.json`.
+OpenAPI dokument je na `/openapi/v1.json`, interaktivní **Swagger UI** na `/swagger`.
+Chyby se vrací jako **`application/problem+json`** (RFC 9457 ProblemDetails).
 
 ### Příklad — jedna dvojice
 
 ```bash
-curl -X POST http://localhost:8080/api/comparisons \
+curl -X POST http://localhost:8080/api/v1/comparisons \
   -H 'Content-Type: application/json' \
   -d '{
         "oldPath": "/pdfs/old/report.pdf",
@@ -185,11 +191,11 @@ curl -X POST http://localhost:8080/api/comparisons \
 
 ```bash
 # 0. jednou vytvoř scope (business instance + projekt)
-curl -X POST http://localhost:8080/api/business-instances -d '{"key":"Alfa","name":"Alfa"}' -H 'Content-Type: application/json'
-curl -X POST http://localhost:8080/api/business-instances/Alfa/projects -d '{"key":"LamaEnergyAlfa","name":"Lama Energy Alfa"}' -H 'Content-Type: application/json'
+curl -X POST http://localhost:8080/api/v1/business-instances -d '{"key":"Alfa","name":"Alfa"}' -H 'Content-Type: application/json'
+curl -X POST http://localhost:8080/api/v1/business-instances/Alfa/projects -d '{"key":"LamaEnergyAlfa","name":"Lama Energy Alfa"}' -H 'Content-Type: application/json'
 
 # 1. odešli dávku pod tímto scope
-curl -X POST http://localhost:8080/api/batch \
+curl -X POST http://localhost:8080/api/v1/batch \
   -H 'Content-Type: application/json' \
   -d '{
         "scope": { "businessInstanceKey": "Alfa", "projectKey": "LamaEnergyAlfa" },
@@ -201,10 +207,10 @@ curl -X POST http://localhost:8080/api/batch \
 # -> { "id": "...", "status": "Queued", ... }
 
 # 2. polling
-curl http://localhost:8080/api/jobs/<id>
+curl http://localhost:8080/api/v1/jobs/<id>
 
 # 3. stažení reportu
-curl http://localhost:8080/api/jobs/<id>/report
+curl http://localhost:8080/api/v1/jobs/<id>/report
 ```
 
 ### Volby porovnání
@@ -376,7 +382,7 @@ curl -X POST http://localhost:8080/connect/token \
 # -> { "access_token": "...", "token_type": "Bearer", "expires_in": 3599 }
 
 # 2. volej API s tokenem
-curl -H "Authorization: Bearer <access_token>" http://localhost:8080/api/jobs
+curl -H "Authorization: Bearer <access_token>" http://localhost:8080/api/v1/jobs
 ```
 
 Tokeny jsou JWT podepsané ephemerálními klíči (pro krátkodobé M2M tokeny v

@@ -34,6 +34,7 @@ builder.Services.ConfigureHttpJsonOptions(o =>
 });
 
 builder.Services.AddOpenApi();
+builder.Services.AddProblemDetails();
 builder.Services.Configure<StorageOptions>(builder.Configuration.GetSection("Storage"));
 builder.Services.Configure<PdfWorkLimiterOptions>(builder.Configuration.GetSection("Pdf"));
 
@@ -92,11 +93,22 @@ if (authEnabled)
 }
 
 app.MapOpenApi().AllowAnonymous();
+app.UseSwaggerUI(o =>
+{
+    o.SwaggerEndpoint("/openapi/v1.json", "diffpdf v1");
+    o.RoutePrefix = "swagger";
+});
 
-app.MapComparisonEndpoints();
-app.MapScopeEndpoints();
-app.MapBatchEndpoints();
-app.MapJobEndpoints();
+// Root endpoints (anonymous health/info).
+app.MapHealthEndpoints();
+
+// Versioned API surface.
+var api = app.MapGroup("/api/v1");
+api.MapComparisonEndpoints();
+api.MapScopeEndpoints();
+api.MapBatchEndpoints();
+api.MapJobEndpoints();
+
 app.MapHub<JobsHub>("/hubs/jobs");
 
 app.Run();

@@ -17,6 +17,9 @@ public interface IFilePairTaskStore
     /// <summary>Returns a claimed task to the queue (Running → Queued) for another attempt.</summary>
     Task RequeueAsync(Guid taskId, CancellationToken ct = default);
 
+    /// <summary>Resets a task (any state → Queued, clears result/error/attempts) for a manual retry.</summary>
+    Task RequeueForRetryAsync(Guid taskId, CancellationToken ct = default);
+
     /// <summary>
     /// Requeues tasks whose lease expired (crashed worker) and returns their
     /// (jobId, taskId) so they can be re-dispatched. Enables resume.
