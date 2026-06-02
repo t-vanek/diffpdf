@@ -12,6 +12,10 @@ public static class DiffPdfServiceCollectionExtensions
     public static IServiceCollection AddDiffPdf(this IServiceCollection services)
     {
         services.AddOptions<GhostscriptOptions>();
+        services.AddOptions<PdfWorkLimiterOptions>();
+
+        // Global cap on concurrent render operations (CPU/RAM protection)
+        services.AddSingleton<IPdfWorkLimiter, SemaphorePdfWorkLimiter>();
 
         // PDF primitives
         services.AddSingleton<IPdfTextExtractor, PdfPigTextExtractor>();

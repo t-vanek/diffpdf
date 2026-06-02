@@ -14,6 +14,7 @@ namespace DiffPdf.Pdf.Rendering;
 /// </summary>
 public sealed class GhostscriptPageRenderer(
     IOptions<GhostscriptOptions> options,
+    IPdfWorkLimiter limiter,
     ILogger<GhostscriptPageRenderer> logger) : IPdfPageRenderer
 {
     private readonly GhostscriptOptions _options = options.Value;
@@ -28,6 +29,7 @@ public sealed class GhostscriptPageRenderer(
 
     public async Task<RenderedPage> RenderAsync(string path, int pageNumber, int dpi, CancellationToken ct = default)
     {
+        using var _ = await limiter.AcquireAsync(ct);
         string tempOut = Path.Combine(Path.GetTempPath(), $"diffpdf_{Guid.NewGuid():N}.png");
         try
         {

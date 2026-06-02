@@ -1,5 +1,7 @@
 using System.Text.Json.Serialization;
 using DiffPdf.Api.Endpoints;
+using DiffPdf.Api.Hubs;
+using DiffPdf.Core.Abstractions;
 using DiffPdf.Core.Storage;
 using DiffPdf.Messaging;
 using DiffPdf.Pdf.DependencyInjection;
@@ -32,6 +34,13 @@ builder.Services.ConfigureHttpJsonOptions(o =>
 
 builder.Services.AddOpenApi();
 builder.Services.Configure<StorageOptions>(builder.Configuration.GetSection("Storage"));
+builder.Services.Configure<PdfWorkLimiterOptions>(builder.Configuration.GetSection("Pdf"));
+
+// SignalR realtime progress. Registering the publisher before AddDiffPdfWorker
+// means the worker's no-op fallback is not used.
+builder.Services.AddSignalR();
+builder.Services.AddSingleton<IJobProgressPublisher, SignalRJobProgressPublisher>();
+
 builder.Services.AddDiffPdf();
 builder.Services.AddDiffPdfWorker();
 
@@ -67,6 +76,7 @@ app.MapComparisonEndpoints();
 app.MapScopeEndpoints();
 app.MapBatchEndpoints();
 app.MapJobEndpoints();
+app.MapHub<JobsHub>("/hubs/jobs");
 
 app.Run();
 Log.CloseAndFlush();

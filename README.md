@@ -93,6 +93,17 @@ Persistence uses **EF Core** (Npgsql) with **Mapperly** for source-generated
 entity→domain mapping; atomic state transitions use `ExecuteUpdate` guarded by
 `status` + `version`.
 
+**Realtime progress (SignalR).** Clients connect to the `/hubs/jobs` hub and
+join a `job:{id}`, `project:{bi}:{proj}` or `business-instance:{bi}` group to
+receive `jobProgress` events. SignalR is notification-only — it holds no state,
+so a client that misses an event recovers via `GET /api/jobs/{id}`. (A Redis
+backplane is needed for more than one API instance.)
+
+**Bounded render concurrency.** A process-wide semaphore (`IPdfWorkLimiter`,
+`Pdf:MaxConcurrentOperations`, default 4) caps concurrent PDF renders across all
+jobs and instances, so parallelism can't exhaust CPU/RAM no matter how many
+jobs run at once.
+
 If `ConnectionStrings:Postgres` and `ConnectionStrings:RabbitMq` are configured
 the full stack is used; otherwise the API falls back to in-memory stores with an
 in-process Wolverine transport (single-instance dev mode).
