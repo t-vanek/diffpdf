@@ -9,7 +9,7 @@ namespace DiffPdf.Pdf.Rendering;
 /// Renders pages via PDFium (BSD) using the PDFtoImage wrapper. Use as a
 /// license-clean alternative/fallback to Ghostscript.
 /// </summary>
-public sealed class PdfiumPageRenderer : IPdfPageRenderer
+public sealed class PdfiumPageRenderer(IPdfWorkLimiter limiter) : IPdfPageRenderer
 {
     public RendererBackend Backend => RendererBackend.Pdfium;
 
@@ -21,6 +21,7 @@ public sealed class PdfiumPageRenderer : IPdfPageRenderer
 
     public async Task<RenderedPage> RenderAsync(string path, int pageNumber, int dpi, CancellationToken ct = default)
     {
+        using var _ = await limiter.AcquireAsync(ct);
         byte[] pdf = await File.ReadAllBytesAsync(path, ct);
 
         // PDFtoImage page index is 0-based.
