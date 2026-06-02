@@ -15,4 +15,12 @@ public sealed class WorkerOptions
     public int JobLockMinutes { get; set; } = 5;
 
     public TimeSpan JobLease => TimeSpan.FromMinutes(JobLockMinutes);
+
+    /// <summary>Max attempts for a single file pair before its transient failure is recorded as an error.</summary>
+    public int MaxFilePairAttempts { get; set; } = 3;
+
+    /// <summary>How often stale (expired-lease) file-pair tasks are recovered and re-dispatched.</summary>
+    public int StaleRecoveryIntervalSeconds { get; set; } = 30;
+
+    public TimeSpan StaleRecoveryInterval => TimeSpan.FromSeconds(StaleRecoveryIntervalSeconds);
 }

@@ -71,6 +71,37 @@ public sealed class InMemoryFilePairTaskStore : IFilePairTaskStore
         return Task.CompletedTask;
     }
 
+    public Task RequeueAsync(Guid taskId, CancellationToken ct = default)
+    {
+        lock (_gate)
+        {
+            if (_tasks.TryGetValue(taskId, out var t) && t.Status == FilePairTaskStatus.Running)
+                _tasks[taskId] = t with
+                {
+                    Status = FilePairTaskStatus.Queued,
+                    LockedBy = null,
+                    LockedUntil = null,
+                    Version = t.Version + 1,
+                };
+        }
+        return Task.CompletedTask;
+    }
+
+    public Task<IReadOnlyList<(Guid JobId, Guid TaskId)>> RequeueStaleAsync(CancellationToken ct = default)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var recovered = new List<(Guid, Guid)>();
+        lock (_gate)
+        {
+            foreach (var t in _tasks.Values.Where(t => t.Status == FilePairTaskStatus.Running && t.LockedUntil < now).ToList())
+            {
+                _tasks[t.Id] = t with { Status = FilePairTaskStatus.Queued, LockedBy = null, LockedUntil = null, Version = t.Version + 1 };
+                recovered.Add((t.JobId, t.Id));
+            }
+        }
+        return Task.FromResult<IReadOnlyList<(Guid, Guid)>>(recovered);
+    }
+
     public Task<IReadOnlyList<FilePairTask>> ListByJobAsync(Guid jobId, CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<FilePairTask>>(
             _tasks.Values.Where(t => t.JobId == jobId).OrderBy(t => t.RelativePath).ToList());

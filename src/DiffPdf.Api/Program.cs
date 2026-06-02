@@ -68,6 +68,9 @@ else
     });
 }
 
+// Recovers file-pair tasks abandoned by a crashed worker (works with either store).
+builder.Services.AddHostedService<StaleTaskRecoveryService>();
+
 var app = builder.Build();
 
 app.UseSerilogRequestLogging();

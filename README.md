@@ -109,7 +109,10 @@ jobs run at once.
 own `CompareFilePair` message, and the run is aggregated into the final report
 by `FinalizeBatch` once an atomic processed counter reaches the total. This
 isolates failures (one corrupt PDF is recorded as `Error` without sinking the
-batch), gives precise progress, and supports retry/resume of individual pairs.
+batch) and gives precise progress. Individual pairs **retry on transient errors**
+(up to `Worker:MaxFilePairAttempts`, with messaging cooldown), and a background
+`StaleTaskRecoveryService` requeues and re-dispatches tasks abandoned by a
+crashed worker (lease expiry), so a batch **resumes** instead of stalling.
 
 If `ConnectionStrings:Postgres` and `ConnectionStrings:RabbitMq` are configured
 the full stack is used; otherwise the API falls back to in-memory stores with an

@@ -60,6 +60,38 @@ public sealed class PostgresFilePairTaskStore(DiffPdfDbContext db, EntityMapper 
                 .SetProperty(t => t.Version, t => t.Version + 1), ct);
     }
 
+    public async Task RequeueAsync(Guid taskId, CancellationToken ct = default)
+    {
+        await db.FilePairTasks
+            .Where(t => t.Id == taskId && t.Status == "Running")
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(t => t.Status, "Queued")
+                .SetProperty(t => t.LockedBy, (string?)null)
+                .SetProperty(t => t.LockedUntil, (DateTimeOffset?)null)
+                .SetProperty(t => t.Version, t => t.Version + 1), ct);
+    }
+
+    public async Task<IReadOnlyList<(Guid JobId, Guid TaskId)>> RequeueStaleAsync(CancellationToken ct = default)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var stale = await db.FilePairTasks.AsNoTracking()
+            .Where(t => t.Status == "Running" && t.LockedUntil < now)
+            .Select(t => new { t.Id, t.JobId })
+            .ToListAsync(ct);
+
+        if (stale.Count == 0) return [];
+
+        await db.FilePairTasks
+            .Where(t => t.Status == "Running" && t.LockedUntil < now)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(t => t.Status, "Queued")
+                .SetProperty(t => t.LockedBy, (string?)null)
+                .SetProperty(t => t.LockedUntil, (DateTimeOffset?)null)
+                .SetProperty(t => t.Version, t => t.Version + 1), ct);
+
+        return stale.Select(x => (x.JobId, x.Id)).ToList();
+    }
+
     public async Task<IReadOnlyList<FilePairTask>> ListByJobAsync(Guid jobId, CancellationToken ct = default)
     {
         var rows = await db.FilePairTasks.AsNoTracking()
