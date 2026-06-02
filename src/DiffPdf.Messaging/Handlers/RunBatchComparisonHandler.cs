@@ -53,10 +53,19 @@ public sealed class RunBatchComparisonHandler
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Job {JobId} failed", job.Id);
+            await tracker.DrainAsync();
+
+            if (ExceptionClassifier.IsTransient(ex))
+            {
+                // Leave the job Running and let Wolverine's retry policy re-deliver.
+                logger.LogWarning(ex, "Transient failure on job {JobId}; will retry", job.Id);
+                throw;
+            }
+
+            // Permanent failure: record it and acknowledge (no pointless retries / DLQ).
+            logger.LogError(ex, "Permanent failure on job {JobId}", job.Id);
             try
             {
-                await tracker.DrainAsync();
                 var failed = await jobStore.FailAsync(tracker.Current.Id, ex.Message, tracker.Current.Version, CancellationToken.None);
                 await progressPublisher.PublishAsync(JobProgressChanged.From(failed), CancellationToken.None);
             }
@@ -64,7 +73,6 @@ public sealed class RunBatchComparisonHandler
             {
                 logger.LogError(failEx, "Could not mark job {JobId} as failed", job.Id);
             }
-            throw; // surface to Wolverine; retries are idempotent (job is no longer Queued)
         }
     }
 }

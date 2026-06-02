@@ -16,8 +16,7 @@ public static class BatchEndpoints
             BatchComparisonRequest request,
             IBusinessInstanceStore instances,
             IProjectStore projects,
-            IJobStore jobStore,
-            IMessageBus bus,
+            IJobSubmissionService submission,
             CancellationToken ct) =>
         {
             var scope = request.Scope;
@@ -46,10 +45,9 @@ public static class BatchEndpoints
                 ProjectId = project.Id,
             };
 
-            var created = await jobStore.CreateAsync(job, ct);
-            await bus.PublishAsync(new RunBatchComparison(created.Id, scope.BusinessInstanceKey, scope.ProjectKey));
+            await submission.SubmitAsync(job, new RunBatchComparison(job.Id, scope.BusinessInstanceKey, scope.ProjectKey), ct);
 
-            return Results.Accepted($"/api/jobs/{created.Id}", JobSummary.From(created));
+            return Results.Accepted($"/api/jobs/{job.Id}", JobSummary.From(job));
         });
     }
 }
