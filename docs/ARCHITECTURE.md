@@ -12,7 +12,8 @@ Závislosti míří dovnitř — všechno staví na `DiffPdf.Core`.
 DiffPdf.Core            doménový model + čistá logika (žádné IO frameworky)
   ├─ Comparison         engine, párování složek, zarovnání stránek, diff
   ├─ Models             ComparisonJob, BatchComparisonRequest, výsledky, scope
-  ├─ Network            resolver sdílení + credential profily + náhled dávky
+  ├─ Network            resolver sdílení + credential profily (překlad aliasů)
+  ├─ Preview            náhled dávky (dry-run párování, bez porovnání)
   ├─ Discovery          UDP protokol + popis serveru (sdílené s klientem)
   ├─ Storage            cesty/úložiště artefaktů
   └─ Abstractions       rozhraní (engine, renderer, stores, progress…)
@@ -36,7 +37,7 @@ se rozhoduje mezi produkčním a vývojovým režimem (viz §4).
 | **Sync porovnání** | `POST /api/v1/comparisons` | jedna dvojice PDF, odpoví hned výsledkem |
 | **Async dávka** | `POST /api/v1/batch` → `GET /api/v1/jobs/{id}` | složka vs složka, durable job |
 | **Scope** | `/api/v1/business-instances[...]` | business instance + projekty |
-| **Náhled dávky** | `POST /api/v1/discovery/folder \| preview`, `GET …/shares` | dry-run párování (viz §6b) |
+| **Náhled dávky** | `POST /api/v1/preview/folder \| pairing`, `GET …/shares` | dry-run párování (viz §6b) |
 | **Server discovery** | UDP `:41234` + `GET /api/v1/server-info` | najdi server v síti (viz §6a) |
 | **Auth** | `/connect/token \| authorize \| userinfo \| revocation \| logout` | OAuth2/OIDC (viz §7) |
 | **Realtime** | SignalR hub `/hubs/jobs` | živý progress úloh |
@@ -107,23 +108,22 @@ běží na různých workerech, takže cesta musí být stabilní napříč nimi
 (`localMountPath`, mapovaný disk, nebo UNC pod service účtem). Runtime mount
 s credentialy se reálně děje jen v náhledu (§6b) a v legacy `BatchComparer` (§8).
 
-## 6. Dvě „discovery" — NEPLÉST
+## 6. Discovery vs Preview — dvě různé věci
 
-Slovo „discovery" nese dvě různé věci. Jsou oddělené záměrně:
+Dříve se obojí jmenovalo „discovery"; po úklidu jsou názvy oddělené:
 
-### 6a) Server discovery — „najdi server v síti"
+### 6a) Server **discovery** — „najdi server v síti"
 - **Kde:** `DiffPdf.Core/Discovery` (protokol, popis) + `DiffPdf.Api/Discovery`
   (UDP responder, builder popisu) + `GET /api/v1/server-info`.
 - **K čemu:** klient (např. WPF) pošle UDP probe → server odpoví
   `DiffPdfServerDescriptor` (jméno, base URL, port, verze, auth). Bez napevno
   zadané adresy.
 
-### 6b) Náhled dávky (dry-run) — „co by se porovnávalo"
-- **Kde:** `DiffPdf.Core/Network/NetworkDiscoveryService` + `/api/v1/discovery/*`.
+### 6b) **Preview** dávky (dry-run) — „co by se porovnávalo"
+- **Kde:** `DiffPdf.Core/Preview/BatchPreviewService` + `/api/v1/preview/*`
+  (`shares`, `folder`, `pairing`).
 - **K čemu:** před odesláním dávky ověř dostupnost cest, počet PDF a párování
   old/new — **bez jediného porovnání**. Sdílí resolver (§5) s dávkou.
-
-> Pojmenování je matoucí (obojí „discovery"). Návrh narovnání je v §9.
 
 ## 7. Autentizace (OAuth2 / OIDC)
 
@@ -158,14 +158,12 @@ DiffPdfClient            typovaný REST: OAuth (CC i auth-code+PKCE), scope, dá
 DiffPdfLiveProgress      SignalR /hubs/jobs → živý progress
 ```
 
-## 9. Legacy / zdroje chaosu (kandidáti na úklid)
+## 9. Provedený úklid
 
-- **`BatchComparer` / `IBatchComparer`** (Core+Pdf DI) — synchronní in-process
-  varianta dávky. **Nikdo ji nevolá** (durable pipeline jede přes handlery §3).
-  Drží se jen kvůli DI registraci. → *kandidát na smazání* nebo jasné označení.
-- **Kolize názvu „discovery"** (§6a vs §6b) — náhled dávky by se klidně mohl
-  jmenovat `preview` (`/api/v1/preview`, `BatchPreviewService`), aby „discovery"
-  zůstalo jen pro hledání serveru.
-- **`NetworkDiscoveryService` žije v `Core/Network`**, ale `Discovery` (server)
-  v `Core/Discovery` — po přejmenování náhledu by namespacy seděly k rolím.
+- **Smazán mrtvý `BatchComparer` / `IBatchComparer`** — synchronní in-process
+  varianta dávky, kterou nikdo nevolal. Logika dávky žije výhradně v handlerech
+  (§3); jediné porovnání jede přes `IComparisonEngine`.
+- **Náhled dávky přejmenován z „discovery" na „preview"** — `/api/v1/preview/*`,
+  `BatchPreviewService` v `Core/Preview`. „Discovery" tak znamená výhradně
+  hledání serveru (§6a), „preview" náhled dávky (§6b).
 ```

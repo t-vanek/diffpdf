@@ -1,12 +1,13 @@
 using DiffPdf.Core.Abstractions;
 using DiffPdf.Core.Comparison;
 using DiffPdf.Core.Models;
+using DiffPdf.Core.Network;
 using Microsoft.Extensions.Logging;
 
-namespace DiffPdf.Core.Network;
+namespace DiffPdf.Core.Preview;
 
 /// <summary>What a single folder probe found.</summary>
-public sealed record FolderDiscovery(
+public sealed record FolderInspection(
     bool Reachable,
     string ResolvedPath,
     string? ShareName,
@@ -32,12 +33,13 @@ public sealed record PairingPreview(
     string? Error);
 
 /// <summary>
-/// "Discovery mode": connects to configured / ad-hoc folders and reports what is
+/// Batch dry-run: connects to configured / ad-hoc folders and reports what is
 /// reachable and what would be compared — without running a comparison.
+/// (Distinct from server <em>discovery</em>, which locates the server itself.)
 /// </summary>
-public interface INetworkDiscoveryService
+public interface IBatchPreviewService
 {
-    Task<FolderDiscovery> DiscoverFolderAsync(
+    Task<FolderInspection> InspectFolderAsync(
         string folder,
         NetworkCredentials? inlineCredentials = null,
         string? credentialProfile = null,
@@ -60,12 +62,12 @@ public interface INetworkDiscoveryService
 }
 
 /// <inheritdoc />
-public sealed class NetworkDiscoveryService(
+public sealed class BatchPreviewService(
     INetworkShareResolver resolver,
     INetworkShareConnector shareConnector,
-    ILogger<NetworkDiscoveryService> logger) : INetworkDiscoveryService
+    ILogger<BatchPreviewService> logger) : IBatchPreviewService
 {
-    public Task<FolderDiscovery> DiscoverFolderAsync(
+    public Task<FolderInspection> InspectFolderAsync(
         string folder,
         NetworkCredentials? inlineCredentials = null,
         string? credentialProfile = null,
@@ -82,14 +84,14 @@ public sealed class NetworkDiscoveryService(
             }
             catch (NetworkConfigurationException ex)
             {
-                return new FolderDiscovery(false, folder, null, 0, [], ex.Message);
+                return new FolderInspection(false, folder, null, 0, [], ex.Message);
             }
 
             try
             {
                 using var connection = shareConnector.Connect(resolved.Path, resolved.Credentials);
                 var files = Enumerate(connection.Path, searchPattern, recursive, sampleSize, out int count, ct);
-                return new FolderDiscovery(true, resolved.Path, resolved.ShareName, count, files, null);
+                return new FolderInspection(true, resolved.Path, resolved.ShareName, count, files, null);
             }
             catch (OperationCanceledException)
             {
@@ -97,8 +99,8 @@ public sealed class NetworkDiscoveryService(
             }
             catch (Exception ex)
             {
-                logger.LogWarning(ex, "Folder discovery failed for {Folder}", resolved.Path);
-                return new FolderDiscovery(false, resolved.Path, resolved.ShareName, 0, [], ex.Message);
+                logger.LogWarning(ex, "Folder inspection failed for {Folder}", resolved.Path);
+                return new FolderInspection(false, resolved.Path, resolved.ShareName, 0, [], ex.Message);
             }
         }, ct);
 

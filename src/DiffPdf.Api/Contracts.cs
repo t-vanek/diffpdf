@@ -12,7 +12,7 @@ public sealed record SingleComparisonRequest
 }
 
 /// <summary>Probe a single folder (local, UNC or a <c>share:</c> alias) for reachability and PDF count.</summary>
-public sealed record DiscoverFolderRequest
+public sealed record InspectFolderRequest
 {
     public required string Folder { get; init; }
 

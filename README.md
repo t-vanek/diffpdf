@@ -51,7 +51,7 @@ a chybové hlášky vyrenderované přímo do PDF.
   (např. WPF) ho najdou bez napevno zadané adresy. Knihovna `DiffPdf.Client`
   přidává typovaný REST přístup, OAuth a živý progress (SignalR) pro vzdálené
   ovládání serveru.
-- **Náhled dávky (dry-run)** — přes `/api/v1/discovery` ověř dostupnost cesty,
+- **Náhled dávky (dry-run)** — přes `/api/v1/preview` ověř dostupnost cesty,
   počet PDF a párování old/new ještě než odešleš dávku.
 - **Asynchronní job API** — odeslání dávky, polling stavu, stažení reportu a
   artefaktů.
@@ -202,9 +202,9 @@ Všechny aplikační cesty jsou pod prefixem **`/api/v1`**.
 | `POST` | `/api/v1/jobs/{id}/cancel` | Zruší queued/running úlohu (`409` jinak). |
 | `POST` | `/api/v1/jobs/{id}/retry` | Znovu spustí failed file-pairs hotové úlohy. |
 | `GET`  | `/api/v1/jobs/{id}/artifacts/{**path}` | Stažení zvýrazněného diff-PDF. |
-| `GET`  | `/api/v1/discovery/shares` | Výpis nakonfigurovaných sdílení a jmen credential profilů. |
-| `POST` | `/api/v1/discovery/folder` | Probe složky — dostupnost + počet PDF + ukázka cest. |
-| `POST` | `/api/v1/discovery/preview` | Suchý běh párování old/new (bez porovnání). |
+| `GET`  | `/api/v1/preview/shares` | Výpis nakonfigurovaných sdílení a jmen credential profilů. |
+| `POST` | `/api/v1/preview/folder` | Probe složky — dostupnost + počet PDF + ukázka cest. |
+| `POST` | `/api/v1/preview/pairing` | Suchý běh párování old/new (bez porovnání). |
 
 OpenAPI dokument je na `/openapi/v1.json`, interaktivní **Swagger UI** na `/swagger`.
 Chyby se vrací jako **`application/problem+json`** (RFC 9457 ProblemDetails).
@@ -388,22 +388,22 @@ Mechanismus připojení:
   service účtem. Aliasy a profily se vyhodnotí už při submitu, takže do úlohy se
   uloží konkrétní cesta; s `localMountPath` se navíc nepersistuje žádné heslo.
 
-#### Náhled dávky / dry-run (`/api/v1/discovery`)
+#### Náhled dávky / dry-run (`/api/v1/preview`)
 
 Než odešleš (drahou) dávku, můžeš si ověřit dostupnost cest, credentialy a
 párování — bez jediného porovnání:
 
 ```bash
 # co je nakonfigurované (jen jména, žádná tajemství)
-curl http://localhost:8080/api/v1/discovery/shares
+curl http://localhost:8080/api/v1/preview/shares
 
 # je složka dostupná a kolik PDF obsahuje? (vrátí i ukázku cest)
-curl -X POST http://localhost:8080/api/v1/discovery/folder \
+curl -X POST http://localhost:8080/api/v1/preview/folder \
   -H 'Content-Type: application/json' \
   -d '{ "folder": "share:reports/baseline" }'
 
 # suchý běh párování old vs new — kolik matched / onlyInOld / onlyInNew
-curl -X POST http://localhost:8080/api/v1/discovery/preview \
+curl -X POST http://localhost:8080/api/v1/preview/pairing \
   -H 'Content-Type: application/json' \
   -d '{ "oldFolder": "share:reports/baseline", "newFolder": "share:reports/build-123" }'
 ```

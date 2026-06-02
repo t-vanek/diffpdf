@@ -31,7 +31,7 @@ public sealed class ApiSurfaceTests(DiffPdfApiFactory factory) : IClassFixture<D
         {
             using var client = NewClient();
 
-            var folder = await client.DiscoverFolderAsync(oldDir);
+            var folder = await client.InspectFolderAsync(oldDir);
             Assert.True(folder.Reachable);
             Assert.Equal(2, folder.FileCount);
 
@@ -48,10 +48,10 @@ public sealed class ApiSurfaceTests(DiffPdfApiFactory factory) : IClassFixture<D
     }
 
     [Fact]
-    public async Task DiscoverFolder_UnknownShare_ReportsError()
+    public async Task InspectFolder_UnknownShare_ReportsError()
     {
         using var client = NewClient();
-        var result = await client.DiscoverFolderAsync("share:ghost/x");
+        var result = await client.InspectFolderAsync("share:ghost/x");
         Assert.False(result.Reachable);
         Assert.Contains("Unknown share", result.Error);
     }

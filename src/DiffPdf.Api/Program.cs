@@ -143,7 +143,7 @@ api.MapComparisonEndpoints();
 api.MapScopeEndpoints();
 api.MapBatchEndpoints();
 api.MapJobEndpoints();
-api.MapDiscoveryEndpoints();
+api.MapPreviewEndpoints();
 api.MapServerInfoEndpoints();
 
 app.MapHub<JobsHub>("/hubs/jobs");

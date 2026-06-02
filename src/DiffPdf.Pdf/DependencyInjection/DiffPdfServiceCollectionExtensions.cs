@@ -1,6 +1,7 @@
 using DiffPdf.Core.Abstractions;
 using DiffPdf.Core.Comparison;
 using DiffPdf.Core.Network;
+using DiffPdf.Core.Preview;
 using DiffPdf.Pdf.Network;
 using DiffPdf.Pdf.Rendering;
 using Microsoft.Extensions.DependencyInjection;
@@ -37,13 +38,12 @@ public static class DiffPdfServiceCollectionExtensions
         services.AddSingleton<IPageAligner, PageAligner>();
         services.AddSingleton<IContentErrorDetector, ContentErrorDetector>();
         services.AddSingleton<IComparisonEngine, ComparisonEngine>();
-        services.AddSingleton<IBatchComparer, BatchComparer>();
 
         // Network share access (no-op for local / already-mounted paths) + the
-        // config-driven resolver and the discovery service.
+        // config-driven resolver and the batch dry-run preview service.
         services.AddSingleton<INetworkShareConnector, PlatformShareConnector>();
         services.AddSingleton<INetworkShareResolver, NetworkShareResolver>();
-        services.AddSingleton<INetworkDiscoveryService, NetworkDiscoveryService>();
+        services.AddSingleton<IBatchPreviewService, BatchPreviewService>();
 
         return services;
     }

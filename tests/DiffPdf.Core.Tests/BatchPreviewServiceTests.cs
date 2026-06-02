@@ -1,20 +1,21 @@
 using DiffPdf.Core.Network;
+using DiffPdf.Core.Preview;
 using DiffPdf.Pdf.Network;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 namespace DiffPdf.Core.Tests;
 
-public class NetworkDiscoveryServiceTests : IDisposable
+public class BatchPreviewServiceTests : IDisposable
 {
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "diffpdf-disc-" + Guid.NewGuid().ToString("N"));
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "diffpdf-prev-" + Guid.NewGuid().ToString("N"));
 
-    private NetworkDiscoveryService Service(NetworkOptions? options = null)
+    private BatchPreviewService Service(NetworkOptions? options = null)
     {
         var opts = Options.Create(options ?? new NetworkOptions());
         var resolver = new NetworkShareResolver(opts);
         var connector = new PlatformShareConnector(opts, NullLogger<PlatformShareConnector>.Instance);
-        return new NetworkDiscoveryService(resolver, connector, NullLogger<NetworkDiscoveryService>.Instance);
+        return new BatchPreviewService(resolver, connector, NullLogger<BatchPreviewService>.Instance);
     }
 
     private string MakeFolder(string name, params string[] relativeFiles)
@@ -31,11 +32,11 @@ public class NetworkDiscoveryServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task DiscoverFolder_CountsPdfs_AndSamples()
+    public async Task InspectFolder_CountsPdfs_AndSamples()
     {
         string dir = MakeFolder("old", "a.pdf", "sub/b.pdf", "notes.txt");
 
-        var result = await Service().DiscoverFolderAsync(dir);
+        var result = await Service().InspectFolderAsync(dir);
 
         Assert.True(result.Reachable);
         Assert.Null(result.Error);
@@ -45,18 +46,18 @@ public class NetworkDiscoveryServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task DiscoverFolder_MissingFolder_ReportsUnreachable()
+    public async Task InspectFolder_MissingFolder_ReportsUnreachable()
     {
-        var result = await Service().DiscoverFolderAsync(Path.Combine(_root, "does-not-exist"));
+        var result = await Service().InspectFolderAsync(Path.Combine(_root, "does-not-exist"));
 
         Assert.False(result.Reachable);
         Assert.NotNull(result.Error);
     }
 
     [Fact]
-    public async Task DiscoverFolder_UnknownShare_ReportsConfigError()
+    public async Task InspectFolder_UnknownShare_ReportsConfigError()
     {
-        var result = await Service().DiscoverFolderAsync("share:ghost/x");
+        var result = await Service().InspectFolderAsync("share:ghost/x");
 
         Assert.False(result.Reachable);
         Assert.Contains("Unknown share", result.Error);

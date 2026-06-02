@@ -5,7 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using DiffPdf.Core.Discovery;
 using DiffPdf.Core.Models;
-using DiffPdf.Core.Network;
+using DiffPdf.Core.Preview;
 
 namespace DiffPdf.Client;
 
@@ -190,22 +190,22 @@ public sealed class DiffPdfClient : IDisposable
     public Task CreateProjectAsync(string businessInstanceKey, string key, string name, CancellationToken ct = default) =>
         PostAsync($"/api/v1/business-instances/{businessInstanceKey}/projects", new { key, name }, ct);
 
-    // --- Discovery (dry-run) ----------------------------------------------
+    // --- Batch preview (dry-run) ------------------------------------------
 
     /// <summary>Lists the server's configured shares and credential-profile names (no secrets).</summary>
     public Task<NetworkConfig> GetSharesAsync(CancellationToken ct = default) =>
-        GetAsync<NetworkConfig>("/api/v1/discovery/shares", ct);
+        GetAsync<NetworkConfig>("/api/v1/preview/shares", ct);
 
     /// <summary>Probes a folder (local, UNC or <c>share:</c> alias) for reachability and PDF count.</summary>
-    public Task<FolderDiscovery> DiscoverFolderAsync(
+    public Task<FolderInspection> InspectFolderAsync(
         string folder, string? credentialProfile = null, string searchPattern = "*.pdf", bool recursive = true, CancellationToken ct = default) =>
-        PostAsync<object, FolderDiscovery>("/api/v1/discovery/folder",
+        PostAsync<object, FolderInspection>("/api/v1/preview/folder",
             new { folder, credentialProfile, searchPattern, recursive }, ct);
 
     /// <summary>Dry-runs an old/new folder pairing without comparing.</summary>
     public Task<PairingPreview> PreviewPairingAsync(
         string oldFolder, string newFolder, string searchPattern = "*.pdf", bool recursive = true, CancellationToken ct = default) =>
-        PostAsync<object, PairingPreview>("/api/v1/discovery/preview",
+        PostAsync<object, PairingPreview>("/api/v1/preview/pairing",
             new { oldFolder, newFolder, searchPattern, recursive }, ct);
 
     // --- Batch / jobs ------------------------------------------------------
