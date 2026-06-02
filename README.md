@@ -178,7 +178,8 @@ Všechny aplikační cesty jsou pod prefixem **`/api/v1`**.
 | Metoda | Cesta | Účel |
 |---|---|---|
 | `GET`  | `/health` | Liveness probe (anonymní). |
-| `POST` | `/connect/token` | OAuth2 token endpoint (client-credentials), když je auth zapnutá. |
+| `POST` | `/connect/token` | OAuth2 token endpoint (client-credentials / authorization-code / refresh-token). |
+| `*` | `/connect/authorize`, `/connect/revocation`, `/connect/userinfo`, `/connect/logout` | OIDC endpointy (auth-code start, revoke, userinfo, end-session). |
 | `POST` | `/api/v1/business-instances` | Vytvoří business instanci (`Alfa`, `RNew`, …). |
 | `GET`  | `/api/v1/business-instances` | Výpis business instancí. |
 | `POST` | `/api/v1/business-instances/{key}/projects` | Vytvoří projekt pod instancí. |
@@ -454,16 +455,28 @@ vlastnost `Application` a loguje jeden souhrnný řádek na HTTP request. Sinky 
 Adresář souborového logu nastavuje `DIFFPDF_LOG_DIR` (default `logs/`); Docker
 image ho míří na `/data/logs`, aby logy přežily na namountovaném volume.
 
-### Autentizace (OAuth2)
+### Autentizace (OAuth2 / OIDC)
 
 Autentizace je **ve výchozím stavu vypnutá**. Zapne se přes `Auth:Enabled=true`
-(vyžaduje připojení k PostgreSQL — OpenIddict tam ukládá klienty/tokeny). Když je
-zapnutá, **každý endpoint vyžaduje bearer token** kromě `/health`,
-`/connect/token` a OpenAPI dokumentu.
+(vyžaduje připojení k PostgreSQL / SQL Serveru — OpenIddict tam ukládá klienty a
+tokeny). Když je zapnutá, **každý endpoint vyžaduje bearer token** kromě
+`/health`, OAuth endpointů a OpenAPI dokumentu.
 
-Při startu se vytvoří client-credentials aplikace (`Auth:ClientId` /
-`Auth:ClientSecret` / `Auth:Scope`). Strojoví klienti (CI, testeři) si vyžádají
-token a volají s ním API:
+Vestavěný OpenIddict server vystavuje standardní auto-generované endpointy:
+
+| Endpoint | Účel |
+| --- | --- |
+| `POST /connect/token` | Vydání access (a refresh) tokenu — všechny granty. |
+| `GET/POST /connect/authorize` | Authorization-code start (interaktivní flow). |
+| `POST /connect/revocation` | Zneplatnění access/refresh tokenu (RFC 7009). |
+| `GET/POST /connect/userinfo` | OIDC claims subjektu (vyžaduje token). |
+| `GET/POST /connect/logout` | End-session (odhlášení, post-logout redirect). |
+
+Podporované jsou dva flow a dva seedované klienti:
+
+**1) Client-credentials (M2M / CI).** Confidential klient `Auth:ClientId` /
+`Auth:ClientSecret` / `Auth:Scope`. Strojoví klienti si vyžádají token a volají
+s ním API:
 
 ```bash
 # 1. získej token
@@ -475,9 +488,32 @@ curl -X POST http://localhost:8080/connect/token \
 curl -H "Authorization: Bearer <access_token>" http://localhost:8080/api/v1/jobs
 ```
 
-Tokeny jsou JWT podepsané ephemerálními klíči (pro krátkodobé M2M tokeny v
-pořádku; v produkci použij reálné certifikáty a HTTPS). Seedovaný secret změň
-přes `Auth:ClientSecret` a nedávej ho do gitu.
+**2) Authorization-code + PKCE + refresh (interaktivní).** Public klient
+`Auth:InteractiveClientId` (bez secretu, chráněný PKCE) pro klienty připojující se
+za uživatele. Klient pošle uživatele na `/connect/authorize` (`response_type=code`,
+`code_challenge`, `scope=openid profile offline_access diffpdf.api`); ten se
+přihlásí (`/account/login`, uživatelé z `Auth:Users`) a po redirectu klient
+vymění kód na `/connect/token` (`grant_type=authorization_code`) za **access +
+refresh** token. Token se obnovuje `grant_type=refresh_token` (refresh tokeny se
+rotují) a zneplatňuje přes `/connect/revocation`.
+
+```jsonc
+"Auth": {
+  "Enabled": true,
+  "ClientId": "diffpdf-ci", "ClientSecret": "…", "Scope": "diffpdf.api",
+  "InteractiveClientId": "diffpdf-app",
+  "RedirectUris": [ "http://localhost:8080/swagger/oauth2-redirect.html" ],
+  "Users": [ { "username": "tester", "password": "…", "name": "QA tester" } ],
+  "AccessTokenMinutes": 60,
+  "RefreshTokenDays": 14
+}
+```
+
+Tokeny jsou JWT podepsané ephemerálními klíči (pro krátkodobé tokeny validované
+týmž serverem v pořádku; v produkci použij reálné certifikáty a HTTPS). Seedovaný
+secret změň přes `Auth:ClientSecret` a nedávej ho do gitu. Vestavěné
+`/account/login` (uživatelé z konfigurace) je minimální — v produkci ho nahraď
+reálným identity providerem.
 
 ## Licenční poznámka
 

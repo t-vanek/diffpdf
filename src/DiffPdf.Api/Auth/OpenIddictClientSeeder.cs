@@ -20,7 +20,15 @@ internal sealed class OpenIddictClientSeeder(
         await db.Database.EnsureCreatedAsync(cancellationToken);
 
         var manager = scope.ServiceProvider.GetRequiredService<IOpenIddictApplicationManager>();
-        if (await manager.FindByClientIdAsync(auth.ClientId, cancellationToken) is not null)
+
+        await SeedMachineClientAsync(manager, auth, cancellationToken);
+        await SeedInteractiveClientAsync(manager, auth, cancellationToken);
+    }
+
+    /// <summary>Confidential client for the client-credentials (M2M / CI) flow.</summary>
+    private async Task SeedMachineClientAsync(IOpenIddictApplicationManager manager, AuthOptions auth, CancellationToken ct)
+    {
+        if (await manager.FindByClientIdAsync(auth.ClientId, ct) is not null)
             return;
 
         await manager.CreateAsync(new OpenIddictApplicationDescriptor
@@ -32,12 +40,49 @@ internal sealed class OpenIddictClientSeeder(
             Permissions =
             {
                 Permissions.Endpoints.Token,
+                Permissions.Endpoints.Revocation,
                 Permissions.GrantTypes.ClientCredentials,
                 Permissions.Prefixes.Scope + auth.Scope,
             },
-        }, cancellationToken);
+        }, ct);
 
-        logger.LogInformation("Seeded OpenIddict client '{ClientId}'", auth.ClientId);
+        logger.LogInformation("Seeded OpenIddict M2M client '{ClientId}'", auth.ClientId);
+    }
+
+    /// <summary>Public client for the interactive authorization-code + PKCE + refresh flow.</summary>
+    private async Task SeedInteractiveClientAsync(IOpenIddictApplicationManager manager, AuthOptions auth, CancellationToken ct)
+    {
+        if (await manager.FindByClientIdAsync(auth.InteractiveClientId, ct) is not null)
+            return;
+
+        var descriptor = new OpenIddictApplicationDescriptor
+        {
+            ClientId = auth.InteractiveClientId,
+            ClientType = ClientTypes.Public, // no secret; PKCE-protected
+            DisplayName = "diffpdf interactive client",
+            Permissions =
+            {
+                Permissions.Endpoints.Authorization,
+                Permissions.Endpoints.Token,
+                Permissions.Endpoints.EndSession,
+                Permissions.Endpoints.Revocation,
+                Permissions.GrantTypes.AuthorizationCode,
+                Permissions.GrantTypes.RefreshToken,
+                Permissions.ResponseTypes.Code,
+                Permissions.Scopes.Profile,
+                Permissions.Prefixes.Scope + auth.Scope,
+            },
+            Requirements = { Requirements.Features.ProofKeyForCodeExchange },
+        };
+
+        foreach (var uri in auth.RedirectUris)
+            descriptor.RedirectUris.Add(new Uri(uri));
+        foreach (var uri in auth.PostLogoutRedirectUris)
+            descriptor.PostLogoutRedirectUris.Add(new Uri(uri));
+
+        await manager.CreateAsync(descriptor, ct);
+
+        logger.LogInformation("Seeded OpenIddict interactive client '{ClientId}'", auth.InteractiveClientId);
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;

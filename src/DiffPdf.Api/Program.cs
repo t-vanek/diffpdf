@@ -106,6 +106,7 @@ if (authEnabled)
     app.UseAuthentication();
     app.UseAuthorization();
     app.MapTokenEndpoint(auth);
+    app.MapInteractiveAuthEndpoints();
 }
 
 app.MapOpenApi().AllowAnonymous();
