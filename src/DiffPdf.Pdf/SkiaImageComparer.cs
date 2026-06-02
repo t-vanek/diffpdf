@@ -13,7 +13,8 @@ public sealed class SkiaImageComparer : IImageComparer
 {
     private const int MaxRegions = 2000; // safety cap
 
-    public ImageDiffResult Compare(byte[] oldPng, byte[] newPng, ComparisonOptions options)
+    public ImageDiffResult Compare(
+        byte[] oldPng, byte[] newPng, ComparisonOptions options, IReadOnlyList<RectangleD>? ignoreRegionsPx = null)
     {
         using var oldBmp = SKBitmap.Decode(oldPng);
         using var newBmp = SKBitmap.Decode(newPng);
@@ -23,6 +24,8 @@ public sealed class SkiaImageComparer : IImageComparer
 
         int width = Math.Max(oldBmp.Width, newBmp.Width);
         int height = Math.Max(oldBmp.Height, newBmp.Height);
+
+        var ignore = ignoreRegionsPx ?? [];
 
         // Cell size of 1 yields true per-pixel regions.
         int cellSize = Math.Max(1, options.VisualClusterCellSize);
@@ -42,10 +45,12 @@ public sealed class SkiaImageComparer : IImageComparer
                 SKColor a = x < oldBmp.Width && y < oldBmp.Height ? oldBmp.GetPixel(x, y) : SKColors.White;
                 SKColor b = x < newBmp.Width && y < newBmp.Height ? newBmp.GetPixel(x, y) : SKColors.White;
 
+                // Pixels inside an ignore region never count as different.
                 // Exact match when PixelTolerance == 0; otherwise per-channel tolerance.
-                bool different = Delta(a.Red, b.Red) > options.PixelTolerance
-                    || Delta(a.Green, b.Green) > options.PixelTolerance
-                    || Delta(a.Blue, b.Blue) > options.PixelTolerance;
+                bool different = !InIgnore(x, y, ignore)
+                    && (Delta(a.Red, b.Red) > options.PixelTolerance
+                        || Delta(a.Green, b.Green) > options.PixelTolerance
+                        || Delta(a.Blue, b.Blue) > options.PixelTolerance);
 
                 if (different)
                 {
@@ -81,6 +86,16 @@ public sealed class SkiaImageComparer : IImageComparer
     }
 
     private static int Delta(byte a, byte b) => Math.Abs(a - b);
+
+    private static bool InIgnore(int x, int y, IReadOnlyList<RectangleD> rects)
+    {
+        for (int i = 0; i < rects.Count; i++)
+        {
+            var r = rects[i];
+            if (x >= r.X && x <= r.Right && y >= r.Y && y <= r.Top) return true;
+        }
+        return false;
+    }
 
     private static SKColor Fade(SKColor c)
     {

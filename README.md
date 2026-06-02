@@ -26,6 +26,9 @@ blank pages, and error messages baked into the output.
 - **Content-error detection** — scans the rendered text for error messages a
   report engine may have printed into the PDF (e.g. `subreport error`, `#error`);
   patterns are configurable.
+- **Ignore dynamic content** — exclude regions (footer date/time, page numbers,
+  watermarks) and/or text patterns (timestamps) from both the text and visual
+  diff, so legitimately changing content doesn't flag every report.
 - **Robust error handling** — corrupt, encrypted, missing or empty PDFs are
   reported as `Error` with a reason instead of crashing the batch.
 - **Highlighted diff PDF** — per differing file, a raster diff PDF with
@@ -116,6 +119,31 @@ curl http://localhost:8080/api/jobs/<id>/report
 | `blankPageThreshold` | `0.0002` | Max non-white pixel fraction to count as blank. |
 | `detectContentErrors` | `true` | Scan text for error messages. |
 | `contentErrorPatterns` | see below | Case-insensitive regexes; defaults include `subreport error`, `#error`. |
+| `ignoreRegions` | `[]` | Areas excluded from comparison (see below). |
+| `ignoreTextPatterns` | `[]` | Regexes; matching words are dropped before the text diff. |
+
+#### Ignoring dynamic content
+
+A footer timestamp or page number changes on every run and would otherwise flag
+every report. Exclude it by area and/or by text pattern:
+
+```jsonc
+{
+  "oldPath": "/pdfs/old/report.pdf",
+  "newPath": "/pdfs/new/report.pdf",
+  "options": {
+    "ignoreRegions": [
+      // bottom 8% of every page; coordinates are top-left origin
+      { "area": { "x": 0, "y": 0.92, "width": 1, "height": 0.08 },
+        "unit": "Fraction", "label": "footer" }
+    ],
+    "ignoreTextPatterns": ["\\d{4}-\\d{2}-\\d{2}"]   // ISO dates
+  }
+}
+```
+
+`unit` is `Fraction` (0-1 of the page) or `Points`; `pages` (optional) limits a
+region to specific page numbers.
 | `produceHighlightedPdf` | `true` | Emit diff PDF for differing files. |
 | `renderer` | `Ghostscript` | `Ghostscript` or `Pdfium`. |
 

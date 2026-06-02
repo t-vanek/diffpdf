@@ -106,6 +106,21 @@ public sealed record ComparisonOptions
         @"could\s+not\s+be\s+rendered",
     ];
 
+    // ---- Ignored / dynamic content ----
+
+    /// <summary>
+    /// Rectangular areas excluded from both the text and visual comparison —
+    /// e.g. a footer carrying a generation date/time, a page number, or a
+    /// watermark that legitimately changes between runs.
+    /// </summary>
+    public IReadOnlyList<IgnoreRegion> IgnoreRegions { get; init; } = [];
+
+    /// <summary>
+    /// Case-insensitive regex patterns; any word matching one is dropped before
+    /// the text diff. Useful for timestamps/dates that move around the page.
+    /// </summary>
+    public IReadOnlyList<string> IgnoreTextPatterns { get; init; } = [];
+
     // ---- Output ----
 
     /// <summary>Produce a highlighted diff PDF artifact for differing files.</summary>

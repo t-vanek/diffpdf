@@ -169,9 +169,13 @@ public sealed class ComparisonEngine(
         double score = 0;
         var regions = new List<DifferenceRegion>();
 
+        // Drop dynamic content (timestamps, page numbers, watermarks) before diffing.
+        var oldFiltered = oldPage is null ? null : IgnoreFilter.FilterWords(oldPage, options);
+        var newFiltered = newPage is null ? null : IgnoreFilter.FilterWords(newPage, options);
+
         if (doText)
         {
-            var td = textComparer.ComparePage(oldPage, newPage, options);
+            var td = textComparer.ComparePage(oldFiltered, newFiltered, options);
             if (td.Score > 0 || td.Regions.Count > 0)
             {
                 changes |= PageChangeType.TextChanged;
@@ -190,7 +194,8 @@ public sealed class ComparisonEngine(
 
         if (doVisual && oldRender is not null && newRender is not null)
         {
-            var img = imageComparer.Compare(oldRender.Png, newRender.Png, options);
+            var ignorePx = IgnoreFilter.PixelRegions(newNum, newRender, options);
+            var img = imageComparer.Compare(oldRender.Png, newRender.Png, options, ignorePx);
             if (img.DifferenceRatio >= options.VisualThreshold && img.DifferentPixels > 0)
             {
                 changes |= PageChangeType.VisualChanged;

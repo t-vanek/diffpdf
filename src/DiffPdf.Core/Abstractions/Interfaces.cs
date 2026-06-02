@@ -28,7 +28,12 @@ public interface IPdfPageRendererFactory
 /// <summary>Compares two page bitmaps at the pixel level.</summary>
 public interface IImageComparer
 {
-    ImageDiffResult Compare(byte[] oldPng, byte[] newPng, ComparisonOptions options);
+    /// <param name="ignoreRegionsPx">Pixel-space (top-left) rectangles to exclude from the diff.</param>
+    ImageDiffResult Compare(
+        byte[] oldPng,
+        byte[] newPng,
+        ComparisonOptions options,
+        IReadOnlyList<RectangleD>? ignoreRegionsPx = null);
 }
 
 /// <summary>Decides whether a rendered page is (visually) blank.</summary>
