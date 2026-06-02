@@ -1,0 +1,233 @@
+using System.Text.Json.Serialization;
+
+namespace DiffPdf.Client;
+
+/// <summary>A branch (top-level scope).</summary>
+public sealed record Branch
+{
+    public Guid Id { get; init; }
+    public string Key { get; init; } = "";
+    public string Name { get; init; } = "";
+    public bool Enabled { get; init; }
+    public DateTimeOffset CreatedAt { get; init; }
+    public DateTimeOffset? UpdatedAt { get; init; }
+    public long Version { get; init; }
+}
+
+/// <summary>An instance under a branch (binds a customer to a base folder).</summary>
+public sealed record Instance
+{
+    public Guid Id { get; init; }
+    public Guid BranchId { get; init; }
+    public string Key { get; init; } = "";
+    public string Name { get; init; } = "";
+    public string BasePath { get; init; } = "";
+    public string? CredentialProfile { get; init; }
+    public bool Enabled { get; init; }
+    public DateTimeOffset CreatedAt { get; init; }
+    public DateTimeOffset? UpdatedAt { get; init; }
+    public long Version { get; init; }
+}
+
+/// <summary>Response from creating an instance: the record plus the folder-provisioning result.</summary>
+public sealed record CreatedInstanceResponse
+{
+    public required Instance Instance { get; init; }
+    public InstanceStructureReport? Structure { get; init; }
+}
+
+/// <summary>State of one required subfolder after inspecting / ensuring it.</summary>
+public sealed record StructureItem
+{
+    public string Name { get; init; } = "";
+    public string Path { get; init; } = "";
+    public StructureItemState State { get; init; }
+    public string? Detail { get; init; }
+    /// <summary>Number of *.pdf (recursive) in old/new; null for reports or a missing folder.</summary>
+    public int? PdfCount { get; init; }
+    /// <summary>Complete relative paths; present only when files were requested.</summary>
+    public IReadOnlyList<string>? Files { get; init; }
+}
+
+/// <summary>Result of inspecting / ensuring an instance's old/new/reports skeleton.</summary>
+public sealed record InstanceStructureReport
+{
+    public bool Reachable { get; init; }
+    public string BasePath { get; init; } = "";
+    public IReadOnlyList<StructureItem> Items { get; init; } = [];
+    public string? Error { get; init; }
+    public bool Ok { get; init; }
+}
+
+/// <summary>Pre-flight readiness of an instance for a batch.</summary>
+public sealed record InstanceReadiness
+{
+    public bool Reachable { get; init; }
+    public int OldPdfCount { get; init; }
+    public int NewPdfCount { get; init; }
+    public int Matched { get; init; }
+    public int OnlyInOld { get; init; }
+    public int OnlyInNew { get; init; }
+    public IReadOnlyList<string> SampleOnlyInOld { get; init; } = [];
+    public IReadOnlyList<string> SampleOnlyInNew { get; init; } = [];
+    public bool Ready { get; init; }
+    public string? Error { get; init; }
+}
+
+/// <summary>Lightweight job view.</summary>
+public sealed record JobSummary
+{
+    public Guid Id { get; init; }
+    public string BranchKey { get; init; } = "";
+    public string InstanceKey { get; init; } = "";
+    public JobStatus Status { get; init; }
+    public double Progress { get; init; }
+    public int ProcessedCount { get; init; }
+    public int TotalCount { get; init; }
+    public DateTimeOffset CreatedAt { get; init; }
+    public DateTimeOffset? CompletedAt { get; init; }
+    public string? Error { get; init; }
+}
+
+/// <summary>Result for a single matched (or unmatched) file pair.</summary>
+public sealed record FilePairResult
+{
+    public string RelativePath { get; init; } = "";
+    public FilePairStatus Status { get; init; }
+    public double Similarity { get; init; }
+    public int DifferingPages { get; init; }
+    public int ContentErrorCount { get; init; }
+    public string? HighlightedPdfPath { get; init; }
+    public string? Error { get; init; }
+}
+
+/// <summary>Aggregate report for a whole batch run.</summary>
+public sealed record BatchComparisonReport
+{
+    public string OldFolder { get; init; } = "";
+    public string NewFolder { get; init; } = "";
+    public DateTimeOffset StartedAt { get; init; }
+    public DateTimeOffset CompletedAt { get; init; }
+    public IReadOnlyList<FilePairResult> Files { get; init; } = [];
+    public BatchGate? Gate { get; init; }
+    public int Total { get; init; }
+    public int Identical { get; init; }
+    public int Differing { get; init; }
+    public int OnlyInOld { get; init; }
+    public int OnlyInNew { get; init; }
+    public int Errors { get; init; }
+    public int FilesWithContentErrors { get; init; }
+    public IReadOnlyList<string> GateViolations { get; init; } = [];
+    public bool Passed { get; init; }
+}
+
+/// <summary>CI-gate verdict (from <c>GET /jobs/{id}/result</c>).</summary>
+public sealed record JobResult
+{
+    public bool Passed { get; init; }
+    public bool Gated { get; init; }
+    public IReadOnlyList<string> Violations { get; init; } = [];
+    public JobResultSummary Summary { get; init; } = new();
+}
+
+public sealed record JobResultSummary
+{
+    public int Total { get; init; }
+    public int Identical { get; init; }
+    public int Differing { get; init; }
+    public int OnlyInOld { get; init; }
+    public int OnlyInNew { get; init; }
+    public int Errors { get; init; }
+    public int FilesWithContentErrors { get; init; }
+}
+
+/// <summary>A job's file-pair task view.</summary>
+public sealed record FilePairTaskSummary
+{
+    public Guid Id { get; init; }
+    public string RelativePath { get; init; } = "";
+    public string Status { get; init; } = "";
+    public int AttemptCount { get; init; }
+    public string? ResultStatus { get; init; }
+    public string? Error { get; init; }
+}
+
+/// <summary>What a single folder probe found.</summary>
+public sealed record FolderDiscovery
+{
+    public bool Reachable { get; init; }
+    public string ResolvedPath { get; init; } = "";
+    public string? ShareName { get; init; }
+    public int FileCount { get; init; }
+    public IReadOnlyList<string> SampleFiles { get; init; } = [];
+    public string? Error { get; init; }
+}
+
+/// <summary>A pairing dry-run.</summary>
+public sealed record PairingPreview
+{
+    public bool Reachable { get; init; }
+    public string OldResolvedPath { get; init; } = "";
+    public string NewResolvedPath { get; init; } = "";
+    public int Total { get; init; }
+    public int Matched { get; init; }
+    public int OnlyInOld { get; init; }
+    public int OnlyInNew { get; init; }
+    public IReadOnlyList<string> SampleOnlyInOld { get; init; } = [];
+    public IReadOnlyList<string> SampleOnlyInNew { get; init; } = [];
+    public string? Error { get; init; }
+}
+
+/// <summary>Result of validating that a branch/instance scope exists.</summary>
+public sealed record ScopeCheck
+{
+    public string BranchKey { get; init; } = "";
+    public bool BranchExists { get; init; }
+    public string? BranchName { get; init; }
+    public string InstanceKey { get; init; } = "";
+    public bool InstanceExists { get; init; }
+    public string? InstanceName { get; init; }
+    public bool Ok { get; init; }
+}
+
+/// <summary>A folder probe enriched with an optional scope check and readiness verdict.</summary>
+public sealed record FolderDiscoveryResult
+{
+    public ScopeCheck? Scope { get; init; }
+    public FolderDiscovery Folder { get; init; } = new();
+    public bool HasPdfs { get; init; }
+    public bool Ready { get; init; }
+}
+
+/// <summary>A pairing dry-run enriched with an optional scope check and readiness verdict.</summary>
+public sealed record PairingPreviewResult
+{
+    public ScopeCheck? Scope { get; init; }
+    public PairingPreview Pairing { get; init; } = new();
+    public bool HasPdfs { get; init; }
+    public bool Ready { get; init; }
+}
+
+/// <summary>Configured network: named shares + credential-profile names (never secrets).</summary>
+public sealed record NetworkConfigSummary
+{
+    public IReadOnlyList<ShareInfo> Shares { get; init; } = [];
+    public IReadOnlyList<string> CredentialProfiles { get; init; } = [];
+}
+
+public sealed record ShareInfo
+{
+    public string Name { get; init; } = "";
+    public string? Root { get; init; }
+    public string? LocalMountPath { get; init; }
+    public bool RequiresCredentials { get; init; }
+    public string? Description { get; init; }
+}
+
+/// <summary>OAuth2 token response from <c>POST /connect/token</c> (client-credentials).</summary>
+public sealed record TokenResponse
+{
+    [JsonPropertyName("access_token")] public string AccessToken { get; init; } = "";
+    [JsonPropertyName("token_type")] public string TokenType { get; init; } = "";
+    [JsonPropertyName("expires_in")] public int ExpiresIn { get; init; }
+}
