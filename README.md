@@ -61,7 +61,9 @@ a chybové hlášky vyrenderované přímo do PDF.
 
 ## Jak software funguje
 
-Tahle sekce popisuje, co se uvnitř děje — od požadavku po výsledek.
+Tahle sekce popisuje, co se uvnitř děje — od požadavku po výsledek. Celkovou
+**mapu toku a odpovědností** (projekty, dávková pipeline, dvě „discovery", auth,
+klient) má [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ### A) Porovnávací engine (jádro)
 
