@@ -1,7 +1,6 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore; // OpenIddictServerAspNetCoreHelpers.GetOpenIddictServerRequest
 using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using OpenIddict.Abstractions;
@@ -13,15 +12,11 @@ namespace DiffPdf.Api.Auth;
 
 public static class AuthSetup
 {
-    /// <summary>Cookie scheme that carries the interactive (authorization-code) login session.</summary>
-    public const string LoginCookieScheme = "DiffPdf.Login";
-
     /// <summary>
-    /// Wires OpenIddict as an embedded OAuth2 / OIDC server exposing the standard
-    /// auto-generated endpoints — token, authorization, userinfo, revocation and
-    /// end-session — supporting client-credentials (M2M) and authorization-code +
-    /// PKCE + refresh-token (interactive) flows, plus token validation. Every
-    /// endpoint requires a valid token by default.
+    /// Wires OpenIddict as an embedded OAuth2 server exposing the standard
+    /// auto-generated endpoints — token and revocation — supporting the
+    /// client-credentials (M2M) and refresh-token flows, plus token validation.
+    /// Every endpoint requires a valid token by default.
     /// </summary>
     public static void AddDiffPdfAuth(this IServiceCollection services, string connectionString, bool useSqlServer, AuthOptions auth)
     {
@@ -39,19 +34,15 @@ public static class AuthSetup
             .AddServer(o =>
             {
                 // Standard endpoints — OpenIddict generates and protocol-handles them;
-                // the passthrough ones below are completed by our minimal handlers.
+                // the token passthrough below is completed by our minimal handler.
                 o.SetTokenEndpointUris("connect/token");
-                o.SetAuthorizationEndpointUris("connect/authorize");
-                o.SetUserInfoEndpointUris("connect/userinfo");
-                o.SetEndSessionEndpointUris("connect/logout");
                 o.SetRevocationEndpointUris("connect/revocation"); // fully handled by OpenIddict
 
-                // M2M plus interactive (authorization code + PKCE) and refresh tokens.
+                // Machine-to-machine client authentication plus refresh tokens.
                 o.AllowClientCredentialsFlow();
-                o.AllowAuthorizationCodeFlow().RequireProofKeyForCodeExchange();
                 o.AllowRefreshTokenFlow();
 
-                o.RegisterScopes(auth.Scope, Scopes.OpenId, Scopes.Profile, Scopes.OfflineAccess);
+                o.RegisterScopes(auth.Scope, Scopes.OfflineAccess);
 
                 o.SetAccessTokenLifetime(TimeSpan.FromMinutes(auth.AccessTokenMinutes));
                 o.SetRefreshTokenLifetime(TimeSpan.FromDays(auth.RefreshTokenDays));
@@ -66,9 +57,6 @@ public static class AuthSetup
                 // the app so the endpoints work without app-level HTTPS.
                 o.UseAspNetCore()
                     .EnableTokenEndpointPassthrough()
-                    .EnableAuthorizationEndpointPassthrough()
-                    .EnableUserInfoEndpointPassthrough()
-                    .EnableEndSessionEndpointPassthrough()
                     .DisableTransportSecurityRequirement();
             })
             .AddValidation(o =>
@@ -77,16 +65,8 @@ public static class AuthSetup
                 o.UseAspNetCore();
             });
 
-        // Bearer validation protects the API; a cookie carries the interactive login
-        // session consumed by the authorization endpoint.
-        services.AddAuthentication(OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme)
-            .AddCookie(LoginCookieScheme, o =>
-            {
-                o.Cookie.Name = LoginCookieScheme;
-                o.LoginPath = "/account/login";
-                o.ExpireTimeSpan = TimeSpan.FromHours(1);
-                o.SlidingExpiration = false;
-            });
+        // Bearer validation protects the API.
+        services.AddAuthentication(OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme);
 
         var requireAuth = new AuthorizationPolicyBuilder()
             .RequireAuthenticatedUser()
@@ -99,9 +79,9 @@ public static class AuthSetup
     }
 
     /// <summary>
-    /// Token endpoint for all enabled grants: client-credentials (M2M) plus the
-    /// authorization-code and refresh-token grants (interactive). For the latter two
-    /// the subject identity is recovered from the incoming code / refresh token.
+    /// Token endpoint for the enabled grants: client-credentials (M2M) plus the
+    /// refresh-token grant. For the latter the subject identity is recovered from
+    /// the incoming refresh token.
     /// </summary>
     public static void MapTokenEndpoint(this WebApplication app, AuthOptions auth)
     {
@@ -126,9 +106,9 @@ public static class AuthSetup
                 return Results.SignIn(principal, properties: null, OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
             }
 
-            if (request.IsAuthorizationCodeGrantType() || request.IsRefreshTokenGrantType())
+            if (request.IsRefreshTokenGrantType())
             {
-                // Recover the principal persisted with the authorization code / refresh token.
+                // Recover the principal persisted with the refresh token.
                 var result = await context.AuthenticateAsync(OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
                 if (result.Principal is null)
                     return Results.Forbid(
