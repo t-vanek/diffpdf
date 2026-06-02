@@ -1,4 +1,5 @@
 using DiffPdf.Core.Abstractions;
+using DiffPdf.Core.Comparison;
 using Microsoft.Extensions.Logging;
 
 namespace DiffPdf.Core.Network;
@@ -105,8 +106,8 @@ public sealed class InstanceStructureService(
                     if (name is "old" or "new" &&
                         item.State is StructureItemState.Present or StructureItemState.Created or StructureItemState.Repaired)
                     {
-                        var (count, files) = CountPdfs(path, includeFiles, ct);
-                        item = item with { PdfCount = count, Files = files };
+                        var (count, files) = PdfFolderScanner.Scan(path, "*.pdf", recursive: true, sampleLimit: includeFiles ? null : 0, ct);
+                        item = item with { PdfCount = count, Files = includeFiles ? files : null };
                     }
 
                     items.Add(item);
@@ -148,21 +149,5 @@ public sealed class InstanceStructureService(
 
         Directory.CreateDirectory(path);
         return new StructureItem(name, path, StructureItemState.Created);
-    }
-
-    /// <summary>Counts *.pdf files (recursive) under a folder; collects their relative paths only when requested.</summary>
-    private static (int Count, IReadOnlyList<string>? Files) CountPdfs(string folder, bool includeFiles, CancellationToken ct)
-    {
-        int count = 0;
-        List<string>? files = includeFiles ? [] : null;
-
-        foreach (var file in Directory.EnumerateFiles(folder, "*.pdf", SearchOption.AllDirectories))
-        {
-            ct.ThrowIfCancellationRequested();
-            count++;
-            files?.Add(Path.GetRelativePath(folder, file).Replace('\\', '/'));
-        }
-
-        return (count, files);
     }
 }
