@@ -15,6 +15,7 @@ public static class DiffPdfServiceCollectionExtensions
         // PDF primitives
         services.AddSingleton<IPdfTextExtractor, PdfPigTextExtractor>();
         services.AddSingleton<IImageComparer, SkiaImageComparer>();
+        services.AddSingleton<IBlankPageDetector, SkiaBlankPageDetector>();
         services.AddSingleton<IHighlightedPdfWriter, RasterHighlightPdfWriter>();
 
         // Renderers + factory
@@ -24,7 +25,8 @@ public static class DiffPdfServiceCollectionExtensions
 
         // Comparison logic
         services.AddSingleton<ITextComparer, TextComparer>();
-        services.AddSingleton<IVisualComparer, VisualComparer>();
+        services.AddSingleton<IPageAligner, PageAligner>();
+        services.AddSingleton<IContentErrorDetector, ContentErrorDetector>();
         services.AddSingleton<IComparisonEngine, ComparisonEngine>();
         services.AddSingleton<IBatchComparer, BatchComparer>();
 

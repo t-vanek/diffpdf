@@ -11,8 +11,7 @@ namespace DiffPdf.Pdf;
 /// </summary>
 public sealed class SkiaImageComparer : IImageComparer
 {
-    private const int CellSize = 24;     // grid resolution for clustering (px)
-    private const int MaxRegions = 1000; // safety cap
+    private const int MaxRegions = 2000; // safety cap
 
     public ImageDiffResult Compare(byte[] oldPng, byte[] newPng, ComparisonOptions options)
     {
@@ -20,13 +19,15 @@ public sealed class SkiaImageComparer : IImageComparer
         using var newBmp = SKBitmap.Decode(newPng);
 
         if (oldBmp is null || newBmp is null)
-            return new ImageDiffResult { DifferenceRatio = 1.0 };
+            return new ImageDiffResult { DifferenceRatio = 1.0, DifferentPixels = 1, TotalPixels = 1 };
 
         int width = Math.Max(oldBmp.Width, newBmp.Width);
         int height = Math.Max(oldBmp.Height, newBmp.Height);
 
-        int cols = (width + CellSize - 1) / CellSize;
-        int rows = (height + CellSize - 1) / CellSize;
+        // Cell size of 1 yields true per-pixel regions.
+        int cellSize = Math.Max(1, options.VisualClusterCellSize);
+        int cols = (width + cellSize - 1) / cellSize;
+        int rows = (height + cellSize - 1) / cellSize;
         var changedCells = new bool[rows, cols];
 
         long diffPixels = 0;
@@ -41,6 +42,7 @@ public sealed class SkiaImageComparer : IImageComparer
                 SKColor a = x < oldBmp.Width && y < oldBmp.Height ? oldBmp.GetPixel(x, y) : SKColors.White;
                 SKColor b = x < newBmp.Width && y < newBmp.Height ? newBmp.GetPixel(x, y) : SKColors.White;
 
+                // Exact match when PixelTolerance == 0; otherwise per-channel tolerance.
                 bool different = Delta(a.Red, b.Red) > options.PixelTolerance
                     || Delta(a.Green, b.Green) > options.PixelTolerance
                     || Delta(a.Blue, b.Blue) > options.PixelTolerance;
@@ -48,7 +50,7 @@ public sealed class SkiaImageComparer : IImageComparer
                 if (different)
                 {
                     diffPixels++;
-                    changedCells[y / CellSize, x / CellSize] = true;
+                    changedCells[y / cellSize, x / cellSize] = true;
                     diffBmp.SetPixel(x, y, new SKColor(255, 0, 0, 160));
                 }
                 else
@@ -59,7 +61,7 @@ public sealed class SkiaImageComparer : IImageComparer
             }
         }
 
-        var regions = ExtractRegions(changedCells, rows, cols, width, height);
+        var regions = ExtractRegions(changedCells, rows, cols, width, height, cellSize);
 
         byte[]? diffImage = null;
         if (diffPixels > 0)
@@ -70,6 +72,8 @@ public sealed class SkiaImageComparer : IImageComparer
 
         return new ImageDiffResult
         {
+            DifferentPixels = diffPixels,
+            TotalPixels = totalPixels,
             DifferenceRatio = totalPixels == 0 ? 0 : (double)diffPixels / totalPixels,
             Regions = regions,
             DiffImagePng = diffImage,
@@ -85,7 +89,7 @@ public sealed class SkiaImageComparer : IImageComparer
     }
 
     /// <summary>Merges horizontally adjacent changed cells per row into rectangles.</summary>
-    private static List<RectangleD> ExtractRegions(bool[,] cells, int rows, int cols, int width, int height)
+    private static List<RectangleD> ExtractRegions(bool[,] cells, int rows, int cols, int width, int height, int cellSize)
     {
         var regions = new List<RectangleD>();
         for (int r = 0; r < rows && regions.Count < MaxRegions; r++)
@@ -97,10 +101,10 @@ public sealed class SkiaImageComparer : IImageComparer
                 int start = c;
                 while (c < cols && cells[r, c]) c++;
 
-                int x = start * CellSize;
-                int y = r * CellSize;
-                int w = Math.Min((c - start) * CellSize, width - x);
-                int h = Math.Min(CellSize, height - y);
+                int x = start * cellSize;
+                int y = r * cellSize;
+                int w = Math.Min((c - start) * cellSize, width - x);
+                int h = Math.Min(cellSize, height - y);
                 regions.Add(new RectangleD(x, y, w, h));
             }
         }

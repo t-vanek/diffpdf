@@ -38,6 +38,9 @@ public sealed record FilePairResult
 
     public int DifferingPages { get; init; }
 
+    /// <summary>Number of error messages detected inside the document content (e.g. "subreport error").</summary>
+    public int ContentErrorCount { get; init; }
+
     public string? HighlightedPdfPath { get; init; }
 
     public string? Error { get; init; }
@@ -60,4 +63,7 @@ public sealed record BatchComparisonReport
     public int OnlyInOld => Files.Count(f => f.Status == FilePairStatus.OnlyInOld);
     public int OnlyInNew => Files.Count(f => f.Status == FilePairStatus.OnlyInNew);
     public int Errors => Files.Count(f => f.Status == FilePairStatus.Error);
+
+    /// <summary>Files containing at least one detected content error.</summary>
+    public int FilesWithContentErrors => Files.Count(f => f.ContentErrorCount > 0);
 }

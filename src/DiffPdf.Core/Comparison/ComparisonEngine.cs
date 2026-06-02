@@ -5,17 +5,24 @@ using Microsoft.Extensions.Logging;
 namespace DiffPdf.Core.Comparison;
 
 /// <summary>
-/// Orchestrates a single old/new PDF comparison: runs the requested modes,
-/// merges per-page results, and optionally emits a highlighted diff PDF.
+/// Orchestrates a single old/new PDF comparison: probes readability, detects
+/// content errors, aligns pages, runs the requested text/visual diffs, detects
+/// blank pages and size changes, classifies each page, and optionally emits a
+/// highlighted diff PDF.
 /// </summary>
 public sealed class ComparisonEngine(
     IPdfTextExtractor textExtractor,
     ITextComparer textComparer,
-    IVisualComparer visualComparer,
+    IImageComparer imageComparer,
+    IBlankPageDetector blankDetector,
+    IPageAligner pageAligner,
+    IContentErrorDetector contentErrorDetector,
     IPdfPageRendererFactory rendererFactory,
     IHighlightedPdfWriter highlightedPdfWriter,
     ILogger<ComparisonEngine> logger) : IComparisonEngine
 {
+    private const double SizeTolerancePoints = 1.0;
+
     public async Task<FileComparisonResult> CompareAsync(
         string oldPath,
         string newPath,
@@ -23,33 +30,60 @@ public sealed class ComparisonEngine(
         string? artifactDirectory = null,
         CancellationToken ct = default)
     {
-        int oldCount = textExtractor.GetPageCount(oldPath);
-        int newCount = textExtractor.GetPageCount(newPath);
+        var oldInfo = textExtractor.Probe(oldPath);
+        var newInfo = textExtractor.Probe(newPath);
 
-        var pageComparisons = new Dictionary<int, PageComparison>();
-
-        if (options.Mode.HasFlag(ComparisonMode.Text))
+        // Hard read errors on either side: no comparison possible.
+        if (!oldInfo.IsComparable || !newInfo.IsComparable)
         {
-            var oldText = await textExtractor.ExtractAsync(oldPath, options.Pages, ct);
-            var newText = await textExtractor.ExtractAsync(newPath, options.Pages, ct);
-            Merge(pageComparisons, textComparer.Compare(oldText, newText, options));
+            return new FileComparisonResult
+            {
+                OldPath = oldPath,
+                NewPath = newPath,
+                Outcome = ComparisonOutcome.Failed,
+                OldStatus = oldInfo.Status,
+                NewStatus = newInfo.Status,
+                OldPageCount = oldInfo.PageCount,
+                NewPageCount = newInfo.PageCount,
+                Error = FormatError(oldInfo, newInfo),
+            };
         }
 
-        if (options.Mode.HasFlag(ComparisonMode.Visual))
+        var oldText = await textExtractor.ExtractAsync(oldPath, options.Pages, ct);
+        var newText = await textExtractor.ExtractAsync(newPath, options.Pages, ct);
+
+        var contentErrors = new List<ContentError>();
+        if (options.DetectContentErrors)
         {
-            var visual = await visualComparer.CompareAsync(oldPath, newPath, options, ct);
-            Merge(pageComparisons, visual);
+            contentErrors.AddRange(contentErrorDetector.Detect(oldText, ContentErrorSide.Old, options));
+            contentErrors.AddRange(contentErrorDetector.Detect(newText, ContentErrorSide.New, options));
         }
 
-        var pages = pageComparisons.Values.OrderBy(p => p.PageNumber).ToList();
+        var oldByNum = oldText.ToDictionary(p => p.PageNumber);
+        var newByNum = newText.ToDictionary(p => p.PageNumber);
+        var oldGeom = oldInfo.Pages.ToDictionary(g => g.PageNumber);
+        var newGeom = newInfo.Pages.ToDictionary(g => g.PageNumber);
+
+        var pairs = pageAligner.Align(oldText, newText, options);
+
+        var pageComparisons = new List<PageComparison>(pairs.Count);
+        var highlightPages = new List<HighlightedPage>();
+
+        foreach (var pair in pairs)
+        {
+            ct.ThrowIfCancellationRequested();
+            var (comparison, highlight) = await ComparePairAsync(
+                pair, oldPath, newPath, oldByNum, newByNum, oldGeom, newGeom, options, artifactDirectory is not null, ct);
+            pageComparisons.Add(comparison);
+            if (highlight is not null) highlightPages.Add(highlight);
+        }
 
         string? highlightedPath = null;
-        bool differs = pages.Any(p => p.IsDifferent) || oldCount != newCount;
-        if (options.ProduceHighlightedPdf && differs && artifactDirectory is not null)
+        if (options.ProduceHighlightedPdf && artifactDirectory is not null && highlightPages.Count > 0)
         {
             try
             {
-                highlightedPath = await WriteHighlightedAsync(newPath, pages, options, artifactDirectory, ct);
+                highlightedPath = await WriteHighlightedAsync(newPath, highlightPages, artifactDirectory, ct);
             }
             catch (Exception ex)
             {
@@ -61,54 +95,174 @@ public sealed class ComparisonEngine(
         {
             OldPath = oldPath,
             NewPath = newPath,
-            OldPageCount = oldCount,
-            NewPageCount = newCount,
-            Pages = pages,
+            Outcome = ComparisonOutcome.Compared,
+            OldStatus = oldInfo.Status,
+            NewStatus = newInfo.Status,
+            OldPageCount = oldInfo.PageCount,
+            NewPageCount = newInfo.PageCount,
+            Pages = pageComparisons,
+            ContentErrors = contentErrors,
             HighlightedPdfPath = highlightedPath,
         };
     }
 
-    private static void Merge(Dictionary<int, PageComparison> acc, IReadOnlyList<PageComparison> incoming)
-    {
-        foreach (var pc in incoming)
-        {
-            if (acc.TryGetValue(pc.PageNumber, out var existing))
-            {
-                acc[pc.PageNumber] = existing with
-                {
-                    DifferenceScore = Math.Max(existing.DifferenceScore, pc.DifferenceScore),
-                    Regions = [.. existing.Regions, .. pc.Regions],
-                };
-            }
-            else
-            {
-                acc[pc.PageNumber] = pc;
-            }
-        }
-    }
-
-    private async Task<string> WriteHighlightedAsync(
+    private async Task<(PageComparison, HighlightedPage?)> ComparePairAsync(
+        AlignedPagePair pair,
+        string oldPath,
         string newPath,
-        IReadOnlyList<PageComparison> pages,
+        IReadOnlyDictionary<int, PageText> oldByNum,
+        IReadOnlyDictionary<int, PageText> newByNum,
+        IReadOnlyDictionary<int, PageGeometry> oldGeom,
+        IReadOnlyDictionary<int, PageGeometry> newGeom,
         ComparisonOptions options,
-        string artifactDirectory,
+        bool wantHighlight,
         CancellationToken ct)
     {
         var renderer = rendererFactory.GetRenderer(options.Renderer);
-        var highlighted = new List<HighlightedPage>();
+        bool doText = options.Mode.HasFlag(ComparisonMode.Text);
+        bool doVisual = options.Mode.HasFlag(ComparisonMode.Visual);
+        bool needRenders = doVisual || options.DetectBlankPages || wantHighlight;
 
-        foreach (var page in pages.Where(p => p.IsDifferent))
+        // --- Page added (only in new) ---
+        if (pair.OldPageNumber is null && pair.NewPageNumber is int addedNum)
         {
-            var background = await renderer.RenderAsync(newPath, page.PageNumber, options.Dpi, ct);
-            highlighted.Add(new HighlightedPage(background, page.Regions));
+            RenderedPage? render = needRenders ? await renderer.RenderAsync(newPath, addedNum, options.Dpi, ct) : null;
+            bool blank = render is not null && blankDetector.IsVisuallyBlank(render, options);
+            var comparison = new PageComparison
+            {
+                NewPageNumber = addedNum,
+                Changes = PageChangeType.PageAdded,
+                DifferenceScore = 1.0,
+                NewBlank = blank,
+            };
+            var highlight = wantHighlight && render is not null
+                ? new HighlightedPage(render, [FullPageRegion(render, DifferenceKind.Added)])
+                : null;
+            return (comparison, highlight);
         }
 
-        Directory.CreateDirectory(artifactDirectory);
-        string outPath = Path.Combine(
-            artifactDirectory,
-            Path.GetFileNameWithoutExtension(newPath) + ".diff.pdf");
+        // --- Page removed (only in old) ---
+        if (pair.NewPageNumber is null && pair.OldPageNumber is int removedNum)
+        {
+            RenderedPage? render = needRenders ? await renderer.RenderAsync(oldPath, removedNum, options.Dpi, ct) : null;
+            bool blank = render is not null && blankDetector.IsVisuallyBlank(render, options);
+            var comparison = new PageComparison
+            {
+                OldPageNumber = removedNum,
+                Changes = PageChangeType.PageRemoved,
+                DifferenceScore = 1.0,
+                OldBlank = blank,
+            };
+            var highlight = wantHighlight && render is not null
+                ? new HighlightedPage(render, [FullPageRegion(render, DifferenceKind.Removed)])
+                : null;
+            return (comparison, highlight);
+        }
 
-        await highlightedPdfWriter.WriteAsync(outPath, highlighted, ct);
+        // --- Matched pair ---
+        int oldNum = pair.OldPageNumber!.Value;
+        int newNum = pair.NewPageNumber!.Value;
+        oldByNum.TryGetValue(oldNum, out var oldPage);
+        newByNum.TryGetValue(newNum, out var newPage);
+
+        var changes = PageChangeType.None;
+        double score = 0;
+        var regions = new List<DifferenceRegion>();
+
+        if (doText)
+        {
+            var td = textComparer.ComparePage(oldPage, newPage, options);
+            if (td.Score > 0 || td.Regions.Count > 0)
+            {
+                changes |= PageChangeType.TextChanged;
+                score = Math.Max(score, td.Score);
+                // Only "added" text maps onto the new-page background.
+                regions.AddRange(td.Regions.Where(r => r.Kind == DifferenceKind.Added));
+            }
+        }
+
+        RenderedPage? oldRender = null, newRender = null;
+        if (needRenders)
+        {
+            oldRender = await renderer.RenderAsync(oldPath, oldNum, options.Dpi, ct);
+            newRender = await renderer.RenderAsync(newPath, newNum, options.Dpi, ct);
+        }
+
+        if (doVisual && oldRender is not null && newRender is not null)
+        {
+            var img = imageComparer.Compare(oldRender.Png, newRender.Png, options);
+            if (img.DifferenceRatio >= options.VisualThreshold && img.DifferentPixels > 0)
+            {
+                changes |= PageChangeType.VisualChanged;
+                score = Math.Max(score, img.DifferenceRatio);
+                foreach (var px in img.Regions)
+                    regions.Add(new DifferenceRegion(
+                        DifferenceKind.Changed,
+                        CoordinateConverter.PixelToPoints(px, options.Dpi, newRender.HeightPx)));
+            }
+        }
+
+        bool oldBlank = oldRender is not null && blankDetector.IsVisuallyBlank(oldRender, options);
+        bool newBlank = newRender is not null && blankDetector.IsVisuallyBlank(newRender, options);
+        if (options.DetectBlankPages)
+        {
+            if (oldBlank && !newBlank) changes |= PageChangeType.WasBlank;
+            if (!oldBlank && newBlank) changes |= PageChangeType.BecameBlank;
+        }
+
+        if (oldGeom.TryGetValue(oldNum, out var go) && newGeom.TryGetValue(newNum, out var gn)
+            && !SameSize(go, gn))
+        {
+            changes |= PageChangeType.SizeChanged;
+        }
+
+        var pageComparison = new PageComparison
+        {
+            OldPageNumber = oldNum,
+            NewPageNumber = newNum,
+            Changes = changes,
+            DifferenceScore = score,
+            OldBlank = oldBlank,
+            NewBlank = newBlank,
+            Regions = regions,
+        };
+
+        HighlightedPage? matchedHighlight =
+            wantHighlight && changes != PageChangeType.None && newRender is not null
+                ? new HighlightedPage(newRender, regions)
+                : null;
+
+        return (pageComparison, matchedHighlight);
+    }
+
+    private static bool SameSize(PageGeometry a, PageGeometry b)
+    {
+        var (aw, ah) = a.Effective;
+        var (bw, bh) = b.Effective;
+        return Math.Abs(aw - bw) <= SizeTolerancePoints && Math.Abs(ah - bh) <= SizeTolerancePoints;
+    }
+
+    private static DifferenceRegion FullPageRegion(RenderedPage page, DifferenceKind kind)
+    {
+        double widthPt = page.WidthPx * 72.0 / Math.Max(1, page.Dpi);
+        double heightPt = page.HeightPx * 72.0 / Math.Max(1, page.Dpi);
+        return new DifferenceRegion(kind, new RectangleD(0, 0, widthPt, heightPt));
+    }
+
+    private async Task<string> WriteHighlightedAsync(
+        string newPath, IReadOnlyList<HighlightedPage> pages, string artifactDirectory, CancellationToken ct)
+    {
+        Directory.CreateDirectory(artifactDirectory);
+        string outPath = Path.Combine(artifactDirectory, Path.GetFileNameWithoutExtension(newPath) + ".diff.pdf");
+        await highlightedPdfWriter.WriteAsync(outPath, pages, ct);
         return outPath;
+    }
+
+    private static string FormatError(DocumentInfo oldInfo, DocumentInfo newInfo)
+    {
+        var parts = new List<string>();
+        if (!oldInfo.IsComparable) parts.Add($"old: {oldInfo.Status} ({oldInfo.Message})");
+        if (!newInfo.IsComparable) parts.Add($"new: {newInfo.Status} ({newInfo.Message})");
+        return string.Join("; ", parts);
     }
 }

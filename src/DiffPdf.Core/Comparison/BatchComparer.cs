@@ -77,12 +77,23 @@ public sealed class BatchComparer(IComparisonEngine engine, ILogger<BatchCompare
             string pairArtifactDir = Path.Combine(artifactDirectory, Path.GetDirectoryName(key) ?? string.Empty);
             var fileResult = await engine.CompareAsync(oldPath, newPath, request.Options, pairArtifactDir, ct);
 
+            if (fileResult.Outcome == ComparisonOutcome.Failed)
+            {
+                return new FilePairResult
+                {
+                    RelativePath = key,
+                    Status = FilePairStatus.Error,
+                    Error = fileResult.Error,
+                };
+            }
+
             return new FilePairResult
             {
                 RelativePath = key,
                 Status = fileResult.AreIdentical ? FilePairStatus.Identical : FilePairStatus.Differs,
                 Similarity = fileResult.Similarity,
-                DifferingPages = fileResult.Pages.Count(p => p.IsDifferent),
+                DifferingPages = fileResult.DifferingPages,
+                ContentErrorCount = fileResult.ContentErrors.Count,
                 HighlightedPdfPath = fileResult.HighlightedPdfPath,
             };
         }

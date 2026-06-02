@@ -11,7 +11,13 @@ public sealed record PageText
     public required int PageNumber { get; init; }
     public double Width { get; init; }
     public double Height { get; init; }
+    public int Rotation { get; init; }
     public IReadOnlyList<PositionedWord> Words { get; init; } = [];
+
+    /// <summary>True when the page has any extractable text.</summary>
+    public bool HasText => Words.Count > 0;
+
+    public PageGeometry Geometry => new(PageNumber, Width, Height, Rotation);
 }
 
 /// <summary>A page rendered to a raster image (PNG bytes).</summary>
@@ -27,6 +33,12 @@ public sealed record RenderedPage
 /// <summary>Result of comparing two page bitmaps.</summary>
 public sealed record ImageDiffResult
 {
+    /// <summary>Number of pixels that differ beyond tolerance.</summary>
+    public long DifferentPixels { get; init; }
+
+    /// <summary>Total pixels considered (max of the two page areas).</summary>
+    public long TotalPixels { get; init; }
+
     /// <summary>Fraction of pixels that differ beyond tolerance (0-1).</summary>
     public double DifferenceRatio { get; init; }
 

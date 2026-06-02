@@ -9,7 +9,7 @@ public enum ComparisonMode
     Text = 1,
     /// <summary>Render pages to bitmaps and run a visual/pixel diff.</summary>
     Visual = 2,
-    /// <summary>Run a cheap pre-filter (page count, byte hash) before the expensive modes.</summary>
+    /// <summary>Run both the textual and visual comparisons.</summary>
     Both = Text | Visual,
 }
 
@@ -32,20 +32,72 @@ public sealed record ComparisonOptions
     /// <summary>Render resolution for the visual comparison.</summary>
     public int Dpi { get; init; } = 150;
 
+    // ---- Pixel-level visual diff ----
+
     /// <summary>
     /// Per-pixel channel tolerance (0-255) before a pixel counts as different.
-    /// Absorbs anti-aliasing noise.
+    /// Set to 0 for an exact pixel-perfect comparison; higher values absorb
+    /// anti-aliasing noise.
     /// </summary>
     public byte PixelTolerance { get; init; } = 16;
 
     /// <summary>
     /// Fraction of differing pixels on a page (0-1) below which the page is still
-    /// considered visually identical.
+    /// considered visually identical. Set to 0 to flag a single differing pixel.
     /// </summary>
     public double VisualThreshold { get; init; } = 0.0005;
 
+    /// <summary>
+    /// Grid cell size (px) used to cluster differing pixels into highlight regions.
+    /// Lower = finer regions (down to 1 = per-pixel); higher = coarser/faster.
+    /// </summary>
+    public int VisualClusterCellSize { get; init; } = 24;
+
+    // ---- Text diff ----
+
     /// <summary>Whether to normalize whitespace before the textual diff.</summary>
     public bool NormalizeWhitespace { get; init; } = true;
+
+    // ---- Page alignment ----
+
+    /// <summary>
+    /// Align pages by content so an inserted/removed page does not cascade into
+    /// false differences. When false, pages are paired strictly by index.
+    /// </summary>
+    public bool AlignPages { get; init; } = true;
+
+    /// <summary>Minimum text similarity (0-1) for two pages to align as "the same page".</summary>
+    public double PageMatchThreshold { get; init; } = 0.5;
+
+    // ---- Blank page detection ----
+
+    public bool DetectBlankPages { get; init; } = true;
+
+    /// <summary>Max fraction of non-white pixels for a page to count as visually blank.</summary>
+    public double BlankPageThreshold { get; init; } = 0.002;
+
+    // ---- Content error detection ----
+
+    /// <summary>Scan extracted text for known error messages (e.g. "subreport error").</summary>
+    public bool DetectContentErrors { get; init; } = true;
+
+    /// <summary>
+    /// Case-insensitive regex patterns flagged as content errors. Defaults cover
+    /// common report-generation failures rendered into the PDF.
+    /// </summary>
+    public IReadOnlyList<string> ContentErrorPatterns { get; init; } = DefaultContentErrorPatterns;
+
+    public static readonly IReadOnlyList<string> DefaultContentErrorPatterns =
+    [
+        @"subreport\s+error",
+        @"#error",
+        @"#ref!",
+        @"error\s+rendering",
+        @"evaluation\s+warning",
+        @"could\s+not\s+be\s+rendered",
+    ];
+
+    // ---- Output ----
 
     /// <summary>Produce a highlighted diff PDF artifact for differing files.</summary>
     public bool ProduceHighlightedPdf { get; init; } = true;

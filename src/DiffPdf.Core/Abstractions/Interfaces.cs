@@ -2,19 +2,19 @@ using DiffPdf.Core.Models;
 
 namespace DiffPdf.Core.Abstractions;
 
-/// <summary>Extracts positioned text from a PDF.</summary>
+/// <summary>Extracts positioned text from a PDF and probes its readability.</summary>
 public interface IPdfTextExtractor
 {
-    int GetPageCount(string path);
+    /// <summary>Opens the document defensively and reports its status + geometry.</summary>
+    DocumentInfo Probe(string path);
+
     Task<IReadOnlyList<PageText>> ExtractAsync(string path, PageRange range, CancellationToken ct = default);
 }
 
 /// <summary>Renders PDF pages to raster images.</summary>
 public interface IPdfPageRenderer
 {
-    /// <summary>Backend this renderer implements.</summary>
     RendererBackend Backend { get; }
-
     int GetPageCount(string path);
     Task<RenderedPage> RenderAsync(string path, int pageNumber, int dpi, CancellationToken ct = default);
 }
@@ -25,38 +25,60 @@ public interface IPdfPageRendererFactory
     IPdfPageRenderer GetRenderer(RendererBackend backend);
 }
 
-/// <summary>Compares two page bitmaps.</summary>
+/// <summary>Compares two page bitmaps at the pixel level.</summary>
 public interface IImageComparer
 {
     ImageDiffResult Compare(byte[] oldPng, byte[] newPng, ComparisonOptions options);
 }
 
-/// <summary>Page-level input for the highlighted PDF writer.</summary>
-public sealed record HighlightedPage(RenderedPage Background, IReadOnlyList<DifferenceRegion> Regions);
-
-/// <summary>Assembles a highlighted diff PDF.</summary>
-public interface IHighlightedPdfWriter
+/// <summary>Decides whether a rendered page is (visually) blank.</summary>
+public interface IBlankPageDetector
 {
-    Task WriteAsync(string outputPath, IReadOnlyList<HighlightedPage> pages, CancellationToken ct = default);
+    bool IsVisuallyBlank(RenderedPage page, ComparisonOptions options);
 }
 
-/// <summary>Textual diff over the words of two documents.</summary>
+/// <summary>Per-page textual diff result.</summary>
+public sealed record TextPageDiff(double Score, IReadOnlyList<DifferenceRegion> Regions)
+{
+    public static readonly TextPageDiff Identical = new(0, []);
+}
+
+/// <summary>Word-level textual diff over a single aligned page pair.</summary>
 public interface ITextComparer
 {
-    IReadOnlyList<PageComparison> Compare(
+    TextPageDiff ComparePage(PageText? oldPage, PageText? newPage, ComparisonOptions options);
+
+    /// <summary>Text similarity (0-1) used for page alignment.</summary>
+    double Similarity(PageText oldPage, PageText newPage);
+}
+
+/// <summary>One column of a page alignment; a null side means insertion/deletion.</summary>
+public sealed record AlignedPagePair(int? OldPageNumber, int? NewPageNumber);
+
+/// <summary>Aligns the pages of two documents to absorb inserts/deletes.</summary>
+public interface IPageAligner
+{
+    IReadOnlyList<AlignedPagePair> Align(
         IReadOnlyList<PageText> oldPages,
         IReadOnlyList<PageText> newPages,
         ComparisonOptions options);
 }
 
-/// <summary>Visual diff over the rendered pages of two documents.</summary>
-public interface IVisualComparer
+/// <summary>Scans extracted text for known error messages rendered into the PDF.</summary>
+public interface IContentErrorDetector
 {
-    Task<IReadOnlyList<PageComparison>> CompareAsync(
-        string oldPath,
-        string newPath,
-        ComparisonOptions options,
-        CancellationToken ct = default);
+    IReadOnlyList<ContentError> Detect(
+        IReadOnlyList<PageText> pages,
+        ContentErrorSide side,
+        ComparisonOptions options);
+}
+
+/// <summary>Assembles a highlighted diff PDF.</summary>
+public sealed record HighlightedPage(RenderedPage Background, IReadOnlyList<DifferenceRegion> Regions);
+
+public interface IHighlightedPdfWriter
+{
+    Task WriteAsync(string outputPath, IReadOnlyList<HighlightedPage> pages, CancellationToken ct = default);
 }
 
 /// <summary>Top-level orchestrator: compares a single old/new PDF pair.</summary>

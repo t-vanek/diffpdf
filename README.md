@@ -4,15 +4,34 @@ A server-side replacement for [diffpdf](https://mark-summerfield.github.io/diffp
 built in **C# / .NET 10** as a REST API. Designed to compare large numbers of
 PDFs in bulk (an `old` folder vs a `new` folder), in addition to single pairs.
 
+**Primary use case — print/report regression testing.** Testers compare a
+freshly generated batch of report PDFs (`new`) against a known-good baseline
+(`old`) to confirm a new build did not break existing printouts. The engine is
+built to surface exactly those regressions: changed content, broken layouts,
+blank pages, and error messages baked into the output.
+
 ## Features
 
 - **Text comparison** — word-level diff with positional highlights (PdfPig).
-- **Visual comparison** — page rendering + pixel/region diff (Ghostscript by
-  default, PDFium as a fallback).
+- **Pixel-level visual comparison** — per-pixel diff with configurable tolerance
+  (down to exact, 0-tolerance matching) and cluster granularity (down to a single
+  pixel); Ghostscript by default, PDFium as a fallback.
+- **Page alignment** — inserted/removed pages are detected (Needleman–Wunsch over
+  page-text similarity) so they don't cascade into a run of false differences.
+- **Typed page classification** — each page is tagged `TextChanged`,
+  `VisualChanged`, `PageAdded`, `PageRemoved`, `SizeChanged`, `BecameBlank` or
+  `WasBlank`.
+- **Blank page detection** — flags pages that became (or stopped being) blank,
+  inspecting pixels so it works for scanned pages too.
+- **Content-error detection** — scans the rendered text for error messages a
+  report engine may have printed into the PDF (e.g. `subreport error`, `#error`);
+  patterns are configurable.
+- **Robust error handling** — corrupt, encrypted, missing or empty PDFs are
+  reported as `Error` with a reason instead of crashing the batch.
 - **Highlighted diff PDF** — per differing file, a raster diff PDF with
   added / removed / changed regions colored.
 - **Bulk folder comparison** — pairs files by relative path, runs in parallel,
-  classifies each pair as `Identical` / `Differs` / `OnlyInOld` / `OnlyInNew`.
+  classifies each pair as `Identical` / `Differs` / `OnlyInOld` / `OnlyInNew` / `Error`.
 - **Async job API** — submit a batch, poll status, download the report and
   artifacts.
 
@@ -88,10 +107,23 @@ curl http://localhost:8080/api/jobs/<id>/report
 | `mode` | `Both` | `Text`, `Visual`, or `Both`. |
 | `pages` | all | `{ "from": 1, "to": 5 }`. |
 | `dpi` | `150` | Visual render resolution. |
-| `pixelTolerance` | `16` | Per-channel tolerance (0-255). |
-| `visualThreshold` | `0.0005` | Min differing-pixel fraction to flag a page. |
+| `pixelTolerance` | `16` | Per-channel tolerance (0-255); `0` = exact pixel match. |
+| `visualThreshold` | `0.0005` | Min differing-pixel fraction to flag a page; `0` flags a single pixel. |
+| `visualClusterCellSize` | `24` | Highlight cluster size (px); `1` = per-pixel regions. |
+| `alignPages` | `true` | Align pages by content (detect insert/delete). |
+| `pageMatchThreshold` | `0.5` | Min text similarity to align two pages as the same. |
+| `detectBlankPages` | `true` | Flag blank/non-blank transitions. |
+| `blankPageThreshold` | `0.002` | Max non-white pixel fraction to count as blank. |
+| `detectContentErrors` | `true` | Scan text for error messages. |
+| `contentErrorPatterns` | see below | Case-insensitive regexes; defaults include `subreport error`, `#error`. |
 | `produceHighlightedPdf` | `true` | Emit diff PDF for differing files. |
 | `renderer` | `Ghostscript` | `Ghostscript` or `Pdfium`. |
+
+The single-pair result (`POST /api/comparisons`) returns `outcome`
+(`Compared`/`Failed`), per-document status, a typed per-page breakdown
+(`changes`, `differenceScore`, blank flags, regions) and any `contentErrors`.
+The batch report aggregates counts (`identical`, `differing`, `errors`,
+`filesWithContentErrors`).
 
 ## Running
 
