@@ -353,3 +353,44 @@ public sealed record ReadinessResponse
     public string Status { get; init; } = "";
     public IReadOnlyList<DependencyCheck> Checks { get; init; } = [];
 }
+
+// ---------------- Scope sync ----------------
+
+/// <summary>How a branch folder reconciled against the database.</summary>
+public enum BranchSyncState { Existing, Registered, Skipped, Error }
+
+/// <summary>How an instance reconciled against the database / disk.</summary>
+public enum InstanceSyncState { Existing, Registered, OrphanFolder, MissingFolder, OutOfRoot, Skipped, Error }
+
+/// <summary>Reconciliation result for a single instance.</summary>
+public sealed record InstanceSyncResult
+{
+    public string Key { get; init; } = "";
+    public string FolderName { get; init; } = "";
+    public string BasePath { get; init; } = "";
+    public InstanceSyncState State { get; init; }
+    public InstanceStructureReport? Structure { get; init; }
+    public string? Detail { get; init; }
+}
+
+/// <summary>Reconciliation result for a single branch and the instances under it.</summary>
+public sealed record BranchSyncResult
+{
+    public string Key { get; init; } = "";
+    public string FolderName { get; init; } = "";
+    public BranchSyncState State { get; init; }
+    public IReadOnlyList<InstanceSyncResult> Instances { get; init; } = [];
+    public string? Detail { get; init; }
+}
+
+/// <summary>Result of reconciling the scope root with the database (from <c>POST /api/v1/scope/sync</c>).</summary>
+public sealed record ScopeSyncReport
+{
+    public bool Applied { get; init; }
+    public string Root { get; init; } = "";
+    public bool Reachable { get; init; }
+    public IReadOnlyList<BranchSyncResult> Branches { get; init; } = [];
+    public IReadOnlyList<InstanceSyncResult> MissingFolders { get; init; } = [];
+    public IReadOnlyList<InstanceSyncResult> OutOfRoot { get; init; } = [];
+    public string? Error { get; init; }
+}

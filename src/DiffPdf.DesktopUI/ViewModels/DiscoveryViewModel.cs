@@ -17,6 +17,8 @@ public partial class DiscoveryViewModel : PageViewModel
     public ObservableCollection<ShareInfo> Shares { get; } = [];
     public ObservableCollection<string> CredentialProfiles { get; } = [];
 
+    [ObservableProperty] private string? _syncInfo;
+
     public DiscoveryViewModel(ServerSession session) => _session = session;
 
     public override Task ActivateAsync() => RunAsync(LoadAsync);
@@ -32,4 +34,25 @@ public partial class DiscoveryViewModel : PageViewModel
 
     [RelayCommand]
     private Task RefreshAsync() => RunAsync(LoadAsync);
+
+    /// <summary>Dry-run scope sync: report what the on-disk &lt;root&gt;/&lt;branch&gt;/&lt;instance&gt; tree would change.</summary>
+    [RelayCommand]
+    private Task PreviewSyncAsync() => RunAsync(async () =>
+        SyncInfo = Summarize(await _session.Require().SyncScopeAsync(apply: false)));
+
+    /// <summary>Apply scope sync: register discovered folders and create the missing skeleton.</summary>
+    [RelayCommand]
+    private Task ApplySyncAsync() => RunAsync(async () =>
+        SyncInfo = Summarize(await _session.Require().SyncScopeAsync(apply: true)));
+
+    private static string Summarize(ScopeSyncReport r)
+    {
+        if (!r.Reachable)
+            return $"Kořen nedostupný: {r.Error}";
+        int branches = r.Branches.Count(b => b.State == BranchSyncState.Registered);
+        int instances = r.Branches.Sum(b => b.Instances.Count(i => i.State == InstanceSyncState.Registered));
+        string verb = r.Applied ? "zaregistrováno" : "k registraci";
+        return $"{r.Root}: {branches} branch(í), {instances} instancí {verb}; "
+             + $"{r.MissingFolders.Count} chybějících složek, {r.OutOfRoot.Count} mimo kořen.";
+    }
 }
