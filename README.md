@@ -66,11 +66,13 @@ a chybové hlášky vyrenderované přímo do PDF.
 - **Klientské SDK (.NET)** — typovaný `HttpClient` klient (`DiffPdf.Client`,
   balitelný jako NuGet) pokrývající celý flow; registrace přes
   `AddDiffPdfClient(...)` a celá dávka jedním voláním `RunBatchAsync(...)`.
-- **Automatizace — plánovač + notifikace** — dávky lze spouštět **periodicky**
-  podle cron rozvrhu (bez ručního REST volání; pre-flight readiness gate zabrání
-  prázdnému běhu) a po doběhnutí rozeslat **notifikaci** (webhook Slack/Teams nebo
-  e-mail) při `Completed` / `GateViolated`. Obojí je konfigurací (`Schedules` /
-  `Notifications`) a ve výchozím stavu vypnuté.
+- **Automatizace — triggery, plánovač + notifikace** — dávky lze spouštět
+  **periodicky** (cron rozvrh), **na požádání** (webhook endpoint nebo fan-out přes
+  celou větev) i **samočinně** při objevení nové dávky v `new/` (folder-watch se
+  stabilizačním oknem). Všechny cesty sdílí pre-flight readiness gate (prázdný běh
+  se přeskočí). Po doběhnutí jde rozeslat **notifikace** (webhook Slack/Teams nebo
+  e-mail) při `Completed` / `GateViolated`. Vše je konfigurací (`Schedules` /
+  `Watches` / `Notifications`) a ve výchozím stavu vypnuté.
 - **Volitelná OAuth2 autentizace** — vestavěný OpenIddict server s
   client-credentials (M2M) flow vydávajícím JWT bearer tokeny; zapíná se přes
   `Auth:Enabled`.
@@ -217,6 +219,8 @@ Všechny aplikační cesty jsou pod prefixem **`/api/v1`**.
 | `GET`  | `/api/v1/branches/{branchKey}/instances/{instanceKey}/readiness` | Připravenost dávky: stav složek `old`/`new`/`reports` + počty PDF + párování `old`/`new` (matched/onlyInOld/onlyInNew) + verdikt `ready` (`?includeFiles=true` vrátí i seznam souborů). |
 | `POST` | `/api/v1/comparisons` | Porovná jednu dvojici (synchronně). |
 | `POST` | `/api/v1/batch` | Založí úlohu porovnání složek (`Draft`, vrací `201`); spustí se přes `/start`. |
+| `POST` | `/api/v1/triggers/{branchKey}/{instanceKey}` | Spustí dávku pro instanci hned (create+start v jednom; `202` spuštěno / `200` přeskočeno / `404`). |
+| `POST` | `/api/v1/branches/{branchKey}/run` | Fan-out: spustí dávku pro všechny enabled instance větve. |
 | `GET`  | `/api/v1/jobs` | Výpis úloh (filtr `branchKey` / `instanceKey` / `status`). |
 | `GET`  | `/api/v1/jobs/{id}` | Stav úlohy + progress. |
 | `GET`  | `/api/v1/jobs/{id}/tasks` | Výpis file-pair tasků úlohy. |
@@ -475,10 +479,48 @@ Nebo lifecycle ručně: `CreateBatchAsync` (Draft) → `StartJobAsync` → `GetJ
 `GetResultAsync` / `DownloadArtifactAsync`. Non-2xx odpovědi vyhodí `DiffPdfApiException`
 (s HTTP statusem a `detail` z problem+json).
 
-## Automatizace — plánovač a notifikace
+## Automatizace — triggery, plánovač a notifikace
 
-Dvě volitelné vrstvy nad dávkovou pipeline, obě konfigurací a **ve výchozím stavu
-vypnuté** (žádný dopad, dokud je nezapneš).
+Volitelné vrstvy nad dávkovou pipeline, všechny konfigurací a **ve výchozím stavu
+vypnuté** (žádný dopad, dokud je nezapneš). Všechny spouštěcí cesty (plánovač,
+triggery, folder-watch) sdílí stejný **readiness gate** jako `…/readiness` — když
+není co porovnávat, běh se přeskočí místo založení prázdné úlohy.
+
+### Triggery na požádání
+
+Bez čekání na rozvrh lze dávku spustit přímo (create + start v jednom volání):
+
+```bash
+# jedna instance (např. z CI nebo z „hotovo" signálu generátoru reportů)
+curl -X POST http://localhost:8080/api/v1/triggers/Alfa/LamaEnergy
+# -> 202 { "outcome": "Launched", "jobId": "…" }   nebo   200 { "outcome": "NothingToCompare" }
+
+# fan-out přes všechny enabled instance větve
+curl -X POST http://localhost:8080/api/v1/branches/Alfa/run
+# -> { "branchKey": "Alfa", "launched": 2, "skipped": 1, "instances": [ … ] }
+```
+
+### Folder-watch (`Watches`)
+
+Hosted service periodicky skenuje `new/` složku sledovaných instancí a spustí dávku,
+jakmile se „drop" **ustálí** (manifest = počet souborů + souhrnná velikost + nejnovější
+čas zápisu se po `StabilitySeconds` nezmění — generátor reportů dopsal). Tatáž dávka se
+nespustí dvakrát; nový drop (i se stejnými názvy souborů, ale jiným časem/velikostí) se
+rozpozná. Polling funguje jednotně pro lokální i UNC/CIFS cesty.
+
+```jsonc
+"Watches": {
+  "Enabled": true,
+  "PollSeconds": 15,
+  "Folders": [
+    { "BranchKey": "Alfa", "InstanceKey": "LamaEnergy", "StabilitySeconds": 30, "Enabled": true }
+  ]
+}
+```
+
+> Folder-watch (stejně jako plánovač) je **single-process** bezpečný; více replik API
+> by mohlo drop spustit vícekrát. Webhook trigger a fan-out tím netrpí (jsou idempotentní
+> jen v rámci readiness gate — opakované volání založí další dávku).
 
 ### Plánovač (`Schedules`)
 

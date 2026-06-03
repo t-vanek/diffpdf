@@ -150,6 +150,16 @@ public sealed class DiffPdfClient(HttpClient http)
     public Task<NetworkConfigSummary> ListSharesAsync(CancellationToken ct = default) =>
         JsonAsync<NetworkConfigSummary>(HttpMethod.Get, "/api/v1/discovery/shares", null, ct);
 
+    // ---------------- Triggers ----------------
+
+    /// <summary>Triggers a batch for one instance now (create + start). Outcome is Launched / NothingToCompare / Unreachable; 404 throws.</summary>
+    public Task<TriggerResult> TriggerBatchAsync(string branchKey, string instanceKey, CancellationToken ct = default) =>
+        JsonAsync<TriggerResult>(HttpMethod.Post, $"/api/v1/triggers/{Esc(branchKey)}/{Esc(instanceKey)}", null, ct);
+
+    /// <summary>Triggers a batch for every enabled instance under a branch (fan-out).</summary>
+    public Task<BranchRunResult> RunBranchAsync(string branchKey, CancellationToken ct = default) =>
+        JsonAsync<BranchRunResult>(HttpMethod.Post, $"/api/v1/branches/{Esc(branchKey)}/run", null, ct);
+
     /// <summary>Compares a single old/new pair synchronously. Returns the raw result JSON (the per-page model is deep).</summary>
     public Task<JsonElement> CompareSingleAsync(SingleComparisonRequest request, CancellationToken ct = default) =>
         JsonAsync<JsonElement>(HttpMethod.Post, "/api/v1/comparisons", request, ct);

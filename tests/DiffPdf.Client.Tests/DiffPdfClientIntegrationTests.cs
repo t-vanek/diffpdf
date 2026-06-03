@@ -71,4 +71,39 @@ public class DiffPdfClientIntegrationTests(WebApplicationFactory<Program> factor
         Assert.Null(await diff.GetBranchAsync("does-not-exist"));
         Assert.Null(await diff.GetJobAsync(Guid.NewGuid()));
     }
+
+    [Fact]
+    public async Task Triggers_RespectReadinessGate_AndFanOut()
+    {
+        var diff = NewClient();
+        string bk = "B" + Guid.NewGuid().ToString("N")[..8];
+        string ik = "I" + Guid.NewGuid().ToString("N")[..8];
+
+        await diff.CreateBranchAsync(new(bk, "Branch"));
+        string basePath = Path.Combine(Path.GetTempPath(), "diffpdf-trig-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            await diff.CreateInstanceAsync(bk, new(ik, "Inst", basePath)); // auto-ensures empty old/new/reports
+
+            // Unknown instance under an existing branch -> 404.
+            var notFound = await Assert.ThrowsAsync<DiffPdfApiException>(() => diff.TriggerBatchAsync(bk, "nope"));
+            Assert.Equal(HttpStatusCode.NotFound, notFound.StatusCode);
+
+            // Empty instance -> accepted but nothing launched.
+            var trig = await diff.TriggerBatchAsync(bk, ik);
+            Assert.Equal("NothingToCompare", trig.Outcome);
+            Assert.Null(trig.JobId);
+
+            // Fan-out over the branch: the single empty instance is skipped.
+            var run = await diff.RunBranchAsync(bk);
+            Assert.Equal(bk, run.BranchKey);
+            Assert.Equal(0, run.Launched);
+            Assert.Equal(1, run.Skipped);
+            Assert.Contains(run.Instances, i => i.InstanceKey == ik && i.Outcome == "NothingToCompare");
+        }
+        finally
+        {
+            try { Directory.Delete(basePath, recursive: true); } catch (IOException) { }
+        }
+    }
 }
