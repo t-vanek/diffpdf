@@ -3,6 +3,7 @@ using DiffPdf.Core.Comparison;
 using DiffPdf.Core.Models;
 using DiffPdf.Core.Network;
 using DiffPdf.Core.Storage;
+using DiffPdf.Messaging.Automation;
 using DiffPdf.Persistence;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -31,6 +32,7 @@ public sealed class ScopeSyncService(
     IBranchStore branches,
     IInstanceStore instances,
     IInstanceStructureService structure,
+    IDefaultAutomationProvisioner defaultAutomation,
     IOptions<ScopeSyncOptions> options,
     ILogger<ScopeSyncService> logger) : IScopeSyncService
 {
@@ -121,6 +123,7 @@ public sealed class ScopeSyncService(
                     var existing = existingByKey.GetValueOrDefault(instanceName);
                     InstanceSyncState state;
                     string? detail = null;
+                    ComparisonInstance? newlyRegistered = null;
                     if (existing is not null)
                     {
                         state = InstanceSyncState.Existing;
@@ -132,8 +135,8 @@ public sealed class ScopeSyncService(
                     }
                     else if (apply && branch is not null)
                     {
-                        bool created = await CreateInstanceAsync(branch.Id, instanceName, basePath, opt.CredentialProfile, ct);
-                        state = created ? InstanceSyncState.Registered : InstanceSyncState.Existing;
+                        newlyRegistered = await CreateInstanceAsync(branch.Id, instanceName, basePath, opt.CredentialProfile, ct);
+                        state = newlyRegistered is not null ? InstanceSyncState.Registered : InstanceSyncState.Existing;
                     }
                     else
                     {
@@ -141,6 +144,12 @@ public sealed class ScopeSyncService(
                     }
 
                     var structureReport = await EnsureOrInspectAsync(basePath, opt.CredentialProfile, apply && opt.AutoCreateFolders, ct);
+
+                    // Provision default automation for an instance registered for the first time, after its
+                    // skeleton exists (so the optional initial trigger has old/new to compare). No-op unless enabled.
+                    if (newlyRegistered is not null && branch is not null)
+                        await defaultAutomation.ProvisionAsync(branch, newlyRegistered, ct);
+
                     instanceResults.Add(new InstanceSyncResult(instanceName, instanceName, basePath, state, structureReport, detail));
                 }
 
@@ -191,10 +200,10 @@ public sealed class ScopeSyncService(
         catch (DuplicateKeyException) { return await branches.GetByKeyAsync(key, ct); }
     }
 
-    private async Task<bool> CreateInstanceAsync(Guid branchId, string key, string basePath, string? credentialProfile, CancellationToken ct)
+    private async Task<ComparisonInstance?> CreateInstanceAsync(Guid branchId, string key, string basePath, string? credentialProfile, CancellationToken ct)
     {
-        try { await instances.CreateAsync(branchId, key, key, basePath, credentialProfile, ct); return true; }
-        catch (DuplicateKeyException) { return false; }
+        try { return await instances.CreateAsync(branchId, key, key, basePath, credentialProfile, ct); }
+        catch (DuplicateKeyException) { return null; }
     }
 
     private async Task<InstanceStructureReport> EnsureOrInspectAsync(string basePath, string? credentialProfile, bool ensure, CancellationToken ct) =>

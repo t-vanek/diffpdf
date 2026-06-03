@@ -1,5 +1,6 @@
 using DiffPdf.Core.Comparison;
 using DiffPdf.Core.Network;
+using DiffPdf.Messaging.Automation;
 using DiffPdf.Messaging.ScopeSync;
 using DiffPdf.Pdf.Network;
 using DiffPdf.Persistence;
@@ -22,7 +23,11 @@ public class ScopeSyncServiceTests : IDisposable
         var resolver = new NetworkShareResolver(net);
         var connector = new PlatformShareConnector(net, NullLogger<PlatformShareConnector>.Instance);
         var structure = new InstanceStructureService(resolver, connector, NullLogger<InstanceStructureService>.Instance);
-        return new ScopeSyncService(resolver, connector, _branches, _instances, structure,
+        // Default automation disabled (the default) → a pure no-op; these tests assert only the reconcile.
+        var automation = new DefaultAutomationProvisioner(
+            new InMemoryScheduleStore(), new InMemoryWatchStore(), new StubBatchLauncher(),
+            Options.Create(new DefaultAutomationOptions()), NullLogger<DefaultAutomationProvisioner>.Instance);
+        return new ScopeSyncService(resolver, connector, _branches, _instances, structure, automation,
             Options.Create(opt), NullLogger<ScopeSyncService>.Instance);
     }
 

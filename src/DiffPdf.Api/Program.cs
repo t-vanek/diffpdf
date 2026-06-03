@@ -10,6 +10,7 @@ using DiffPdf.Core.Abstractions;
 using DiffPdf.Core.Network;
 using DiffPdf.Core.Storage;
 using DiffPdf.Messaging;
+using DiffPdf.Messaging.Automation;
 using DiffPdf.Messaging.Retention;
 using DiffPdf.Messaging.Scheduling;
 using DiffPdf.Messaging.ScopeSync;
@@ -173,6 +174,7 @@ builder.Services.AddHostedService<InstanceStructureHostedService>();
 builder.Services.AddDiffPdfNotifications(builder.Configuration);
 builder.Services.AddDiffPdfScheduling();
 builder.Services.AddDiffPdfFolderWatch();
+builder.Services.AddDiffPdfDefaultAutomation(builder.Configuration);
 builder.Services.AddDiffPdfScopeSync(builder.Configuration);
 builder.Services.AddDiffPdfRetention(builder.Configuration);
 
