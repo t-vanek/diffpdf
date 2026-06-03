@@ -86,6 +86,7 @@ else
     builder.Services.AddSingleton<IScheduleStore, InMemoryScheduleStore>();
     builder.Services.AddSingleton<ISubscriptionStore, InMemorySubscriptionStore>();
     builder.Services.AddSingleton<IScheduleRunStore, InMemoryScheduleRunStore>();
+    builder.Services.AddSingleton<IWatchStore, InMemoryWatchStore>();
     builder.Services.AddSingleton<ILeaderElection, InMemoryLeaderElection>();
     builder.Services.AddScoped<IJobSubmissionService, SimpleJobSubmissionService>();
     builder.Host.UseWolverine(opts =>
@@ -106,7 +107,7 @@ builder.Services.AddHostedService<InstanceStructureHostedService>();
 // scheduler, and folder-watch triggers. All are no-ops until configured / populated.
 builder.Services.AddDiffPdfNotifications(builder.Configuration);
 builder.Services.AddDiffPdfScheduling();
-builder.Services.AddDiffPdfFolderWatch(builder.Configuration);
+builder.Services.AddDiffPdfFolderWatch();
 builder.Services.AddDiffPdfRetention(builder.Configuration);
 
 var auth = builder.Configuration.GetSection("Auth").Get<AuthOptions>() ?? new AuthOptions();
@@ -147,6 +148,7 @@ api.MapSubscriptionEndpoints();
 api.MapJobEndpoints();
 api.MapDiscoveryEndpoints();
 api.MapTriggerEndpoints();
+api.MapWatchEndpoints();
 
 app.MapHub<JobsHub>("/hubs/jobs");
 

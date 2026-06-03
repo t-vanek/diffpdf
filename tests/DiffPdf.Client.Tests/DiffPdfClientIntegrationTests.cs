@@ -176,6 +176,45 @@ public class DiffPdfClientIntegrationTests(WebApplicationFactory<Program> factor
     }
 
     [Fact]
+    public async Task Watch_Crud_RoundTrip()
+    {
+        var diff = NewClient();
+        var (bk, ik) = FreshKeys();
+        await diff.CreateBranchAsync(new(bk, "Branch"));
+
+        string basePath = Path.Combine(Path.GetTempPath(), "diffpdf-sdk-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            await diff.CreateInstanceAsync(bk, new(ik, "Inst", basePath));
+
+            Assert.Null(await diff.GetWatchAsync(bk, ik));   // none yet
+
+            var set = await diff.SetWatchAsync(bk, ik, new SetWatchRequest { StabilitySeconds = 45 });
+            Assert.Equal(45, set.StabilitySeconds);
+            Assert.True(set.Enabled);
+
+            var got = await diff.GetWatchAsync(bk, ik);
+            Assert.NotNull(got);
+            Assert.Equal(set.Id, got!.Id);
+
+            // Upsert again keeps the id and replaces the fields.
+            var updated = await diff.SetWatchAsync(bk, ik, new SetWatchRequest { StabilitySeconds = 90, Enabled = false });
+            Assert.Equal(set.Id, updated.Id);
+            Assert.Equal(90, updated.StabilitySeconds);
+            Assert.False(updated.Enabled);
+
+            Assert.Contains(await diff.ListWatchesAsync(), w => w.Id == set.Id);
+
+            await diff.DeleteWatchAsync(bk, ik);
+            Assert.Null(await diff.GetWatchAsync(bk, ik));
+        }
+        finally
+        {
+            try { Directory.Delete(basePath, recursive: true); } catch (IOException) { }
+        }
+    }
+
+    [Fact]
     public async Task Subscription_Crud_RoundTrip()
     {
         var diff = NewClient();

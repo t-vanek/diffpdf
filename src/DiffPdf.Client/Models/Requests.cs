@@ -48,6 +48,13 @@ public sealed record UpdateScheduleRequest
     public required long Version { get; init; }
 }
 
+/// <summary>Create or replace an instance's folder-watch (launches a batch when a drop into new/ settles).</summary>
+public sealed record SetWatchRequest
+{
+    public int StabilitySeconds { get; init; } = 30;
+    public bool Enabled { get; init; } = true;
+}
+
 /// <summary>Create a notification subscription routing finished-batch events to a webhook or e-mail.</summary>
 public sealed record CreateSubscriptionRequest
 {

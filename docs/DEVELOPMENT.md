@@ -100,8 +100,9 @@ Principy:
 ### Schéma databáze
 
 Tabulky `branches`, `instances`, `jobs`, `file_pair_tasks`, `comparison_schedules`,
-`notification_subscriptions`, `automation_leader` (lease vedoucí repliky) a `schedule_runs`
-(historie běhů) se vytvoří **idempotentně při startu** pro oba providery
+`notification_subscriptions`, `automation_leader` (lease vedoucí repliky), `schedule_runs`
+(historie běhů) a `folder_watches` (jeden watch na instanci) se vytvoří **idempotentně při
+startu** pro oba providery
 (raw SQL `create table if not exists` / `if object_id(...) is null`; sloupec
 `jobs.artifacts_pruned_at` se přidá idempotentním `ALTER`); Wolverine si spravuje vlastní
 inbox/outbox + frontové tabulky v téže databázi. Stejné připojení používá i OpenIddict (auth).
@@ -147,6 +148,8 @@ Všechny aplikační cesty jsou pod prefixem **`/api/v1`**. OpenAPI dokument je 
 | `GET` `PUT` `DELETE` | `/api/v1/subscriptions/{id}` | Detail / úprava (`Version` → `409`) / smazání (`204`). |
 | `POST` | `/api/v1/triggers/{branchKey}/{instanceKey}` | On-demand trigger jedné instance: `202` (launched, + jobId) / `200` (skip — nic k porovnání / nedostupné) / `404`. |
 | `POST` | `/api/v1/branches/{branchKey}/run` | Fan-out trigger přes všechny enabled instance větve. |
+| `PUT` `GET` `DELETE` | `…/instances/{instanceKey}/watch` | Folder-watch instance: nastav (upsert) / detail (`404` když není) / smaž (`204`). |
+| `GET`  | `/api/v1/watches` | Výpis všech folder-watchů (přehled). |
 | `GET`  | `/api/v1/discovery/shares` | Výpis nakonfigurovaných sdílení a jmen credential profilů. |
 
 ### Příklad — jedna dvojice
@@ -405,19 +408,18 @@ volbami (`LaunchSpec.Default`), protože nemají kontext rozvrhu.
   porovnávat / nedostupné; `404` neznámý scope). SDK: `TriggerBatchAsync(...)`.
 - **Fan-out přes větev** — `POST /api/v1/branches/{branch}/run` spustí každou enabled
   instanci a vrátí souhrn (`BranchRunResult`). SDK: `RunBranchAsync(...)`.
-- **Folder-watch** — `FolderWatchService` (hosted service, sekce `Watches` v appsettings)
-  periodicky skenuje `new/` každé sledované instance přes `IFolderManifestScanner`
-  a spustí dávku, jakmile se drop souborů **ustálí** (`StabilitySeconds`); poll (ne
-  `FileSystemWatcher`) funguje uniformně pro lokální, mountované i UNC/CIFS share.
+- **Folder-watch** — `FolderWatchService` (hosted service) každých ~15 s načte **aktivní
+  watche z `IWatchStore`** (runtime resource, tabulka `folder_watches`, **jeden watch na
+  instanci**) a skenuje `new/` přes `IFolderManifestScanner`; dávku spustí, jakmile se drop
+  souborů **ustálí** (`StabilitySeconds`). Watche se spravují přes API (žádný appsettings,
+  žádný restart — splňuje no-RDP požadavek); per-watch debounce stav (`WatchState`) je
+  klíčovaný podle watch Id a reconcilovaný každý tik (nový watch → nový stav, smazaný →
+  zahozen). Poll (ne `FileSystemWatcher`) funguje uniformně pro lokální, mountované i UNC/CIFS share.
 
-```jsonc
-"Watches": {
-  "Enabled": true,
-  "PollSeconds": 15,
-  "Folders": [
-    { "BranchKey": "Alfa", "InstanceKey": "LamaEnergy", "StabilitySeconds": 30, "Enabled": true }
-  ]
-}
+```bash
+# nastav (upsert) folder-watch instance přes API:
+curl -X PUT http://localhost:8080/api/v1/branches/Alfa/instances/LamaEnergy/watch \
+  -H 'Content-Type: application/json' -d '{ "stabilitySeconds": 30, "enabled": true }'
 ```
 
 > Folder-watch sdílí **stejnou `automation` lease** jako plánovač — skenuje a spouští jen

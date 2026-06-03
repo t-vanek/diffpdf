@@ -12,6 +12,7 @@ public sealed class DiffPdfDbContext(DbContextOptions<DiffPdfDbContext> options)
     public DbSet<ScheduleEntity> Schedules => Set<ScheduleEntity>();
     public DbSet<SubscriptionEntity> Subscriptions => Set<SubscriptionEntity>();
     public DbSet<ScheduleRunEntity> ScheduleRuns => Set<ScheduleRunEntity>();
+    public DbSet<WatchEntity> Watches => Set<WatchEntity>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -154,6 +155,25 @@ public sealed class DiffPdfDbContext(DbContextOptions<DiffPdfDbContext> options)
             e.Property(x => x.Error).HasColumnName("error");
             e.HasIndex(x => new { x.ScheduleId, x.StartedAt });
             e.HasIndex(x => x.JobId).IsUnique();
+        });
+
+        b.Entity<WatchEntity>(e =>
+        {
+            e.ToTable("folder_watches");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.BranchId).HasColumnName("branch_id");
+            e.Property(x => x.InstanceId).HasColumnName("instance_id");
+            e.Property(x => x.BranchKey).HasColumnName("branch_key");
+            e.Property(x => x.InstanceKey).HasColumnName("instance_key");
+            e.Property(x => x.StabilitySeconds).HasColumnName("stability_seconds");
+            e.Property(x => x.Enabled).HasColumnName("enabled");
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
+            e.Property(x => x.LastTriggeredAt).HasColumnName("last_triggered_at");
+            e.Property(x => x.Version).HasColumnName("version");
+            e.HasIndex(x => x.InstanceId).IsUnique();
+            e.HasIndex(x => x.Enabled);
         });
     }
 }

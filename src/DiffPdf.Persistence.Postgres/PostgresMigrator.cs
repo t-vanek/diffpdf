@@ -140,6 +140,22 @@ public static class PostgresMigrator
         create index if not exists ix_schedule_runs_schedule_started on schedule_runs (schedule_id, started_at desc);
 
         alter table jobs add column if not exists artifacts_pruned_at timestamptz null;
+
+        create table if not exists folder_watches (
+            id uuid primary key,
+            branch_id uuid not null references branches(id),
+            instance_id uuid not null unique references instances(id),
+            branch_key text not null,
+            instance_key text not null,
+            stability_seconds int not null default 30,
+            enabled boolean not null default true,
+            created_at timestamptz not null default now(),
+            updated_at timestamptz null,
+            last_triggered_at timestamptz null,
+            version bigint not null default 1
+        );
+
+        create index if not exists ix_folder_watches_enabled on folder_watches (enabled);
         """;
 
     public static async Task MigrateAsync(string connectionString, CancellationToken ct = default)

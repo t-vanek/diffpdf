@@ -49,8 +49,9 @@ public class Demo(DiffPdfClient diff)
 
 Manage the automation: `CreateScheduleAsync` / `ListSchedulesAsync` /
 `UpdateScheduleAsync` (optimistic concurrency via `Version`) / `DeleteScheduleAsync` /
-`RunScheduleNowAsync` / `ListScheduleRunsAsync` (run history), plus `CreateSubscriptionAsync`
-… for notification subscriptions. Observe jobs: `GetJobAsync` (poll `Status`/`Progress`) → `PauseJobAsync` /
+`RunScheduleNowAsync` / `ListScheduleRunsAsync` (run history), `SetWatchAsync` / `GetWatchAsync`
+/ `DeleteWatchAsync` (folder-watch), plus `CreateSubscriptionAsync` … for notification
+subscriptions. Observe jobs: `GetJobAsync` (poll `Status`/`Progress`) → `PauseJobAsync` /
 `ResumeJobAsync` / `CancelJobAsync` / `RetryJobAsync` → `GetReportAsync` /
 `GetResultAsync` / `DownloadArtifactAsync`.
 

@@ -218,6 +218,20 @@ public sealed record ScheduleRunResponse
     public string? Error { get; init; }
 }
 
+/// <summary>An instance's folder-watch as returned by the API.</summary>
+public sealed record WatchResponse
+{
+    public Guid Id { get; init; }
+    public string BranchKey { get; init; } = "";
+    public string InstanceKey { get; init; } = "";
+    public int StabilitySeconds { get; init; }
+    public bool Enabled { get; init; }
+    public DateTimeOffset CreatedAt { get; init; }
+    public DateTimeOffset? UpdatedAt { get; init; }
+    public DateTimeOffset? LastTriggeredAt { get; init; }
+    public long Version { get; init; }
+}
+
 /// <summary>A notification subscription as returned by the API.</summary>
 public sealed record SubscriptionResponse
 {
