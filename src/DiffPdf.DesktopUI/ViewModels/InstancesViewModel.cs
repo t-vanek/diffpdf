@@ -125,25 +125,37 @@ public partial class InstancesViewModel : PageViewModel
         await LoadInstancesAsync();
     });
 
-    [RelayCommand]
-    private Task EnsureStructureCmdAsync() => RunAsync(async () =>
+    // Selecting an instance in the list loads its readiness (read-only) and, from the same response,
+    // the inspected old/new/reports structure — no button and no disk writes (unlike the create/repair
+    // "ensure", which stays out of a plain selection).
+    partial void OnSelectedInstanceChanged(Instance? value)
     {
-        RequireSelection(out var bk, out var ik);
-        Structure = await _session.Require().EnsureStructureAsync(bk, ik);
-    });
+        if (value is null || SelectedBranch is null)
+        {
+            Readiness = null;
+            Structure = null;
+            return;
+        }
+        _ = RunAsync(LoadInstanceDetailsAsync);
+    }
 
-    [RelayCommand]
-    private Task ReadinessAsync() => RunAsync(async () =>
-    {
-        RequireSelection(out var bk, out var ik);
-        Readiness = await _session.Require().GetReadinessAsync(bk, ik, sampleSize: 10);
-    });
-
-    private void RequireSelection(out string branchKey, out string instanceKey)
+    private async Task LoadInstanceDetailsAsync()
     {
         if (SelectedBranch is null || SelectedInstance is null)
-            throw new InvalidOperationException("Vyber branch i instanci.");
-        branchKey = SelectedBranch.Key;
-        instanceKey = SelectedInstance.Key;
+            return;
+        var readiness = await _session.Require().GetReadinessAsync(SelectedBranch.Key, SelectedInstance.Key, sampleSize: 10);
+        Readiness = readiness;
+        Structure = readiness.Structure; // read-only inspection (Present / Missing / WrongType)
     }
+
+    /// <summary>Explicit create/repair of the selected instance's old/new/reports structure (writes to
+    /// disk: creates missing folders, replaces a file occupying a folder name), then refreshes the view.</summary>
+    [RelayCommand]
+    private Task RepairStructureAsync() => RunAsync(async () =>
+    {
+        if (SelectedBranch is null || SelectedInstance is null)
+            throw new InvalidOperationException("Vyber instanci v seznamu.");
+        Structure = await _session.Require().EnsureStructureAsync(SelectedBranch.Key, SelectedInstance.Key);
+        Readiness = await _session.Require().GetReadinessAsync(SelectedBranch.Key, SelectedInstance.Key, sampleSize: 10);
+    });
 }
