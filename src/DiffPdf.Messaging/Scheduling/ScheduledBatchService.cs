@@ -63,8 +63,8 @@ public sealed class ScheduledBatchService(
             ct.ThrowIfCancellationRequested();
             try
             {
-                var jobId = await launcher.LaunchAsync(s.BranchKey, s.InstanceKey, LaunchSpec.FromSchedule(s), ct);
-                if (jobId is { } id)
+                var result = await launcher.LaunchAsync(s.BranchKey, s.InstanceKey, LaunchSpec.FromSchedule(s), ct);
+                if (result.JobId is { } id)
                 {
                     await store.TouchLastRunAsync(s.Id, DateTimeOffset.UtcNow, ct);
                     logger.LogInformation("Scheduled batch {JobId} launched for {Branch}/{Instance}/{Key}.",

@@ -140,6 +140,8 @@ Všechny aplikační cesty jsou pod prefixem **`/api/v1`**. OpenAPI dokument je 
 | `GET`  | `/api/v1/jobs/{id}/artifacts/{**path}` | Stažení zvýrazněného diff-PDF. |
 | `POST` `GET` | `/api/v1/subscriptions` | Vytvoří / vypíše notifikační odběry. |
 | `GET` `PUT` `DELETE` | `/api/v1/subscriptions/{id}` | Detail / úprava (`Version` → `409`) / smazání (`204`). |
+| `POST` | `/api/v1/triggers/{branchKey}/{instanceKey}` | On-demand trigger jedné instance: `202` (launched, + jobId) / `200` (skip — nic k porovnání / nedostupné) / `404`. |
+| `POST` | `/api/v1/branches/{branchKey}/run` | Fan-out trigger přes všechny enabled instance větve. |
 | `GET`  | `/api/v1/discovery/shares` | Výpis nakonfigurovaných sdílení a jmen credential profilů. |
 
 ### Příklad — jedna dvojice
@@ -382,6 +384,35 @@ curl -X POST http://localhost:8080/api/v1/subscriptions \
   -d '{ "channel": "webhook", "target": "https://hooks.slack.com/services/…",
         "events": [ "GateViolated", "Completed" ] }'
 ```
+
+### On-demand triggery a folder-watch
+
+Kromě cron rozvrhu lze dávku spustit **událostí**. Všechny tři cesty jdou přes stejný
+`IBatchLauncher` (a tedy stejnou readiness bránu) jako rozvrh; spouští se s výchozími
+volbami (`LaunchSpec.Default`), protože nemají kontext rozvrhu.
+
+- **Webhook (jedna instance)** — `POST /api/v1/triggers/{branch}/{instance}` vrátí
+  `LaunchResult` jako `TriggerResult` (`202` launched + jobId; `200` když není co
+  porovnávat / nedostupné; `404` neznámý scope). SDK: `TriggerBatchAsync(...)`.
+- **Fan-out přes větev** — `POST /api/v1/branches/{branch}/run` spustí každou enabled
+  instanci a vrátí souhrn (`BranchRunResult`). SDK: `RunBranchAsync(...)`.
+- **Folder-watch** — `FolderWatchService` (hosted service, sekce `Watches` v appsettings)
+  periodicky skenuje `new/` každé sledované instance přes `IFolderManifestScanner`
+  a spustí dávku, jakmile se drop souborů **ustálí** (`StabilitySeconds`); poll (ne
+  `FileSystemWatcher`) funguje uniformně pro lokální, mountované i UNC/CIFS share.
+
+```jsonc
+"Watches": {
+  "Enabled": true,
+  "PollSeconds": 15,
+  "Folders": [
+    { "BranchKey": "Alfa", "InstanceKey": "LamaEnergy", "StabilitySeconds": 30, "Enabled": true }
+  ]
+}
+```
+
+> Stejně jako plánovač je folder-watch **single-process** bezpečný (in-memory per-folder
+> stav dedupuje drop); multi-replika single-fire je sdílený follow-up (Fáze 2).
 
 ## Build, testy a CI
 

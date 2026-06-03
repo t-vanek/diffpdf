@@ -8,6 +8,7 @@ using DiffPdf.Core.Network;
 using DiffPdf.Core.Storage;
 using DiffPdf.Messaging;
 using DiffPdf.Messaging.Scheduling;
+using DiffPdf.Messaging.Triggers;
 using DiffPdf.Notifications.DependencyInjection;
 using DiffPdf.Pdf.DependencyInjection;
 using DiffPdf.Persistence;
@@ -98,11 +99,11 @@ builder.Services.AddHostedService<StaleTaskRecoveryService>();
 // (runs after the persistence migration above; no-op for the in-memory fallback).
 builder.Services.AddHostedService<InstanceStructureHostedService>();
 
-// Automation (Phase 1): outbound notifications on batch completion / gate violation,
-// and a recurring batch scheduler. Both are no-ops unless enabled in configuration
-// (Notifications:Enabled / Schedules:Enabled).
+// Automation: outbound notifications (DB-backed subscriptions), a DB-backed recurring
+// scheduler, and folder-watch triggers. All are no-ops until configured / populated.
 builder.Services.AddDiffPdfNotifications(builder.Configuration);
 builder.Services.AddDiffPdfScheduling();
+builder.Services.AddDiffPdfFolderWatch(builder.Configuration);
 
 var auth = builder.Configuration.GetSection("Auth").Get<AuthOptions>() ?? new AuthOptions();
 builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection("Auth"));
@@ -141,6 +142,7 @@ api.MapScheduleEndpoints();
 api.MapSubscriptionEndpoints();
 api.MapJobEndpoints();
 api.MapDiscoveryEndpoints();
+api.MapTriggerEndpoints();
 
 app.MapHub<JobsHub>("/hubs/jobs");
 

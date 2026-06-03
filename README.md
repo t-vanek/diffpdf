@@ -54,6 +54,10 @@ Klient tedy obsluhuje jen automatizaci a sleduje výsledky.
   vlastní porovnávací volby a CI bránu. Po doběhnutí se rozešle **notifikace** (webhook
   Slack/Teams nebo e-mail) při `Completed` / `GateViolated`. Rozvrhy i odběry jsou
   plnohodnotné **API resources v DB** (CRUD za běhu, bez restartu).
+- **On-demand triggery + folder-watch** — dávku lze spustit i **webhookem**
+  (`POST /api/v1/triggers/{branch}/{instance}`), **fan-outem** přes celou větev
+  (`POST …/branches/{branch}/run`), nebo nechat **sledovat složku** `new/` a spustit
+  dávku automaticky, jakmile se drop souborů ustálí (konfigurace `Watches`).
 - **Durable pipeline** — dávka se rozpadne na jednotlivé dvojice; jeden poškozený PDF
   dávku nezabije, transientní chyby se opakují a spadlý worker se zotaví, takže dávka
   pokračuje místo zaseknutí.

@@ -222,3 +222,14 @@ public sealed record SubscriptionResponse
         Version = s.Version,
     };
 }
+
+// ---------------- Automation: on-demand triggers ----------------
+
+/// <summary>Result of triggering a single instance: the launch outcome and the new job id (when launched).</summary>
+public sealed record TriggerResult(string Outcome, Guid? JobId, string? Detail);
+
+/// <summary>Per-instance entry in a branch fan-out run.</summary>
+public sealed record InstanceRunResult(string InstanceKey, string Outcome, Guid? JobId, string? Detail);
+
+/// <summary>Result of triggering every enabled instance under a branch.</summary>
+public sealed record BranchRunResult(string BranchKey, int Launched, int Skipped, IReadOnlyList<InstanceRunResult> Instances);

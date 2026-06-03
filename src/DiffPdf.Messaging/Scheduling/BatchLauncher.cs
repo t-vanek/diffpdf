@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging;
 
 namespace DiffPdf.Messaging.Scheduling;
 
-/// <summary>The comparison knobs a launched batch runs with (carried by a schedule or a run-now action).</summary>
+/// <summary>The comparison knobs a launched batch runs with (carried by a schedule, or defaults for a trigger).</summary>
 public sealed record LaunchSpec(
     ComparisonOptions Options,
     BatchGate? Gate,
@@ -15,23 +15,50 @@ public sealed record LaunchSpec(
     bool Recursive,
     int MaxDegreeOfParallelism)
 {
+    /// <summary>Default knobs (default options, no gate, all *.pdf recursively) — used by webhook / folder-watch triggers, which carry no schedule.</summary>
+    public static LaunchSpec Default { get; } = new(new ComparisonOptions(), null, "*.pdf", true, 0);
+
     public static LaunchSpec FromSchedule(ComparisonSchedule s) =>
         new(s.Options, s.Gate, s.SearchPattern, s.Recursive, s.MaxDegreeOfParallelism);
+}
+
+/// <summary>Why a launch did or did not happen.</summary>
+public enum LaunchOutcome
+{
+    /// <summary>A batch was created and queued.</summary>
+    Launched,
+
+    /// <summary>The branch or instance does not exist or is disabled.</summary>
+    ScopeNotFound,
+
+    /// <summary>The base path was reachable but had nothing to compare (empty old/new).</summary>
+    NothingToCompare,
+
+    /// <summary>The base path could not be resolved/reached.</summary>
+    Unreachable,
+}
+
+/// <summary>Result of an automated launch attempt.</summary>
+public sealed record LaunchResult(LaunchOutcome Outcome, Guid? JobId = null, string? Detail = null)
+{
+    public bool Launched => Outcome == LaunchOutcome.Launched;
 }
 
 /// <summary>
 /// Creates and starts a batch for a configured branch/instance in one step — the automation
 /// equivalent of the (removed) manual <c>POST /batch</c> + <c>POST /jobs/{id}/start</c>. The job
 /// is persisted as <see cref="JobStatus.Queued"/> and its run command published atomically
-/// (transactional outbox on relational stores). Shared by the scheduler and the run-now endpoint.
+/// (transactional outbox on relational stores). Used by the scheduler, the run-now endpoint,
+/// the webhook trigger and folder-watch.
 /// </summary>
 public interface IBatchLauncher
 {
     /// <summary>
-    /// Returns the new job id, or null when the run was skipped (missing/disabled scope, nothing to
-    /// compare, unreachable base). The same pre-flight gate the readiness endpoint reports.
+    /// Launches a batch for the scope with the given <paramref name="spec"/>, after the same
+    /// pre-flight readiness gate the readiness endpoint reports. The result carries the outcome
+    /// and the new job id (when launched).
     /// </summary>
-    Task<Guid?> LaunchAsync(string branchKey, string instanceKey, LaunchSpec spec, CancellationToken ct = default);
+    Task<LaunchResult> LaunchAsync(string branchKey, string instanceKey, LaunchSpec spec, CancellationToken ct = default);
 }
 
 /// <inheritdoc />
@@ -43,30 +70,37 @@ public sealed class BatchLauncher(
     IJobSubmissionService submission,
     ILogger<BatchLauncher> logger) : IBatchLauncher
 {
-    public async Task<Guid?> LaunchAsync(string branchKey, string instanceKey, LaunchSpec spec, CancellationToken ct = default)
+    public async Task<LaunchResult> LaunchAsync(string branchKey, string instanceKey, LaunchSpec spec, CancellationToken ct = default)
     {
         var branch = await branches.GetByKeyAsync(branchKey, ct);
         if (branch is null || !branch.Enabled)
         {
-            logger.LogWarning("Skipping run: branch '{Branch}' not found or disabled.", branchKey);
-            return null;
+            logger.LogWarning("Skipping launch: branch '{Branch}' not found or disabled.", branchKey);
+            return new LaunchResult(LaunchOutcome.ScopeNotFound, Detail: $"Branch '{branchKey}' not found or disabled.");
         }
 
         var instance = await instances.GetByKeyAsync(branch.Id, instanceKey, ct);
         if (instance is null || !instance.Enabled)
         {
-            logger.LogWarning("Skipping run: instance '{Branch}/{Instance}' not found or disabled.", branchKey, instanceKey);
-            return null;
+            logger.LogWarning("Skipping launch: instance '{Branch}/{Instance}' not found or disabled.", branchKey, instanceKey);
+            return new LaunchResult(LaunchOutcome.ScopeNotFound, Detail: $"Instance '{branchKey}/{instanceKey}' not found or disabled.");
         }
 
         // Pre-flight gate, identical to the readiness endpoint: don't launch an empty batch.
         var report = await structure.InspectAsync(instance.BasePath, instance.CredentialProfile, ct: ct);
+        if (!report.Reachable)
+        {
+            logger.LogWarning("Skipping launch for {Branch}/{Instance}: base path unreachable ({Error}).",
+                branchKey, instanceKey, report.Error);
+            return new LaunchResult(LaunchOutcome.Unreachable, Detail: report.Error ?? "Base path unreachable.");
+        }
         if (!report.HasComparableInputs)
         {
             logger.LogInformation(
-                "Skipping run for {Branch}/{Instance}: nothing to compare (old={Old}, new={New}, reachable={Reachable}).",
-                branchKey, instanceKey, report.OldPdfCount, report.NewPdfCount, report.Reachable);
-            return null;
+                "Skipping launch for {Branch}/{Instance}: nothing to compare (old={Old}, new={New}).",
+                branchKey, instanceKey, report.OldPdfCount, report.NewPdfCount);
+            return new LaunchResult(LaunchOutcome.NothingToCompare,
+                Detail: $"Nothing to compare: old={report.OldPdfCount}, new={report.NewPdfCount}.");
         }
 
         ResolvedFolder baseResolved;
@@ -76,8 +110,8 @@ public sealed class BatchLauncher(
         }
         catch (NetworkConfigurationException ex)
         {
-            logger.LogWarning(ex, "Skipping run for {Branch}/{Instance}: {Message}", branchKey, instanceKey, ex.Message);
-            return null;
+            logger.LogWarning(ex, "Skipping launch for {Branch}/{Instance}: {Message}", branchKey, instanceKey, ex.Message);
+            return new LaunchResult(LaunchOutcome.Unreachable, Detail: ex.Message);
         }
 
         string basePath = baseResolved.Path;
@@ -105,6 +139,6 @@ public sealed class BatchLauncher(
 
         await submission.SubmitAsync(job, new RunBatchComparison(job.Id, branchKey, instanceKey), ct);
         logger.LogInformation("Batch {JobId} launched for {Branch}/{Instance}.", job.Id, branchKey, instanceKey);
-        return job.Id;
+        return new LaunchResult(LaunchOutcome.Launched, job.Id);
     }
 }

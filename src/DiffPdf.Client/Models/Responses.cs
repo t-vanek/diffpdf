@@ -216,3 +216,30 @@ public sealed record SubscriptionResponse
     public DateTimeOffset? UpdatedAt { get; init; }
     public long Version { get; init; }
 }
+
+/// <summary>Outcome of triggering a single instance.</summary>
+public sealed record TriggerResult
+{
+    /// <summary>Launched / ScopeNotFound / NothingToCompare / Unreachable.</summary>
+    public string Outcome { get; init; } = "";
+    public Guid? JobId { get; init; }
+    public string? Detail { get; init; }
+}
+
+/// <summary>Per-instance entry of a branch fan-out run.</summary>
+public sealed record InstanceRunResult
+{
+    public string InstanceKey { get; init; } = "";
+    public string Outcome { get; init; } = "";
+    public Guid? JobId { get; init; }
+    public string? Detail { get; init; }
+}
+
+/// <summary>Outcome of triggering every enabled instance under a branch.</summary>
+public sealed record BranchRunResult
+{
+    public string BranchKey { get; init; } = "";
+    public int Launched { get; init; }
+    public int Skipped { get; init; }
+    public IReadOnlyList<InstanceRunResult> Instances { get; init; } = [];
+}

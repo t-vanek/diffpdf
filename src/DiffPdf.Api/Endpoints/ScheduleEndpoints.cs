@@ -145,14 +145,14 @@ public static class ScheduleEndpoints
             if (schedule is null) return Results.NotFound();
 
             // Same pre-flight gate the removed POST /jobs/{id}/start used to enforce.
-            var jobId = await launcher.LaunchAsync(schedule.BranchKey, schedule.InstanceKey, LaunchSpec.FromSchedule(schedule), ct);
-            if (jobId is null)
+            var result = await launcher.LaunchAsync(schedule.BranchKey, schedule.InstanceKey, LaunchSpec.FromSchedule(schedule), ct);
+            if (result.JobId is not { } jobId)
                 return Results.Problem(
-                    "Nothing to compare: the instance's old/new folders are empty or unreachable.",
+                    result.Detail ?? "Nothing to compare: the instance's old/new folders are empty or unreachable.",
                     statusCode: StatusCodes.Status422UnprocessableEntity);
 
             await schedules.TouchLastRunAsync(schedule.Id, DateTimeOffset.UtcNow, ct);
-            return Results.Accepted($"/api/v1/jobs/{jobId}", new { jobId = jobId.Value });
+            return Results.Accepted($"/api/v1/jobs/{jobId}", new { jobId });
         }).WithSummary("Run the schedule now (202 + job id; 422 when there is nothing to compare)")
           .ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status422UnprocessableEntity);
     }
