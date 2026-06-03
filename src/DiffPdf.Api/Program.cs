@@ -18,6 +18,10 @@ using DiffPdf.Persistence;
 using DiffPdf.Persistence.Postgres.DependencyInjection;
 using DiffPdf.Persistence.SqlServer.DependencyInjection;
 using DiffPdf.Worker.DependencyInjection;
+using OpenTelemetry;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 using Serilog;
 using Wolverine;
 
@@ -60,6 +64,23 @@ builder.Services.ConfigureHttpJsonOptions(o =>
 });
 
 builder.Services.AddOpenApi();
+
+// OpenTelemetry: traces + metrics for ASP.NET Core, outbound HTTP and the .NET runtime. Exported via OTLP
+// only when OTEL_EXPORTER_OTLP_ENDPOINT is set; otherwise collected with negligible overhead and ready to
+// export once a collector is configured.
+bool otlpConfigured = !string.IsNullOrWhiteSpace(builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"]);
+builder.Services.AddOpenTelemetry()
+    .ConfigureResource(r => r.AddService("DiffPdf.Api", serviceVersion: BuildInfo.Version))
+    .WithTracing(t =>
+    {
+        t.AddAspNetCoreInstrumentation().AddHttpClientInstrumentation();
+        if (otlpConfigured) t.AddOtlpExporter();
+    })
+    .WithMetrics(m =>
+    {
+        m.AddAspNetCoreInstrumentation().AddHttpClientInstrumentation().AddRuntimeInstrumentation();
+        if (otlpConfigured) m.AddOtlpExporter();
+    });
 builder.Services.AddProblemDetails();
 builder.Services.Configure<StorageOptions>(builder.Configuration.GetSection("Storage"));
 builder.Services.Configure<PdfWorkLimiterOptions>(builder.Configuration.GetSection("Pdf"));
