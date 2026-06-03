@@ -147,9 +147,6 @@ public sealed class DiffPdfClient(HttpClient http)
     public Task<FolderDiscoveryResult> DiscoverFolderAsync(DiscoverFolderRequest request, CancellationToken ct = default) =>
         JsonAsync<FolderDiscoveryResult>(HttpMethod.Post, "/api/v1/discovery/folder", request, ct);
 
-    public Task<PairingPreviewResult> PreviewPairingAsync(PreviewPairingRequest request, CancellationToken ct = default) =>
-        JsonAsync<PairingPreviewResult>(HttpMethod.Post, "/api/v1/discovery/preview", request, ct);
-
     /// <summary>Compares a single old/new pair synchronously. Returns the raw result JSON (the per-page model is deep).</summary>
     public Task<JsonElement> CompareSingleAsync(SingleComparisonRequest request, CancellationToken ct = default) =>
         JsonAsync<JsonElement>(HttpMethod.Post, "/api/v1/comparisons", request, ct);

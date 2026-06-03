@@ -163,21 +163,6 @@ public sealed record FolderDiscovery
     public string? Error { get; init; }
 }
 
-/// <summary>A pairing dry-run.</summary>
-public sealed record PairingPreview
-{
-    public bool Reachable { get; init; }
-    public string OldResolvedPath { get; init; } = "";
-    public string NewResolvedPath { get; init; } = "";
-    public int Total { get; init; }
-    public int Matched { get; init; }
-    public int OnlyInOld { get; init; }
-    public int OnlyInNew { get; init; }
-    public IReadOnlyList<string> SampleOnlyInOld { get; init; } = [];
-    public IReadOnlyList<string> SampleOnlyInNew { get; init; } = [];
-    public string? Error { get; init; }
-}
-
 /// <summary>Result of validating that a branch/instance scope exists.</summary>
 public sealed record ScopeCheck
 {
@@ -195,15 +180,6 @@ public sealed record FolderDiscoveryResult
 {
     public ScopeCheck? Scope { get; init; }
     public FolderDiscovery Folder { get; init; } = new();
-    public bool HasPdfs { get; init; }
-    public bool Ready { get; init; }
-}
-
-/// <summary>A pairing dry-run enriched with an optional scope check and readiness verdict.</summary>
-public sealed record PairingPreviewResult
-{
-    public ScopeCheck? Scope { get; init; }
-    public PairingPreview Pairing { get; init; } = new();
     public bool HasPdfs { get; init; }
     public bool Ready { get; init; }
 }

@@ -44,19 +44,3 @@ public sealed record DiscoverFolderRequest
     public string? BranchKey { get; init; }
     public string? InstanceKey { get; init; }
 }
-
-/// <summary>Dry-run an old/new folder pairing, optionally validating a scope.</summary>
-public sealed record PreviewPairingRequest
-{
-    public required string OldFolder { get; init; }
-    public required string NewFolder { get; init; }
-    public NetworkCredentials? OldFolderCredentials { get; init; }
-    public NetworkCredentials? NewFolderCredentials { get; init; }
-    public string? OldFolderCredentialProfile { get; init; }
-    public string? NewFolderCredentialProfile { get; init; }
-    public string SearchPattern { get; init; } = "*.pdf";
-    public bool Recursive { get; init; } = true;
-    public int SampleSize { get; init; } = 20;
-    public string? BranchKey { get; init; }
-    public string? InstanceKey { get; init; }
-}

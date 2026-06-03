@@ -39,30 +39,6 @@ public static class DiscoveryEndpoints
         .WithSummary("Probe a folder for reachability + PDF count, optionally validating a branch/instance scope")
         .Produces<FolderDiscoveryResult>()
         .ProducesProblem(StatusCodes.Status400BadRequest);
-
-        group.MapPost("/preview", async (
-            PreviewPairingRequest request,
-            INetworkDiscoveryService discovery,
-            IBranchStore branches,
-            IInstanceStore instances,
-            CancellationToken ct) =>
-        {
-            var (valid, scope) = await ResolveScopeAsync(
-                request.BranchKey, request.InstanceKey, branches, instances, ct);
-            if (!valid)
-                return MismatchedScopeProblem();
-
-            var pairing = await discovery.PreviewPairingAsync(
-                request.OldFolder, request.NewFolder,
-                request.OldFolderCredentials, request.OldFolderCredentialProfile,
-                request.NewFolderCredentials, request.NewFolderCredentialProfile,
-                request.SearchPattern, request.Recursive, request.SampleSize, ct);
-
-            return Results.Ok(new PairingPreviewResult(scope, pairing));
-        })
-        .WithSummary("Dry-run an old/new folder pairing, optionally validating a branch/instance scope")
-        .Produces<PairingPreviewResult>()
-        .ProducesProblem(StatusCodes.Status400BadRequest);
     }
 
     /// <summary>
