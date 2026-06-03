@@ -54,10 +54,12 @@
 
       <ScrollViewer Grid.Column="1">
         <StackPanel Spacing="10">
-          <StackPanel Orientation="Horizontal" Spacing="8">
-            <Button Content="Structure" Command="{Binding EnsureStructureCmdCommand}"/>
-            <Button Content="Readiness" Command="{Binding ReadinessCommand}"/>
-          </StackPanel>
+          <Button Content="🔧 Opravit strukturu" HorizontalAlignment="Left"
+                  Command="{Binding RepairStructureCommand}"
+                  IsEnabled="{Binding SelectedInstance, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+          <TextBlock Text="Vyber instanci v seznamu pro zobrazení readiness a struktury."
+                     Foreground="#808080" TextWrapping="Wrap"
+                     IsVisible="{Binding Readiness, Converter={x:Static ObjectConverters.IsNull}}"/>
 
           <Border BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="4" Padding="10"
                   IsVisible="{Binding Readiness, Converter={x:Static ObjectConverters.IsNotNull}}">
