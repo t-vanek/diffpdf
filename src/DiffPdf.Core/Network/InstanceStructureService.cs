@@ -39,6 +39,18 @@ public sealed record InstanceStructureReport(
     /// <summary>True when the base was reachable and no item is still missing or wrong-typed.</summary>
     public bool Ok => Reachable && Error is null
         && Items.All(i => i.State is not (StructureItemState.Missing or StructureItemState.WrongType));
+
+    /// <summary>Number of *.pdf files in the <c>old</c> input folder (0 when missing/empty).</summary>
+    public int OldPdfCount => Items.FirstOrDefault(i => i.Name == "old")?.PdfCount ?? 0;
+
+    /// <summary>Number of *.pdf files in the <c>new</c> input folder (0 when missing/empty).</summary>
+    public int NewPdfCount => Items.FirstOrDefault(i => i.Name == "new")?.PdfCount ?? 0;
+
+    /// <summary>
+    /// The "OK to submit a batch" signal: base reachable and both input folders hold at
+    /// least one PDF. Shared by the readiness view and the job-start pre-flight.
+    /// </summary>
+    public bool HasComparableInputs => Reachable && OldPdfCount > 0 && NewPdfCount > 0;
 }
 
 /// <summary>

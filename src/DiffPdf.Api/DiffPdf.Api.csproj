@@ -6,6 +6,7 @@
     <ProjectReference Include="..\DiffPdf.Persistence\DiffPdf.Persistence.csproj" />
     <ProjectReference Include="..\DiffPdf.Worker\DiffPdf.Worker.csproj" />
     <ProjectReference Include="..\DiffPdf.Messaging\DiffPdf.Messaging.csproj" />
+    <ProjectReference Include="..\DiffPdf.Notifications\DiffPdf.Notifications.csproj" />
     <ProjectReference Include="..\DiffPdf.Persistence.Postgres\DiffPdf.Persistence.Postgres.csproj" />
     <ProjectReference Include="..\DiffPdf.Persistence.SqlServer\DiffPdf.Persistence.SqlServer.csproj" />
   </ItemGroup>

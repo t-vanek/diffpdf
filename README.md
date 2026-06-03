@@ -43,20 +43,21 @@ a chybové hlášky vyrenderované přímo do PDF.
   `OnlyInOld` / `OnlyInNew` / `Error`.
 - **Větve, instance a struktura složek** — scope je hierarchie **větev →
   instance**, kde instance nese `basePath` se třemi podsložkami `old` / `new` /
-  `reports`. Server strukturu **zjistí, založí a opraví** (při startu serveru,
-  při zakládání instance i přes explicitní endpoint) a umí vrátit počet PDF
-  i kompletní seznam souborů v `old`/`new`.
-- **Readiness (pre-flight)** — `GET …/readiness` nad instancí ověří, že je
-  reálně co porovnávat (dostupnost cesty, počet PDF, spárování `old`/`new`),
-  takže prázdná nebo nekompletní dávka se zachytí dřív, než se vůbec spustí.
+  `reports`. Server strukturu **založí a opraví** (při startu serveru, při
+  zakládání instance i přes `POST …/structure`); její stav i počet PDF / seznam
+  souborů v `old`/`new` pak vrací pre-flight `GET …/readiness`.
+- **Readiness (pre-flight)** — `GET …/readiness` nad instancí v jednom volání
+  vrátí stav složek `old`/`new`/`reports` (dostupnost, počty PDF, volitelně
+  seznam souborů) **i** spárování `old`/`new` a verdikt `ready`, takže prázdná
+  nebo nekompletní dávka se zachytí dřív, než se vůbec spustí.
 - **Síťové složky** — porovnání lokálních, namountovaných nebo UNC
   (`\\server\share`) složek; přihlašovací údaje a sdílení se konfigurují
   centrálně (`Network` v appsettings: credential profily + pojmenované aliasy
   `share:<jméno>`), nebo volitelně inline per složka (Windows `WNetAddConnection2`,
   Linux CIFS mount).
-- **Discovery režim** — suchý běh přes `/api/v1/discovery`: ověř existenci scope
-  (větev + instance), dostupnost cesty a počet PDF ve složce ještě než odešleš
-  dávku. (Párování old/new pokrývá `…/readiness` nad konfigurovanou instancí.)
+- **Discovery režim** — `GET /api/v1/discovery/shares` vypíše nakonfigurovaná
+  sdílení a jména credential profilů, takže je vidět, na jaké aliasy se dávka
+  nebo instance může odkazovat.
 - **Řízení životního cyklu úlohy** — vytvoření a spuštění jsou oddělené: dávka
   vznikne jako `Draft`, samostatný `start` ji po pre-flight kontrole zařadí do
   fronty. Běžící úlohu lze **pozastavit, obnovit, zrušit i restartovat**;
@@ -65,6 +66,11 @@ a chybové hlášky vyrenderované přímo do PDF.
 - **Klientské SDK (.NET)** — typovaný `HttpClient` klient (`DiffPdf.Client`,
   balitelný jako NuGet) pokrývající celý flow; registrace přes
   `AddDiffPdfClient(...)` a celá dávka jedním voláním `RunBatchAsync(...)`.
+- **Automatizace — plánovač + notifikace** — dávky lze spouštět **periodicky**
+  podle cron rozvrhu (bez ručního REST volání; pre-flight readiness gate zabrání
+  prázdnému běhu) a po doběhnutí rozeslat **notifikaci** (webhook Slack/Teams nebo
+  e-mail) při `Completed` / `GateViolated`. Obojí je konfigurací (`Schedules` /
+  `Notifications`) a ve výchozím stavu vypnuté.
 - **Volitelná OAuth2 autentizace** — vestavěný OpenIddict server s
   client-credentials (M2M) flow vydávajícím JWT bearer tokeny; zapíná se přes
   `Auth:Enabled`.
@@ -207,9 +213,8 @@ Všechny aplikační cesty jsou pod prefixem **`/api/v1`**.
 | `GET`  | `/api/v1/branches` | Výpis větví. |
 | `POST` | `/api/v1/branches/{branchKey}/instances` | Vytvoří instanci pod větví (nese `basePath`); založí strukturu (`?ensureStructure=false` vypne). |
 | `GET`  | `/api/v1/branches/{branchKey}/instances` | Výpis instancí. |
-| `GET`  | `/api/v1/branches/{branchKey}/instances/{instanceKey}/structure` | Zjistí stav složek `old`/`new`/`reports` (bez zápisu). |
 | `POST` | `/api/v1/branches/{branchKey}/instances/{instanceKey}/structure` | Založí/opraví složky `old`/`new`/`reports`. |
-| `GET`  | `/api/v1/branches/{branchKey}/instances/{instanceKey}/readiness` | Připravenost dávky: párování `old`/`new` (matched/onlyInOld/onlyInNew) + verdikt `ready`. |
+| `GET`  | `/api/v1/branches/{branchKey}/instances/{instanceKey}/readiness` | Připravenost dávky: stav složek `old`/`new`/`reports` + počty PDF + párování `old`/`new` (matched/onlyInOld/onlyInNew) + verdikt `ready` (`?includeFiles=true` vrátí i seznam souborů). |
 | `POST` | `/api/v1/comparisons` | Porovná jednu dvojici (synchronně). |
 | `POST` | `/api/v1/batch` | Založí úlohu porovnání složek (`Draft`, vrací `201`); spustí se přes `/start`. |
 | `GET`  | `/api/v1/jobs` | Výpis úloh (filtr `branchKey` / `instanceKey` / `status`). |
@@ -224,7 +229,6 @@ Všechny aplikační cesty jsou pod prefixem **`/api/v1`**.
 | `POST` | `/api/v1/jobs/{id}/retry` | Znovu spustí failed file-pairs hotové úlohy. |
 | `GET`  | `/api/v1/jobs/{id}/artifacts/{**path}` | Stažení zvýrazněného diff-PDF. |
 | `GET`  | `/api/v1/discovery/shares` | Výpis nakonfigurovaných sdílení a jmen credential profilů. |
-| `POST` | `/api/v1/discovery/folder` | Probe složky — dostupnost + počet PDF + ukázka cest; volitelně ověří i scope (větev/instance) a vrátí `ready`. |
 
 OpenAPI dokument je na `/openapi/v1.json`, interaktivní **Swagger UI** na `/swagger`.
 Chyby se vrací jako **`application/problem+json`** (RFC 9457 ProblemDetails).
@@ -294,7 +298,7 @@ curl http://localhost:8080/api/v1/jobs/<id>/report
 | `highlightStyle` | `Raster` | `Raster` (stránky jako obrázek) nebo `VectorOverlay` (overlay nad originálem — text zůstává vybíratelný). |
 | `renderer` | `Ghostscript` | `Ghostscript` nebo `Pdfium`. |
 
-Výsledek jedné dvojice (`POST /api/comparisons`) vrací `outcome`
+Výsledek jedné dvojice (`POST /api/v1/comparisons`) vrací `outcome`
 (`Compared`/`Failed`), stav per dokument, typovaný rozpis po stránkách
 (`changes`, `differenceScore`, příznaky prázdnoty, regiony) a případné
 `contentErrors`. Batch report agreguje počty (`identical`, `differing`,
@@ -326,7 +330,7 @@ oblast na konkrétní čísla stránek.
 #### CI brána (pass/fail dávky)
 
 Přidej do batch požadavku `gate` a běh se stane pass/fail kontrolou. Endpoint
-`GET /api/jobs/{id}/result` pak vrátí `200` při úspěchu a `422` při selhání —
+`GET /api/v1/jobs/{id}/result` pak vrátí `200` při úspěchu a `422` při selhání —
 ideální pro `curl --fail` v pipeline.
 
 ```jsonc
@@ -391,35 +395,18 @@ Mechanismus připojení:
   účtem. `basePath` instance se resolvne už při submitu, takže do úlohy se uloží
   konkrétní cesta; s `localMountPath` se navíc nepersistuje žádné heslo.
 
-#### Discovery režim (suchý běh)
+#### Discovery: nakonfigurovaná sdílení
 
-Než odešleš (drahou) dávku, můžeš si ověřit dostupnost cest, credentialy a
-párování — bez jediného porovnání:
+Než založíš instanci, můžeš si vypsat, na jaké aliasy a credential profily se
+dávka nebo instance může odkazovat (jen jména, žádná tajemství):
 
 ```bash
-# co je nakonfigurované (jen jména, žádná tajemství)
 curl http://localhost:8080/api/v1/discovery/shares
-
-# je složka dostupná a kolik PDF obsahuje? (vrátí i ukázku cest)
-curl -X POST http://localhost:8080/api/v1/discovery/folder \
-  -H 'Content-Type: application/json' \
-  -d '{ "folder": "share:reports/baseline" }'
-
-# pre-flight: ověř i existenci scope (větev + instance) k téže složce
-curl -X POST http://localhost:8080/api/v1/discovery/folder \
-  -H 'Content-Type: application/json' \
-  -d '{ "folder": "share:lama/old",
-        "branchKey": "Alfa", "instanceKey": "LamaEnergy" }'
 ```
 
-Discovery přijímá stejné odkazy na sdílení/profily jako dávka. Nedostupná cesta
-nebo neznámý alias vrátí `reachable: false` s důvodem v `error`, ne chybu 500.
-
-Když do `/discovery/folder` přidáš `branchKey` + `instanceKey` (oba, nebo žádný),
-odpověď navíc nese `scope` s příznaky `branchExists` / `instanceExists` a celkový
-`ready` (cesta dostupná, obsahuje PDF a scope existuje) — pre-flight check, než
-pošleš dávku. Párování old/new nad konfigurovanou instancí (kolik matched /
-onlyInOld / onlyInNew) pokrývá `GET …/instances/{key}/readiness`.
+Dostupnost cest, počty PDF a párování `old`/`new` nad **konfigurovanou instancí**
+ověříš pre-flight přes `GET …/instances/{key}/readiness` (viz níže) — ten v jednom
+volání vrátí stav složek i to, co s čím se bude porovnávat.
 
 ### Větve, instance a struktura úložiště
 
@@ -442,12 +429,12 @@ Aplikace zapisuje **jen** do `reports/`; `old/` a `new/` pouze čte.
 
 Server umí strukturu `old`/`new`/`reports` pod `basePath` **zjistit i srovnat**:
 
-- `GET …/instances/{key}/structure` — jen **zjistí** (bez zápisu): každá podsložka je
-  `Present` / `Missing` / `WrongType` (na místě složky je soubor); `ok` je `true`, když nic nechybí.
-  U vstupních složek `old`/`new` navíc vrací **`pdfCount`** (0 = prázdná, jinak počet PDF rekurzivně);
-  s **`?includeFiles=true`** přidá kompletní seznam `files` (relativní cesty). `reports` se nelistuje.
 - `POST …/instances/{key}/structure` — **založí/opraví**: chybějící → `Created`; soubor
   kolidující s názvem se **smaže a nahradí složkou** (`Repaired`, s warning logem); existující → `Present`.
+  Odpověď nese stav každé podsložky (`Present` / `Missing` / `WrongType`), `ok` (nic nechybí) a u
+  `old`/`new` **`pdfCount`**; s **`?includeFiles=true`** přidá kompletní seznam `files`.
+- **Pouhé zjištění** stavu (bez zápisu) získáš z `GET …/instances/{key}/readiness` — vrací
+  totéž `structure` pole plus párování (viz níže).
 - **Při zakládání instance** se ensure spustí automaticky (vypneš `?ensureStructure=false`);
   odpověď nese pole `structure` s reportem.
 - **Při startu serveru** projde server všechny registrované instance a strukturu zajistí
@@ -456,9 +443,11 @@ Server umí strukturu `old`/`new`/`reports` pod `basePath` **zjistit i srovnat**
 Pro instance na **UNC/`share:`** to funguje přes stejný konektor jako batch, ale vyžaduje
 **write** přístup (a na Linuxu `Network:MountReadOnly = false`, protože se zapisuje).
 
-**Připravenost před dávkou:** `GET …/instances/{key}/readiness` udělá suchý běh párování
-`old` vs `new` (`matched` / `onlyInOld` / `onlyInNew` + ukázky) a vrátí `ready` (obě složky
-mají PDF) — ověření „co s čím se bude porovnávat", než odešleš `POST /batch`.
+**Připravenost před dávkou:** `GET …/instances/{key}/readiness` v jednom volání vrátí stav
+složek (`structure`: `old`/`new`/`reports` + `pdfCount`, s `?includeFiles=true` i `files`)
+**a** suchý běh párování `old` vs `new` (`matched` / `onlyInOld` / `onlyInNew` + ukázky) s
+verdiktem `ready` (obě složky mají PDF) — jediné ověření „co s čím se bude porovnávat", než
+odešleš `POST /batch`.
 
 ## Klientské SDK (.NET)
 
@@ -485,6 +474,60 @@ Nebo lifecycle ručně: `CreateBatchAsync` (Draft) → `StartJobAsync` → `GetJ
 (poll) → `PauseJobAsync` / `ResumeJobAsync` / `CancelJobAsync` → `GetReportAsync` /
 `GetResultAsync` / `DownloadArtifactAsync`. Non-2xx odpovědi vyhodí `DiffPdfApiException`
 (s HTTP statusem a `detail` z problem+json).
+
+## Automatizace — plánovač a notifikace
+
+Dvě volitelné vrstvy nad dávkovou pipeline, obě konfigurací a **ve výchozím stavu
+vypnuté** (žádný dopad, dokud je nezapneš).
+
+### Plánovač (`Schedules`)
+
+Hosted service spouští dávky periodicky podle **cron** výrazu (5 polí, vyhodnocuje
+se v **UTC**). Před spuštěním projde stejnou readiness bránou jako `…/readiness` —
+když není co porovnávat (prázdné `old`/`new` nebo nedostupná cesta), běh **přeskočí**
+místo založení prázdné úlohy. Vytvoření i zařazení do fronty je atomické (přes stejný
+transactional outbox jako ruční `POST /batch` + `start`).
+
+```jsonc
+"Schedules": {
+  "Enabled": true,
+  "Jobs": [
+    { "BranchKey": "Alfa", "InstanceKey": "LamaEnergy", "Cron": "0 2 * * *", "Enabled": true }  // nightly 02:00 UTC
+  ]
+}
+```
+
+> Plánovač je **single-process** bezpečný (interní „next occurrence" zabrání
+> dvojímu spuštění). Při více replikách API by se rozvrh spustil jednou za repliku;
+> single-fire napříč replikami (DB leader-lease) je plánovaný follow-up (Fáze 2).
+
+### Notifikace (`Notifications`)
+
+Po doběhnutí dávky se podle odběrů rozešle notifikace. Událost je `Completed`
+(brána prošla, nebo žádná není) nebo `GateViolated` (dávka doběhla, ale porušila CI
+bránu). Dva kanály:
+
+- **`webhook`** — POST JSON na URL; payload má pole `text` (kompatibilní se
+  Slack/Teams) a strukturovaný detail pod `diffpdf`.
+- **`smtp`** — e-mail přes nakonfigurovaný SMTP server (`Notifications:Smtp`).
+
+Každý odběr lze omezit na konkrétní `BranchKey` / `InstanceKey`. Doručení je
+best-effort (selhání jednoho odběru neblokuje ostatní ani nezdrží dávku).
+
+```jsonc
+"Notifications": {
+  "Enabled": true,
+  "BaseUrl": "http://localhost:8080",
+  "Smtp": { "Host": "smtp.corp", "Port": 587, "UseSsl": true, "Username": "svc", "Password": "…", "From": "diffpdf@corp" },
+  "Subscriptions": [
+    { "Channel": "webhook", "Target": "https://hooks.slack.com/services/…", "Events": [ "GateViolated", "Completed" ] },
+    { "Channel": "smtp", "Target": "qa@corp", "Events": [ "GateViolated" ], "BranchKey": "Alfa" }
+  ]
+}
+```
+
+> Notifikace na tvrdě **`Failed`** úlohu (nedostupná cesta při běhu, pád pipeline)
+> jsou plánovaný follow-up — dnes pokrývá `Completed` + `GateViolated`.
 
 ## Continuous Integration (GitHub Actions)
 

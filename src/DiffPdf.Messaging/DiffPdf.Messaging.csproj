@@ -2,11 +2,13 @@
 
   <ItemGroup>
     <ProjectReference Include="..\DiffPdf.Core\DiffPdf.Core.csproj" />
+    <ProjectReference Include="..\DiffPdf.Notifications\DiffPdf.Notifications.csproj" />
     <ProjectReference Include="..\DiffPdf.Persistence\DiffPdf.Persistence.csproj" />
     <ProjectReference Include="..\DiffPdf.Worker\DiffPdf.Worker.csproj" />
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Cronos" Version="0.10.0" />
     <PackageReference Include="WolverineFx" Version="6.3.2" />
     <PackageReference Include="WolverineFx.EntityFrameworkCore" Version="6.3.2" />
     <PackageReference Include="WolverineFx.Postgresql" Version="6.3.2" />

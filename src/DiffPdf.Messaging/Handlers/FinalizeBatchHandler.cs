@@ -10,7 +10,11 @@ namespace DiffPdf.Messaging.Handlers;
 /// <summary>Aggregates file-pair results into the batch report and completes the job (idempotent).</summary>
 public sealed class FinalizeBatchHandler
 {
-    public static async Task Handle(
+    /// <summary>
+    /// Returns a <see cref="BatchFinished"/> event (cascaded by Wolverine) when this call is the
+    /// one that completes the job, or null when the job was already finalized / not ready.
+    /// </summary>
+    public static async Task<BatchFinished?> Handle(
         FinalizeBatch command,
         IJobStore jobStore,
         IFilePairTaskStore taskStore,
@@ -20,7 +24,7 @@ public sealed class FinalizeBatchHandler
     {
         var job = await jobStore.GetAsync(command.JobId, ct);
         if (job is null || job.Status != JobStatus.Running)
-            return; // already finalized or not ready
+            return null; // already finalized or not ready
 
         var tasks = await taskStore.ListByJobAsync(command.JobId, ct);
         var files = tasks
@@ -48,10 +52,17 @@ public sealed class FinalizeBatchHandler
             await progressPublisher.PublishAsync(JobProgressChanged.From(completed), ct);
             logger.LogInformation("Job {JobId} finalized: {Total} files, {Diff} differing.",
                 completed.Id, report.Total, report.Differing);
+
+            return new BatchFinished(
+                completed.Id, job.BranchKey, job.InstanceKey,
+                report.Total, report.Identical, report.Differing, report.Errors,
+                report.FilesWithContentErrors, report.Passed,
+                report.GateViolations.ToArray(), report.CompletedAt);
         }
         catch (ConcurrencyConflictException)
         {
             logger.LogInformation("Job {JobId} already finalized.", job.Id);
+            return null;
         }
     }
 }

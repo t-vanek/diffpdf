@@ -97,18 +97,6 @@ public static class ScopeEndpoints
             return instance is null ? Results.NotFound() : Results.Ok(instance);
         }).WithSummary("Get an instance").Produces<ComparisonInstance>().ProducesProblem(StatusCodes.Status404NotFound);
 
-        group.MapGet("/{branchKey}/instances/{instanceKey}/structure", async (
-            string branchKey, string instanceKey,
-            IBranchStore branches, IInstanceStore instances, IInstanceStructureService structure,
-            bool? includeFiles, CancellationToken ct) =>
-        {
-            var instance = await ResolveInstanceAsync(branchKey, instanceKey, branches, instances, ct);
-            return instance is null
-                ? Results.NotFound()
-                : Results.Ok(await structure.InspectAsync(instance.BasePath, instance.CredentialProfile, includeFiles ?? false, ct));
-        }).WithSummary("Inspect the structure + old/new PDF content (?includeFiles=true returns the full file list)")
-          .Produces<InstanceStructureReport>().ProducesProblem(StatusCodes.Status404NotFound);
-
         group.MapPost("/{branchKey}/instances/{instanceKey}/structure", async (
             string branchKey, string instanceKey,
             IBranchStore branches, IInstanceStore instances, IInstanceStructureService structure,
@@ -122,15 +110,20 @@ public static class ScopeEndpoints
           .Produces<InstanceStructureReport>().ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapGet("/{branchKey}/instances/{instanceKey}/readiness", async (
-            string branchKey, string instanceKey, int? sampleSize,
-            IBranchStore branches, IInstanceStore instances,
+            string branchKey, string instanceKey, int? sampleSize, bool? includeFiles,
+            IBranchStore branches, IInstanceStore instances, IInstanceStructureService structure,
             INetworkShareResolver shareResolver, INetworkDiscoveryService discovery, CancellationToken ct) =>
         {
             var instance = await ResolveInstanceAsync(branchKey, instanceKey, branches, instances, ct);
             if (instance is null) return Results.NotFound();
 
-            // Derive the concrete old/new folders from the instance base (resolving a
-            // share alias / profile once), then dry-run the pairing to see what lines up.
+            // 1) Inspect the skeleton: reachability, per-subfolder state and old/new PDF counts.
+            var report = await structure.InspectAsync(instance.BasePath, instance.CredentialProfile, includeFiles ?? false, ct);
+            if (!report.Reachable)
+                return Results.Ok(new InstanceReadiness(report, 0, 0, 0, [], [], false, report.Error));
+
+            // 2) Derive the concrete old/new folders from the instance base (resolving a
+            //    share alias / profile once), then dry-run the pairing to see what lines up.
             string oldFolder, newFolder;
             try
             {
@@ -140,7 +133,7 @@ public static class ScopeEndpoints
             }
             catch (NetworkConfigurationException ex)
             {
-                return Results.Ok(new InstanceReadiness(false, 0, 0, 0, 0, 0, [], [], false, ex.Message));
+                return Results.Ok(new InstanceReadiness(report, 0, 0, 0, [], [], false, ex.Message));
             }
 
             var pairing = await discovery.PreviewPairingAsync(
@@ -149,14 +142,11 @@ public static class ScopeEndpoints
                 newInlineCredentials: null, newCredentialProfile: instance.CredentialProfile,
                 searchPattern: "*.pdf", recursive: true, sampleSize: sampleSize ?? 20, ct: ct);
 
-            int oldCount = pairing.Matched + pairing.OnlyInOld;
-            int newCount = pairing.Matched + pairing.OnlyInNew;
-            bool ready = pairing.Reachable && oldCount > 0 && newCount > 0;
-
             return Results.Ok(new InstanceReadiness(
-                pairing.Reachable, oldCount, newCount, pairing.Matched, pairing.OnlyInOld, pairing.OnlyInNew,
-                pairing.SampleOnlyInOld, pairing.SampleOnlyInNew, ready, pairing.Error));
-        }).WithSummary("Readiness for a batch: how old/new pair up and whether a job may be submitted")
+                report, pairing.Matched, pairing.OnlyInOld, pairing.OnlyInNew,
+                pairing.SampleOnlyInOld, pairing.SampleOnlyInNew,
+                report.HasComparableInputs, pairing.Error));
+        }).WithSummary("Batch readiness: folder-skeleton state + old/new PDF counts, how they pair up, and whether a job may be submitted (?includeFiles=true returns the full file list)")
           .Produces<InstanceReadiness>().ProducesProblem(StatusCodes.Status404NotFound);
     }
 
