@@ -5,6 +5,7 @@
     <Project Path="src/DiffPdf.Core/DiffPdf.Core.csproj" />
     <Project Path="src/DiffPdf.DesktopUI/DiffPdf.DesktopUI.csproj">
       <Build Solution="Debug|*" Project="false" />
+      <Build Solution="Release|*" Project="false" />
     </Project>
     <Project Path="src/DiffPdf.Messaging/DiffPdf.Messaging.csproj" />
     <Project Path="src/DiffPdf.Notifications/DiffPdf.Notifications.csproj" />
