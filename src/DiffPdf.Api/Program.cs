@@ -1,4 +1,6 @@
 using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.RateLimiting;
 using DiffPdf.Api;
 using DiffPdf.Api.Auth;
 using DiffPdf.Api.Endpoints;
@@ -82,6 +84,19 @@ builder.Services.AddOpenTelemetry()
         if (otlpConfigured) m.AddOtlpExporter();
     });
 builder.Services.AddProblemDetails();
+
+// Rate limiting: throttle the expensive write endpoints (scope sync, triggers, branch fan-out). Returns 429
+// when the per-minute window is exceeded; read/health endpoints are unthrottled.
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddFixedWindowLimiter("expensive", o =>
+    {
+        o.PermitLimit = 60;
+        o.Window = TimeSpan.FromMinutes(1);
+        o.QueueLimit = 0;
+    });
+});
 builder.Services.Configure<StorageOptions>(builder.Configuration.GetSection("Storage"));
 builder.Services.Configure<PdfWorkLimiterOptions>(builder.Configuration.GetSection("Pdf"));
 builder.Services.Configure<NetworkOptions>(builder.Configuration.GetSection(NetworkOptions.SectionName));
@@ -172,6 +187,7 @@ if (authEnabled)
 var app = builder.Build();
 
 app.UseSerilogRequestLogging();
+app.UseRateLimiter();
 
 if (authEnabled)
 {

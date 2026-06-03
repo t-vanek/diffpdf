@@ -502,6 +502,37 @@ daty z DB (leader lease + backlog fronty):
 volání (jako hosted services). SDK: `GetStatusAsync()`, `GetReadinessAsync()` (čte tělo i pro `503`),
 `HealthAsync()` (liveness). **Bez změny DB schématu** — vše jsou čtecí dotazy nad stávajícími tabulkami.
 
+### Autentizace (OpenIddict, M2M)
+
+Ve výchozím stavu **vypnuto** (`Auth:Enabled = false`) — API běží anonymně (lokální vývoj, in-process
+integrační testy). Zapnutí v produkci:
+
+1. Nakonfigurujte relační DB — auth se aktivuje jen když je k dispozici
+   (`authEnabled = Auth:Enabled && je relační connection string`); jinak Program zaloguje varování a
+   běží anonymně.
+2. V konfiguraci nastavte sekci `Auth`:
+   ```json
+   "Auth": { "Enabled": true, "ClientId": "diffpdf-ci", "ClientSecret": "…", "Scope": "diffpdf.api", "AccessTokenMinutes": 60 }
+   ```
+   Secret držte mimo repo (user-secrets / env var / launch profil), ne v `appsettings.json`.
+3. Po zapnutí **každý endpoint vyžaduje token** (`SetFallbackPolicy`); výjimky jsou `AllowAnonymous`:
+   `/`, `/health`, `/health/ready`, OpenAPI a `/connect/token`.
+
+Klient (client-credentials) si token obstará a cachuje sám (`ClientCredentialsTokenHandler`):
+```csharp
+services.AddDiffPdfClient(new Uri("https://…"), clientId: "diffpdf-ci", clientSecret: "…", scope: "diffpdf.api");
+```
+
+Realtime hub (`/hubs/jobs`) i SDK `SubscribeToJobProgressAsync` přijímají bearer token přes
+`AccessTokenProvider`. E2E ověření token flow patří do integračních testů proti reálné DB (LocalDB),
+jinak přeskočené (in-memory fallback běží anonymně).
+
+### Rychlostní limity (rate limiting)
+
+Náročné zapisující endpointy (`POST /scope/sync`, triggery, fan-out `…/run`) jsou chráněné pojmenovanou
+fixed-window politikou (`RequireRateLimiting("expensive")`) přes `AddRateLimiter` + `UseRateLimiter`.
+Při překročení vrací `429`. Ostatní (čtecí, health) bez limitu.
+
 ## Build, testy a CI
 
 ### Lokální build & testy
