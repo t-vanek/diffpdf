@@ -24,6 +24,8 @@
     <ProjectReference Include="..\..\src\DiffPdf.Persistence\DiffPdf.Persistence.csproj" />
     <ProjectReference Include="..\..\src\DiffPdf.Messaging\DiffPdf.Messaging.csproj" />
     <ProjectReference Include="..\..\src\DiffPdf.Notifications\DiffPdf.Notifications.csproj" />
+    <!-- Real-database integration tests (skipped automatically when SQL Server LocalDB is absent). -->
+    <ProjectReference Include="..\..\src\DiffPdf.Persistence.SqlServer\DiffPdf.Persistence.SqlServer.csproj" />
   </ItemGroup>
 
 </Project>
