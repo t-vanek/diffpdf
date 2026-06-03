@@ -22,7 +22,9 @@ public static class PostgresPersistenceServiceCollectionExtensions
         services.AddScoped<IInstanceStore, PostgresInstanceStore>();
         services.AddScoped<IScheduleStore, PostgresScheduleStore>();
         services.AddScoped<ISubscriptionStore, PostgresSubscriptionStore>();
+        services.AddScoped<IScheduleRunStore, PostgresScheduleRunStore>();
         services.AddScoped<IJobSubmissionService, PostgresJobSubmissionService>();
+        services.AddSingleton<ILeaderElection>(new PostgresLeaderElection(connectionString));
 
         services.AddHostedService(sp => new PostgresMigrationHostedService(
             connectionString, sp.GetRequiredService<ILogger<PostgresMigrationHostedService>>()));

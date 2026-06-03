@@ -113,6 +113,33 @@ public static class PostgresMigrator
         );
 
         create index if not exists ix_notification_subscriptions_enabled on notification_subscriptions (enabled);
+
+        create table if not exists automation_leader (
+            role        text primary key,
+            owner       text not null,
+            acquired_at timestamptz not null default now(),
+            renewed_at  timestamptz not null default now(),
+            expires_at  timestamptz not null
+        );
+
+        create table if not exists schedule_runs (
+            id uuid primary key,
+            schedule_id uuid not null references comparison_schedules(id) on delete cascade,
+            job_id uuid not null unique,
+            started_at timestamptz not null default now(),
+            completed_at timestamptz null,
+            outcome text not null default 'Pending',
+            differing int not null default 0,
+            errors int not null default 0,
+            files_with_content_errors int not null default 0,
+            passed boolean not null default false,
+            gate_violations_json jsonb null,
+            error text null
+        );
+
+        create index if not exists ix_schedule_runs_schedule_started on schedule_runs (schedule_id, started_at desc);
+
+        alter table jobs add column if not exists artifacts_pruned_at timestamptz null;
         """;
 
     public static async Task MigrateAsync(string connectionString, CancellationToken ct = default)

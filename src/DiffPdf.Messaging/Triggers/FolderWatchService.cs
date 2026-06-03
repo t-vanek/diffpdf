@@ -1,3 +1,4 @@
+using DiffPdf.Core.Abstractions;
 using DiffPdf.Messaging.Scheduling;
 using DiffPdf.Persistence;
 using Microsoft.Extensions.DependencyInjection;
@@ -13,15 +14,20 @@ namespace DiffPdf.Messaging.Triggers;
 /// uniformly for local, mounted and UNC/CIFS shares.
 /// </summary>
 /// <remarks>
-/// Single-process safe (in-memory per-folder state dedupes drops). Multiple API replicas
-/// would each watch and could double-launch — multi-replica single-fire (a DB leader-lease)
-/// is the documented follow-up, shared with the scheduler.
+/// Multi-replica safe: each tick first acquires/renews the shared <see cref="AutomationLeader"/>
+/// lease via <see cref="ILeaderElection"/>; only the leading replica scans + launches (the in-memory
+/// fallback always leads). The per-folder dedupe state is in-memory, so a leadership change may
+/// re-trigger the most recent drop once — concurrent replicas never double-launch.
 /// </remarks>
 public sealed class FolderWatchService(
     IServiceScopeFactory scopeFactory,
+    ILeaderElection leader,
+    IWorkerInstanceIdProvider workerInstance,
     IOptions<WatchOptions> options,
     ILogger<FolderWatchService> logger) : BackgroundService
 {
+    private bool _wasLeader;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var opts = options.Value;
@@ -38,6 +44,18 @@ public sealed class FolderWatchService(
         using var timer = new PeriodicTimer(opts.PollInterval);
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
+            // Only the automation leader scans + launches, so a drop fires once across replicas.
+            bool isLeader = await leader.TryAcquireAsync(AutomationLeader.Role, workerInstance.WorkerInstanceId, AutomationLeader.Lease, stoppingToken);
+            if (isLeader != _wasLeader)
+            {
+                logger.LogInformation(isLeader
+                    ? "This replica is now the automation leader (folder-watch active)."
+                    : "This replica is no longer the automation leader (folder-watch idle).");
+                _wasLeader = isLeader;
+            }
+            if (!isLeader)
+                continue;
+
             for (int i = 0; i < watches.Count; i++)
             {
                 var watch = watches[i];

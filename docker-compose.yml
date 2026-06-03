@@ -24,22 +24,10 @@ services:
     volumes:
       - sqlserver-data:/var/opt/mssql
 
-  rabbitmq:
-    image: rabbitmq:4-management
-    environment:
-      RABBITMQ_DEFAULT_USER: diffpdf
-      RABBITMQ_DEFAULT_PASS: diffpdf
-    ports:
-      - "5672:5672"
-      - "15672:15672"
-    volumes:
-      - rabbitmq-data:/var/lib/rabbitmq
-
   diffpdf-api:
     build: .
     depends_on:
       - postgres
-      - rabbitmq
     ports:
       - "8080:8080"
     environment:
@@ -48,7 +36,6 @@ services:
       # To use SQL Server instead, start the sqlserver profile, comment out the
       # Postgres line above and uncomment the next one (SqlServer takes priority):
       # ConnectionStrings__SqlServer: Server=sqlserver,1433;Database=diffpdf;User Id=sa;Password=Your_password123;TrustServerCertificate=True
-      ConnectionStrings__RabbitMq: amqp://diffpdf:diffpdf@rabbitmq:5672/
       Storage__RootPath: /data/storage
       DIFFPDF_LOG_DIR: /data/logs
     volumes:
@@ -61,5 +48,4 @@ services:
 volumes:
   postgres-data:
   sqlserver-data:
-  rabbitmq-data:
   diffpdf-data:

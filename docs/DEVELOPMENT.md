@@ -21,9 +21,10 @@ konkrétní implementace v perifériích (PDF knihovny, perzistence, messaging).
 | **`DiffPdf.Worker`** | Worker DI, storage provisioning, work limiter. |
 | **`DiffPdf.Client`** | Typovaný .NET SDK (self-contained, balitelný jako NuGet). |
 
-Pokud jsou nastavené `ConnectionStrings:Postgres` (nebo `:SqlServer`) a `:RabbitMq`,
-použije se plný stack; jinak API spadne zpět na in-memory úložiště a in-process Wolverine
-transport (jednoinstanční dev režim — používá ho i testovací `WebApplicationFactory`).
+Pokud je nastavený `ConnectionStrings:Postgres` (nebo `:SqlServer`), použije se plný stack
+(relační zdroj pravdy + **DB-backed durable local queues**, žádný broker); jinak API spadne
+zpět na in-memory úložiště a in-process Wolverine transport (jednoinstanční dev režim — používá
+ho i testovací `WebApplicationFactory`).
 
 ## Jak software funguje
 
@@ -59,7 +60,7 @@ Cron rozvrh (tik)  /  POST …/schedules/{key}/run   (žádné ruční zakládá
    │  pre-flight „je co porovnávat" → job vzniká rovnou jako Queued
    │  + publikuje RunBatchComparison ve stejné transakci (outbox)
    ▼
-RabbitMQ  ──►  [Worker / handler]
+Durable local queue (perzistentní v DB)  ──►  [handler]
    │   RunBatchComparison  → TryStart (Queued→Running, optimistic concurrency)
    │   IndexBatch          → spáruje složky, založí file_pair_tasks, nastaví total
    │   CompareFilePair × N → porovná jednu dvojici, zapíše výsledek, ++processed
@@ -75,7 +76,8 @@ Principy:
 - **Relační DB je zdroj pravdy** pro joby, větve, instance, rozvrhy, odběry, progress
   a metadata reportu. Přechody stavů používají optimistic concurrency (`version`) a lease
   (`locked_by`/`locked_until`); `Queued → Running` provede jen jeden worker.
-- **RabbitMQ je jen transport** příkazů — nedrží stav úlohy.
+- **Žádný externí broker** — příkazy jdou přes **durable local queues** perzistentní v téže
+  databázi (přežijí restart, retry, dead-letter), zpracované in-process Wolverine agenty.
 - **Wolverine** řídí publish/consume s durable inbox/outbox. Handler je idempotentní:
   opakovaně doručená zpráva najde job, který už není `Queued`, a přeskočí.
 - **Spuštění jen automatizací** — job nezakládá klient ručně. Cron rozvrh nebo akce
@@ -97,10 +99,12 @@ Principy:
 
 ### Schéma databáze
 
-Tabulky `branches`, `instances`, `jobs`, `file_pair_tasks`, `comparison_schedules`
-a `notification_subscriptions` se vytvoří **idempotentně při startu** pro oba providery
-(raw SQL `create table if not exists` / `if object_id(...) is null`); Wolverine si spravuje
-vlastní inbox/outbox tabulky v téže databázi. Stejné připojení používá i OpenIddict (auth).
+Tabulky `branches`, `instances`, `jobs`, `file_pair_tasks`, `comparison_schedules`,
+`notification_subscriptions`, `automation_leader` (lease vedoucí repliky) a `schedule_runs`
+(historie běhů) se vytvoří **idempotentně při startu** pro oba providery
+(raw SQL `create table if not exists` / `if object_id(...) is null`; sloupec
+`jobs.artifacts_pruned_at` se přidá idempotentním `ALTER`); Wolverine si spravuje vlastní
+inbox/outbox + frontové tabulky v téže databázi. Stejné připojení používá i OpenIddict (auth).
 
 Komplexní pole se ukládají jako JSON sloupce (`jsonb` v Postgresu, `nvarchar(max)` v SQL
 Serveru): `jobs.request_json`/`report_json`, `comparison_schedules.options_json`/`gate_json`,
@@ -127,6 +131,7 @@ Všechny aplikační cesty jsou pod prefixem **`/api/v1`**. OpenAPI dokument je 
 | `POST` `GET` | `…/instances/{instanceKey}/schedules` | Vytvoří rozvrh (cron + volby + CI gate) / výpis. |
 | `GET` `PUT` `DELETE` | `…/instances/{instanceKey}/schedules/{scheduleKey}` | Detail / úprava (`Version` → `409`) / smazání (`204`). |
 | `POST` | `…/instances/{instanceKey}/schedules/{scheduleKey}/run` | Spustí dávku **teď**: `202` + `jobId`; `422` když není co porovnávat. |
+| `GET`  | `…/instances/{instanceKey}/schedules/{scheduleKey}/runs` | Historie běhů rozvrhu (nejnovější první; `?limit=N`, default 50). |
 | `POST` | `/api/v1/comparisons` | Porovná jednu dvojici (synchronně). |
 | `GET`  | `/api/v1/jobs` | Výpis úloh (filtr `branchKey` / `instanceKey` / `status`). |
 | `GET`  | `/api/v1/jobs/{id}` | Stav úlohy + progress. |
@@ -360,9 +365,12 @@ curl -X POST http://localhost:8080/api/v1/branches/Alfa/instances/LamaEnergy/sch
 curl -X POST http://localhost:8080/api/v1/branches/Alfa/instances/LamaEnergy/schedules/nightly/run
 ```
 
-> Plánovač je **single-process** bezpečný (per-Id „next occurrence" zabrání dvojímu
-> spuštění). Při více replikách API by se rozvrh spustil jednou za repliku; single-fire
-> napříč replikami (DB leader-lease) je plánovaný follow-up (Fáze 2).
+> **Multi-replika single-fire.** Každý tik nejdřív získá/obnoví sdílenou `automation`
+> lease (`ILeaderElection`, tabulka `automation_leader`); reconciluje a spouští jen
+> **vedoucí replika**, takže rozvrh vystřelí jednou napříč clusterem (in-memory fallback
+> vede vždy). Při pádu vedoucího ji stand-by převezme do ~`AutomationLeader.Lease`; jeho
+> reconciler se re-seedne bez spuštění, takže failover nezpůsobí dvojí start. (Lease se
+> řídí DB hodinami, takže na clock-skew replik nezáleží.)
 
 ### Notifikace (odběry jako resource)
 
@@ -370,7 +378,8 @@ Po doběhnutí dávky vrátí `FinalizeBatchHandler` event `BatchFinished`, kter
 `BatchFinishedNotificationHandler` přemění na notifikaci a předá `NotificationDispatcher`.
 Dispatcher (Scoped, čte `ISubscriptionStore.ListEnabledAsync`) profiltruje **aktivní
 odběry v DB** podle události a volitelného `BranchKey` / `InstanceKey` a rozešle je
-kanálem. Událost je `Completed` (brána prošla / žádná není) nebo `GateViolated`. Kanály:
+kanálem. Událost je `Completed` (brána prošla / žádná není), `GateViolated`, nebo `Failed`
+(tvrdě spadlá úloha — viz „Spolehlivost & viditelnost" níže). Kanály:
 
 - **`webhook`** — POST JSON na URL; payload má pole `text` (kompatibilní se Slack/Teams)
   a strukturovaný detail pod `diffpdf`.
@@ -411,8 +420,27 @@ volbami (`LaunchSpec.Default`), protože nemají kontext rozvrhu.
 }
 ```
 
-> Stejně jako plánovač je folder-watch **single-process** bezpečný (in-memory per-folder
-> stav dedupuje drop); multi-replika single-fire je sdílený follow-up (Fáze 2).
+> Folder-watch sdílí **stejnou `automation` lease** jako plánovač — skenuje a spouští jen
+> vedoucí replika. Per-folder dedupe je in-memory, takže změna vedení může poslední drop
+> spustit jednou znovu; souběžné repliky ale nikdy nespustí dvakrát.
+
+### Spolehlivost & viditelnost (Fáze 4)
+
+- **Notifikace na `Failed`** — když job tvrdě spadne (jediná cesta: chyba indexace ve
+  `IndexBatchHandler` → `jobStore.FailAsync`), handler vrátí event `BatchFailed`, který
+  `BatchFailedNotificationHandler` přemění na notifikaci `NotificationEvent.Failed`. Odběr ji
+  dostane jen pokud má `Failed` ve svých `Events`.
+- **Historie běhů** — `IScheduleRunStore` + tabulka `schedule_runs`. Run-start zapisuje
+  **`BatchLauncher` ještě před publikací příkazu** (přes `LaunchSpec.ScheduleId`), takže
+  rychlá in-process / DB-local pipeline nemůže předběhnout zápis (jinak by patch podle `job_id`
+  minul prázdný store). Výsledek dopatchuje `FinalizeBatchHandler` (Passed/GateViolated) a
+  fail-path `IndexBatchHandler` (Failed) — patch je no-op pro joby bez rozvrhu (triggery,
+  folder-watch). `job_id` **není** FK na `jobs`, takže historie přežije retenci.
+- **Retence artefaktů** — `RetentionService` (leader-gated, sdílí `automation` lease, interval
+  v hodinách) maže `reports/{jobId}` složky doběhnutých jobů starších než `RetentionDays`
+  (`IJobStore.ListPrunableArtifactsAsync` + `MarkArtifactsPrunedAsync` přes značku
+  `jobs.artifacts_pruned_at`, aby se staré joby neskenovaly donekonečna). DB řádky a historie
+  běhů zůstávají; konfigurace `Retention`, ve výchozím stavu vypnuto.
 
 ## Build, testy a CI
 
@@ -429,7 +457,7 @@ plánovač (`ScheduleReconciler`) a notifikační dispatcher. Integrační testy
 `WebApplicationFactory<Program>` (in-memory store + in-process Wolverine, bez DB /
 Ghostscriptu) a ověřují SDK ↔ API end-to-end vč. „create schedule → run-now → Completed →
 report". Unit + WebApplicationFactory **neověří relační DDL** — to odzkoušej jednou ručně
-přes `docker compose up` (Postgres/SqlServer + RabbitMQ).
+přes `docker compose up` (Postgres/SqlServer; žádný broker).
 
 ### CI (GitHub Actions)
 

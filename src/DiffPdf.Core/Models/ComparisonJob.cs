@@ -47,4 +47,8 @@ public sealed record ComparisonJob
     public long Version { get; init; } = 1;
     public string? LockedBy { get; init; }
     public DateTimeOffset? LockedUntil { get; init; }
+
+    // --- Retention ---
+    /// <summary>When the job's on-disk artifacts (its report folder) were pruned; null until pruned.</summary>
+    public DateTimeOffset? ArtifactsPrunedAt { get; init; }
 }

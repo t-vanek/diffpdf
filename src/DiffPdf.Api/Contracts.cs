@@ -169,6 +169,37 @@ public sealed record ScheduleResponse
     };
 }
 
+/// <summary>One run of a schedule (the batch it launched) as returned by the API.</summary>
+public sealed record ScheduleRunResponse
+{
+    public required Guid Id { get; init; }
+    public required Guid JobId { get; init; }
+    public DateTimeOffset StartedAt { get; init; }
+    public DateTimeOffset? CompletedAt { get; init; }
+    public required string Outcome { get; init; }
+    public int Differing { get; init; }
+    public int Errors { get; init; }
+    public int FilesWithContentErrors { get; init; }
+    public bool Passed { get; init; }
+    public IReadOnlyList<string> GateViolations { get; init; } = [];
+    public string? Error { get; init; }
+
+    public static ScheduleRunResponse From(ScheduleRun r) => new()
+    {
+        Id = r.Id,
+        JobId = r.JobId,
+        StartedAt = r.StartedAt,
+        CompletedAt = r.CompletedAt,
+        Outcome = r.Outcome.ToString(),
+        Differing = r.Differing,
+        Errors = r.Errors,
+        FilesWithContentErrors = r.FilesWithContentErrors,
+        Passed = r.Passed,
+        GateViolations = r.GateViolations,
+        Error = r.Error,
+    };
+}
+
 // ---------------- Automation: notification subscriptions ----------------
 
 /// <summary>Create a notification subscription routing finished-batch events to a webhook or e-mail.</summary>

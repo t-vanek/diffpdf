@@ -11,6 +11,7 @@ public sealed class DiffPdfDbContext(DbContextOptions<DiffPdfDbContext> options)
     public DbSet<FilePairTaskEntity> FilePairTasks => Set<FilePairTaskEntity>();
     public DbSet<ScheduleEntity> Schedules => Set<ScheduleEntity>();
     public DbSet<SubscriptionEntity> Subscriptions => Set<SubscriptionEntity>();
+    public DbSet<ScheduleRunEntity> ScheduleRuns => Set<ScheduleRunEntity>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -65,6 +66,7 @@ public sealed class DiffPdfDbContext(DbContextOptions<DiffPdfDbContext> options)
             e.Property(x => x.Version).HasColumnName("version");
             e.Property(x => x.LockedBy).HasColumnName("locked_by").HasMaxLength(256);
             e.Property(x => x.LockedUntil).HasColumnName("locked_until");
+            e.Property(x => x.ArtifactsPrunedAt).HasColumnName("artifacts_pruned_at");
             e.HasIndex(x => new { x.BranchId, x.InstanceId, x.CreatedAt });
             e.HasIndex(x => new { x.Status, x.CreatedAt });
         });
@@ -132,6 +134,26 @@ public sealed class DiffPdfDbContext(DbContextOptions<DiffPdfDbContext> options)
             e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
             e.Property(x => x.Version).HasColumnName("version");
             e.HasIndex(x => x.Enabled);
+        });
+
+        b.Entity<ScheduleRunEntity>(e =>
+        {
+            e.ToTable("schedule_runs");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.ScheduleId).HasColumnName("schedule_id");
+            e.Property(x => x.JobId).HasColumnName("job_id");
+            e.Property(x => x.StartedAt).HasColumnName("started_at");
+            e.Property(x => x.CompletedAt).HasColumnName("completed_at");
+            e.Property(x => x.Outcome).HasColumnName("outcome").HasMaxLength(32);
+            e.Property(x => x.Differing).HasColumnName("differing");
+            e.Property(x => x.Errors).HasColumnName("errors");
+            e.Property(x => x.FilesWithContentErrors).HasColumnName("files_with_content_errors");
+            e.Property(x => x.Passed).HasColumnName("passed");
+            e.Property(x => x.GateViolationsJson).HasColumnName("gate_violations_json");
+            e.Property(x => x.Error).HasColumnName("error");
+            e.HasIndex(x => new { x.ScheduleId, x.StartedAt });
+            e.HasIndex(x => x.JobId).IsUnique();
         });
     }
 }

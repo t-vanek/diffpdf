@@ -18,6 +18,7 @@ public sealed class FinalizeBatchHandler
         FinalizeBatch command,
         IJobStore jobStore,
         IFilePairTaskStore taskStore,
+        IScheduleRunStore scheduleRuns,
         IJobProgressPublisher progressPublisher,
         ILogger<FinalizeBatchHandler> logger,
         CancellationToken ct)
@@ -49,6 +50,13 @@ public sealed class FinalizeBatchHandler
         try
         {
             var completed = await jobStore.CompleteAsync(job.Id, report, job.Version, ct);
+            // Patch the schedule-run history (no-op for jobs not launched by a schedule) before the
+            // best-effort realtime push, so the authoritative outcome is recorded even if it throws.
+            await scheduleRuns.CompleteByJobAsync(
+                completed.Id,
+                report.Passed ? ScheduleRunOutcome.Passed : ScheduleRunOutcome.GateViolated,
+                report.Differing, report.Errors, report.FilesWithContentErrors,
+                report.Passed, report.GateViolations, null, report.CompletedAt, ct);
             await progressPublisher.PublishAsync(JobProgressChanged.From(completed), ct);
             logger.LogInformation("Job {JobId} finalized: {Total} files, {Diff} differing.",
                 completed.Id, report.Total, report.Differing);

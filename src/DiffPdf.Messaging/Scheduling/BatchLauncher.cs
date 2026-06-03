@@ -13,13 +13,14 @@ public sealed record LaunchSpec(
     BatchGate? Gate,
     string SearchPattern,
     bool Recursive,
-    int MaxDegreeOfParallelism)
+    int MaxDegreeOfParallelism,
+    Guid? ScheduleId = null)
 {
     /// <summary>Default knobs (default options, no gate, all *.pdf recursively) — used by webhook / folder-watch triggers, which carry no schedule.</summary>
     public static LaunchSpec Default { get; } = new(new ComparisonOptions(), null, "*.pdf", true, 0);
 
     public static LaunchSpec FromSchedule(ComparisonSchedule s) =>
-        new(s.Options, s.Gate, s.SearchPattern, s.Recursive, s.MaxDegreeOfParallelism);
+        new(s.Options, s.Gate, s.SearchPattern, s.Recursive, s.MaxDegreeOfParallelism, s.Id);
 }
 
 /// <summary>Why a launch did or did not happen.</summary>
@@ -68,6 +69,7 @@ public sealed class BatchLauncher(
     IInstanceStructureService structure,
     INetworkShareResolver shareResolver,
     IJobSubmissionService submission,
+    IScheduleRunStore scheduleRuns,
     ILogger<BatchLauncher> logger) : IBatchLauncher
 {
     public async Task<LaunchResult> LaunchAsync(string branchKey, string instanceKey, LaunchSpec spec, CancellationToken ct = default)
@@ -136,6 +138,11 @@ public sealed class BatchLauncher(
             BranchId = branch.Id,
             InstanceId = instance.Id,
         };
+
+        // Record the schedule run BEFORE publishing the command, so the finish-time patch (by job id)
+        // can never lose a race with a fast in-process / DB-local pipeline. No-op for non-schedule launches.
+        if (spec.ScheduleId is { } scheduleId)
+            await scheduleRuns.RecordStartAsync(scheduleId, job.Id, DateTimeOffset.UtcNow, ct);
 
         await submission.SubmitAsync(job, new RunBatchComparison(job.Id, branchKey, instanceKey), ct);
         logger.LogInformation("Batch {JobId} launched for {Branch}/{Instance}.", job.Id, branchKey, instanceKey);

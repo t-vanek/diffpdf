@@ -202,6 +202,22 @@ public sealed record ScheduleResponse
     public long Version { get; init; }
 }
 
+/// <summary>One run of a schedule (the batch it launched) as returned by the API.</summary>
+public sealed record ScheduleRunResponse
+{
+    public Guid Id { get; init; }
+    public Guid JobId { get; init; }
+    public DateTimeOffset StartedAt { get; init; }
+    public DateTimeOffset? CompletedAt { get; init; }
+    public ScheduleRunOutcome Outcome { get; init; }
+    public int Differing { get; init; }
+    public int Errors { get; init; }
+    public int FilesWithContentErrors { get; init; }
+    public bool Passed { get; init; }
+    public IReadOnlyList<string> GateViolations { get; init; } = [];
+    public string? Error { get; init; }
+}
+
 /// <summary>A notification subscription as returned by the API.</summary>
 public sealed record SubscriptionResponse
 {

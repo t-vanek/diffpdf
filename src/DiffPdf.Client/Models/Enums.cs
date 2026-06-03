@@ -86,3 +86,12 @@ public enum NotificationEvent
     GateViolated,
     Failed,
 }
+
+/// <summary>Outcome of one schedule run (the batch it launched).</summary>
+public enum ScheduleRunOutcome
+{
+    Pending,
+    Passed,
+    GateViolated,
+    Failed,
+}

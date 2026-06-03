@@ -2,7 +2,7 @@ namespace DiffPdf.Worker;
 
 public sealed class WorkerOptions
 {
-    /// <summary>Max batch jobs processed concurrently by one worker (RabbitMQ listener count).</summary>
+    /// <summary>Max batch jobs processed concurrently by one worker.</summary>
     public int MaxConcurrentJobs { get; set; } = 2;
 
     /// <summary>Max file pairs compared in parallel within a single job.</summary>

@@ -135,6 +135,47 @@ public class DiffPdfClientIntegrationTests(WebApplicationFactory<Program> factor
     }
 
     [Fact]
+    public async Task Schedule_RunHistory_RecordsRunAndOutcome()
+    {
+        var diff = NewClient();
+        var (bk, ik) = FreshKeys();
+        await diff.CreateBranchAsync(new(bk, "Branch"));
+
+        string basePath = Path.Combine(Path.GetTempPath(), "diffpdf-sdk-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            await diff.CreateInstanceAsync(bk, new(ik, "Inst", basePath));
+            await File.WriteAllTextAsync(Path.Combine(basePath, "old", "doc.pdf"), "%PDF-1.4 stub");
+            await File.WriteAllTextAsync(Path.Combine(basePath, "new", "doc.pdf"), "%PDF-1.4 stub");
+            await diff.CreateScheduleAsync(bk, ik, new CreateScheduleRequest { Key = "s", Cron = "0 2 * * *" });
+
+            Guid jobId = await diff.RunScheduleNowAsync(bk, ik, "s");
+
+            // The run is recorded (Pending) at launch — before the command is published.
+            var runs = await diff.ListScheduleRunsAsync(bk, ik, "s");
+            Assert.Single(runs);
+            Assert.Equal(jobId, runs[0].JobId);
+
+            // Its outcome is patched once the batch finishes — poll until terminal.
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            ScheduleRunResponse run;
+            do
+            {
+                await Task.Delay(150, cts.Token);
+                run = (await diff.ListScheduleRunsAsync(bk, ik, "s"))[0];
+            }
+            while (run.Outcome == ScheduleRunOutcome.Pending && !cts.IsCancellationRequested);
+
+            Assert.NotEqual(ScheduleRunOutcome.Pending, run.Outcome);
+            Assert.NotNull(run.CompletedAt);
+        }
+        finally
+        {
+            try { Directory.Delete(basePath, recursive: true); } catch (IOException) { }
+        }
+    }
+
+    [Fact]
     public async Task Subscription_Crud_RoundTrip()
     {
         var diff = NewClient();

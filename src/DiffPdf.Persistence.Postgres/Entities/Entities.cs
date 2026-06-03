@@ -62,6 +62,7 @@ public sealed class JobEntity
     public long Version { get; set; } = 1;
     public string? LockedBy { get; set; }
     public DateTimeOffset? LockedUntil { get; set; }
+    public DateTimeOffset? ArtifactsPrunedAt { get; set; }
 }
 
 public sealed class ScheduleEntity
@@ -98,4 +99,20 @@ public sealed class SubscriptionEntity
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? UpdatedAt { get; set; }
     public long Version { get; set; } = 1;
+}
+
+public sealed class ScheduleRunEntity
+{
+    public Guid Id { get; set; }
+    public Guid ScheduleId { get; set; }
+    public Guid JobId { get; set; }
+    public DateTimeOffset StartedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? CompletedAt { get; set; }
+    public string Outcome { get; set; } = "Pending";
+    public int Differing { get; set; }
+    public int Errors { get; set; }
+    public int FilesWithContentErrors { get; set; }
+    public bool Passed { get; set; }
+    public string? GateViolationsJson { get; set; }
+    public string? Error { get; set; }
 }
