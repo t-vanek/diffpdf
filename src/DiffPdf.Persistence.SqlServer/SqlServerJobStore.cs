@@ -25,19 +25,28 @@ public sealed class SqlServerJobStore(DiffPdfDbContext db, EntityMapper mapper) 
 
     public async Task<IReadOnlyList<ComparisonJob>> ListAsync(JobListQuery query, CancellationToken ct = default)
     {
+        var rows = await FilteredQuery(query)
+            .OrderByDescending(j => j.CreatedAt)
+            .Skip(Math.Max(0, query.Offset))
+            .Take(query.Limit)
+            .ToListAsync(ct);
+        return rows.Select(mapper.ToDomain).ToList();
+    }
+
+    public Task<int> CountAsync(JobListQuery query, CancellationToken ct = default) =>
+        FilteredQuery(query).CountAsync(ct);
+
+    private IQueryable<JobEntity> FilteredQuery(JobListQuery query)
+    {
         string? status = query.Status?.ToString();
-        var q =
+        return
             from j in db.Jobs.AsNoTracking()
             join br in db.Branches.AsNoTracking() on j.BranchId equals br.Id
             join inst in db.Instances.AsNoTracking() on j.InstanceId equals inst.Id
             where (query.BranchKey == null || br.Key == query.BranchKey)
                && (query.InstanceKey == null || inst.Key == query.InstanceKey)
                && (status == null || j.Status == status)
-            orderby j.CreatedAt descending
             select j;
-
-        var rows = await q.Take(query.Limit).ToListAsync(ct);
-        return rows.Select(mapper.ToDomain).ToList();
     }
 
     public async Task<ComparisonJob?> TryStartAsync(Guid id, string workerId, TimeSpan lease, CancellationToken ct = default)

@@ -15,6 +15,9 @@ public interface IJobStore
 
     Task<IReadOnlyList<ComparisonJob>> ListAsync(JobListQuery query, CancellationToken ct = default);
 
+    /// <summary>Total jobs matching the query's filter (scope/status), ignoring its paging window — for pagination metadata.</summary>
+    Task<int> CountAsync(JobListQuery query, CancellationToken ct = default);
+
     /// <summary>Atomically claims a Queued job for a worker (Queued → Running). Null if it could not be claimed.</summary>
     Task<ComparisonJob?> TryStartAsync(Guid id, string workerId, TimeSpan lease, CancellationToken ct = default);
 

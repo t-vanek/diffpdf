@@ -87,12 +87,15 @@ public sealed class DiffPdfClient(HttpClient http)
     // ---------------- Jobs (observation + control) ----------------
 
     public Task<IReadOnlyList<JobSummary>> ListJobsAsync(
-        string? branchKey = null, string? instanceKey = null, JobStatus? status = null, CancellationToken ct = default)
+        string? branchKey = null, string? instanceKey = null, JobStatus? status = null,
+        int? limit = null, int? offset = null, CancellationToken ct = default)
     {
         var q = new List<string>();
         if (branchKey is not null) q.Add($"branchKey={Esc(branchKey)}");
         if (instanceKey is not null) q.Add($"instanceKey={Esc(instanceKey)}");
         if (status is { } st) q.Add($"status={st}");
+        if (limit is { } l) q.Add($"limit={l}");
+        if (offset is { } o) q.Add($"offset={o}");
         string url = "/api/v1/jobs" + (q.Count > 0 ? "?" + string.Join("&", q) : "");
         return JsonAsync<IReadOnlyList<JobSummary>>(HttpMethod.Get, url, null, ct);
     }

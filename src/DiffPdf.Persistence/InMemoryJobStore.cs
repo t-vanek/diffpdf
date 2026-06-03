@@ -26,6 +26,19 @@ public sealed class InMemoryJobStore : IJobStore
 
     public Task<IReadOnlyList<ComparisonJob>> ListAsync(JobListQuery query, CancellationToken ct = default)
     {
+        var result = Filter(query)
+            .OrderByDescending(j => j.CreatedAt)
+            .Skip(Math.Max(0, query.Offset))
+            .Take(query.Limit)
+            .ToList();
+        return Task.FromResult<IReadOnlyList<ComparisonJob>>(result);
+    }
+
+    public Task<int> CountAsync(JobListQuery query, CancellationToken ct = default) =>
+        Task.FromResult(Filter(query).Count());
+
+    private IEnumerable<ComparisonJob> Filter(JobListQuery query)
+    {
         IEnumerable<ComparisonJob> q = _jobs.Values;
         if (!string.IsNullOrEmpty(query.BranchKey))
             q = q.Where(j => j.BranchKey == query.BranchKey);
@@ -33,9 +46,7 @@ public sealed class InMemoryJobStore : IJobStore
             q = q.Where(j => j.InstanceKey == query.InstanceKey);
         if (query.Status is { } s)
             q = q.Where(j => j.Status == s);
-
-        var result = q.OrderByDescending(j => j.CreatedAt).Take(query.Limit).ToList();
-        return Task.FromResult<IReadOnlyList<ComparisonJob>>(result);
+        return q;
     }
 
     public Task<ComparisonJob?> TryStartAsync(Guid id, string workerId, TimeSpan lease, CancellationToken ct = default)

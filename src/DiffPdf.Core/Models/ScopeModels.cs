@@ -43,11 +43,16 @@ public sealed record ComparisonInstance
     public long Version { get; init; } = 1;
 }
 
-/// <summary>Filter for listing jobs.</summary>
+/// <summary>Filter and paging window for listing jobs (newest first).</summary>
 public sealed record JobListQuery
 {
     public string? BranchKey { get; init; }
     public string? InstanceKey { get; init; }
     public JobStatus? Status { get; init; }
+
+    /// <summary>Maximum rows to return (page size).</summary>
     public int Limit { get; init; } = 100;
+
+    /// <summary>Rows to skip before the page (offset paging). 0 = first page.</summary>
+    public int Offset { get; init; }
 }
