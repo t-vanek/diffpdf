@@ -74,6 +74,45 @@ public static class PostgresMigrator
         );
 
         create index if not exists ix_file_pair_tasks_job_status on file_pair_tasks (job_id, status);
+
+        create table if not exists comparison_schedules (
+            id uuid primary key,
+            branch_id uuid not null references branches(id),
+            instance_id uuid not null references instances(id),
+            branch_key text not null,
+            instance_key text not null,
+            key text not null,
+            name text not null,
+            cron text not null,
+            options_json jsonb not null,
+            gate_json jsonb null,
+            search_pattern text not null default '*.pdf',
+            recursive boolean not null default true,
+            max_degree_of_parallelism int not null default 0,
+            enabled boolean not null default true,
+            created_at timestamptz not null default now(),
+            updated_at timestamptz null,
+            last_run_at timestamptz null,
+            version bigint not null default 1,
+            constraint uq_comparison_schedules_instance_key unique (instance_id, key)
+        );
+
+        create index if not exists ix_comparison_schedules_enabled on comparison_schedules (enabled);
+
+        create table if not exists notification_subscriptions (
+            id uuid primary key,
+            channel text not null,
+            target text not null,
+            events_json jsonb not null,
+            branch_key text null,
+            instance_key text null,
+            enabled boolean not null default true,
+            created_at timestamptz not null default now(),
+            updated_at timestamptz null,
+            version bigint not null default 1
+        );
+
+        create index if not exists ix_notification_subscriptions_enabled on notification_subscriptions (enabled);
         """;
 
     public static async Task MigrateAsync(string connectionString, CancellationToken ct = default)

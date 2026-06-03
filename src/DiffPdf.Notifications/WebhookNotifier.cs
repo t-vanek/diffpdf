@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using DiffPdf.Core.Models;
 using Microsoft.Extensions.Logging;
 
 namespace DiffPdf.Notifications;

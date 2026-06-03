@@ -20,6 +20,8 @@ public static class SqlServerPersistenceServiceCollectionExtensions
         services.AddScoped<IFilePairTaskStore, SqlServerFilePairTaskStore>();
         services.AddScoped<IBranchStore, SqlServerBranchStore>();
         services.AddScoped<IInstanceStore, SqlServerInstanceStore>();
+        services.AddScoped<IScheduleStore, SqlServerScheduleStore>();
+        services.AddScoped<ISubscriptionStore, SqlServerSubscriptionStore>();
         services.AddScoped<IJobSubmissionService, SqlServerJobSubmissionService>();
 
         services.AddHostedService(sp => new SqlServerMigrationHostedService(

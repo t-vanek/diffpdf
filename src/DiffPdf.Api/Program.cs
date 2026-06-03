@@ -82,6 +82,8 @@ else
     builder.Services.AddSingleton<IFilePairTaskStore, InMemoryFilePairTaskStore>();
     builder.Services.AddSingleton<IBranchStore, InMemoryBranchStore>();
     builder.Services.AddSingleton<IInstanceStore, InMemoryInstanceStore>();
+    builder.Services.AddSingleton<IScheduleStore, InMemoryScheduleStore>();
+    builder.Services.AddSingleton<ISubscriptionStore, InMemorySubscriptionStore>();
     builder.Services.AddScoped<IJobSubmissionService, SimpleJobSubmissionService>();
     builder.Host.UseWolverine(opts =>
     {
@@ -97,11 +99,10 @@ builder.Services.AddHostedService<StaleTaskRecoveryService>();
 // (runs after the persistence migration above; no-op for the in-memory fallback).
 builder.Services.AddHostedService<InstanceStructureHostedService>();
 
-// Automation (Phase 1): outbound notifications on batch completion / gate violation,
-// and a recurring batch scheduler. Both are no-ops unless enabled in configuration
-// (Notifications:Enabled / Schedules:Enabled).
+// Automation: outbound notifications (DB-backed subscriptions), a DB-backed recurring
+// scheduler, and folder-watch triggers. All are no-ops until configured / populated.
 builder.Services.AddDiffPdfNotifications(builder.Configuration);
-builder.Services.AddDiffPdfScheduling(builder.Configuration);
+builder.Services.AddDiffPdfScheduling();
 builder.Services.AddDiffPdfFolderWatch(builder.Configuration);
 
 var auth = builder.Configuration.GetSection("Auth").Get<AuthOptions>() ?? new AuthOptions();
@@ -137,7 +138,8 @@ app.MapHealthEndpoints();
 var api = app.MapGroup("/api/v1");
 api.MapComparisonEndpoints();
 api.MapScopeEndpoints();
-api.MapBatchEndpoints();
+api.MapScheduleEndpoints();
+api.MapSubscriptionEndpoints();
 api.MapJobEndpoints();
 api.MapDiscoveryEndpoints();
 api.MapTriggerEndpoints();

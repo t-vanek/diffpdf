@@ -15,7 +15,7 @@ public static class TriggerEndpoints
         app.MapPost("/triggers/{branchKey}/{instanceKey}", async (
             string branchKey, string instanceKey, IBatchLauncher launcher, CancellationToken ct) =>
         {
-            var result = await launcher.LaunchAsync(branchKey, instanceKey, ct);
+            var result = await launcher.LaunchAsync(branchKey, instanceKey, LaunchSpec.Default, ct);
             var body = new TriggerResult(result.Outcome.ToString(), result.JobId, result.Detail);
             return result.Outcome switch
             {
@@ -41,7 +41,7 @@ public static class TriggerEndpoints
             var results = new List<InstanceRunResult>();
             foreach (var instance in list.Where(i => i.Enabled))
             {
-                var r = await launcher.LaunchAsync(branchKey, instance.Key, ct);
+                var r = await launcher.LaunchAsync(branchKey, instance.Key, LaunchSpec.Default, ct);
                 results.Add(new InstanceRunResult(instance.Key, r.Outcome.ToString(), r.JobId, r.Detail));
             }
 

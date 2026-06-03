@@ -7,6 +7,21 @@ using Microsoft.Extensions.Logging;
 
 namespace DiffPdf.Messaging.Scheduling;
 
+/// <summary>The comparison knobs a launched batch runs with (carried by a schedule, or defaults for a trigger).</summary>
+public sealed record LaunchSpec(
+    ComparisonOptions Options,
+    BatchGate? Gate,
+    string SearchPattern,
+    bool Recursive,
+    int MaxDegreeOfParallelism)
+{
+    /// <summary>Default knobs (default options, no gate, all *.pdf recursively) — used by webhook / folder-watch triggers, which carry no schedule.</summary>
+    public static LaunchSpec Default { get; } = new(new ComparisonOptions(), null, "*.pdf", true, 0);
+
+    public static LaunchSpec FromSchedule(ComparisonSchedule s) =>
+        new(s.Options, s.Gate, s.SearchPattern, s.Recursive, s.MaxDegreeOfParallelism);
+}
+
 /// <summary>Why a launch did or did not happen.</summary>
 public enum LaunchOutcome
 {
@@ -30,15 +45,20 @@ public sealed record LaunchResult(LaunchOutcome Outcome, Guid? JobId = null, str
 }
 
 /// <summary>
-/// Creates and starts a batch for a configured branch/instance in one step — the
-/// automation equivalent of <c>POST /batch</c> + <c>POST /jobs/{id}/start</c>. The job is
-/// persisted as <see cref="JobStatus.Queued"/> and its run command published atomically
-/// (transactional outbox on relational stores). Used by the scheduler, the webhook trigger
-/// and folder-watch.
+/// Creates and starts a batch for a configured branch/instance in one step — the automation
+/// equivalent of the (removed) manual <c>POST /batch</c> + <c>POST /jobs/{id}/start</c>. The job
+/// is persisted as <see cref="JobStatus.Queued"/> and its run command published atomically
+/// (transactional outbox on relational stores). Used by the scheduler, the run-now endpoint,
+/// the webhook trigger and folder-watch.
 /// </summary>
 public interface IBatchLauncher
 {
-    Task<LaunchResult> LaunchAsync(string branchKey, string instanceKey, CancellationToken ct = default);
+    /// <summary>
+    /// Launches a batch for the scope with the given <paramref name="spec"/>, after the same
+    /// pre-flight readiness gate the readiness endpoint reports. The result carries the outcome
+    /// and the new job id (when launched).
+    /// </summary>
+    Task<LaunchResult> LaunchAsync(string branchKey, string instanceKey, LaunchSpec spec, CancellationToken ct = default);
 }
 
 /// <inheritdoc />
@@ -50,7 +70,7 @@ public sealed class BatchLauncher(
     IJobSubmissionService submission,
     ILogger<BatchLauncher> logger) : IBatchLauncher
 {
-    public async Task<LaunchResult> LaunchAsync(string branchKey, string instanceKey, CancellationToken ct = default)
+    public async Task<LaunchResult> LaunchAsync(string branchKey, string instanceKey, LaunchSpec spec, CancellationToken ct = default)
     {
         var branch = await branches.GetByKeyAsync(branchKey, ct);
         if (branch is null || !branch.Enabled)
@@ -105,6 +125,11 @@ public sealed class BatchLauncher(
                 OldFolder = InstanceFolders.Old(basePath),
                 NewFolder = InstanceFolders.New(basePath),
                 ReportsFolder = InstanceFolders.Reports(basePath),
+                SearchPattern = spec.SearchPattern,
+                Recursive = spec.Recursive,
+                Options = spec.Options,
+                MaxDegreeOfParallelism = spec.MaxDegreeOfParallelism,
+                Gate = spec.Gate,
                 OldFolderCredentials = baseResolved.Credentials,
                 NewFolderCredentials = baseResolved.Credentials,
             },

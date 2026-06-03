@@ -62,7 +62,7 @@ public sealed class FolderWatchService(
                     {
                         logger.LogInformation("Folder-watch: stable drop in {Branch}/{Instance} ({Count} file(s)); launching.",
                             watch.BranchKey, watch.InstanceKey, manifest.FileCount);
-                        await sp.GetRequiredService<IBatchLauncher>().LaunchAsync(watch.BranchKey, watch.InstanceKey, stoppingToken);
+                        await sp.GetRequiredService<IBatchLauncher>().LaunchAsync(watch.BranchKey, watch.InstanceKey, LaunchSpec.Default, stoppingToken);
                     }
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)

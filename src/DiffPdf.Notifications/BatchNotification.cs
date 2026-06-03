@@ -1,17 +1,6 @@
+using DiffPdf.Core.Models;
+
 namespace DiffPdf.Notifications;
-
-/// <summary>The kind of batch outcome a notification announces.</summary>
-public enum NotificationEvent
-{
-    /// <summary>Batch completed and (if a gate was configured) passed it.</summary>
-    Completed,
-
-    /// <summary>Batch completed but violated its CI gate.</summary>
-    GateViolated,
-
-    /// <summary>Batch ended in a failed state.</summary>
-    Failed,
-}
 
 /// <summary>
 /// A channel-agnostic description of a finished batch, ready to be rendered into an

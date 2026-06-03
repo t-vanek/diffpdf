@@ -1,6 +1,7 @@
+using DiffPdf.Core.Models;
 using DiffPdf.Notifications;
+using DiffPdf.Persistence;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 
 namespace DiffPdf.Core.Tests;
 
@@ -26,20 +27,46 @@ public class NotificationDispatcherTests
         new(ev, Guid.NewGuid(), branch, instance, 10, 7, 3, 0, 0,
             Passed: ev == NotificationEvent.Completed, GateViolations: ["differing files"], DateTimeOffset.UtcNow);
 
-    private static NotificationDispatcher Dispatcher(NotificationOptions opts, params INotifier[] notifiers) =>
-        new(notifiers, Options.Create(opts), NullLogger<NotificationDispatcher>.Instance);
-
-    [Fact]
-    public async Task Disabled_DispatchesNothing()
-    {
-        var webhook = new RecordingNotifier("webhook");
-        var opts = new NotificationOptions
+    private static NotificationSubscription Sub(
+        string channel, string target, NotificationEvent[] events,
+        string? branch = null, string? instance = null, bool enabled = true) =>
+        new()
         {
-            Enabled = false,
-            Subscriptions = [new() { Channel = "webhook", Target = "http://x", Events = [NotificationEvent.GateViolated] }],
+            Id = Guid.NewGuid(),
+            Channel = channel,
+            Target = target,
+            Events = events,
+            BranchKey = branch,
+            InstanceKey = instance,
+            Enabled = enabled,
         };
 
-        await Dispatcher(opts, webhook).DispatchAsync(Notification());
+    private static async Task<NotificationDispatcher> DispatcherAsync(
+        IEnumerable<NotificationSubscription> subscriptions, params INotifier[] notifiers)
+    {
+        var store = new InMemorySubscriptionStore();
+        foreach (var s in subscriptions)
+            await store.CreateAsync(s);
+        return new NotificationDispatcher(notifiers, store, NullLogger<NotificationDispatcher>.Instance);
+    }
+
+    [Fact]
+    public async Task DisabledSubscription_DispatchesNothing()
+    {
+        var webhook = new RecordingNotifier("webhook");
+        var sub = Sub("webhook", "http://x", [NotificationEvent.GateViolated], enabled: false);
+
+        await (await DispatcherAsync([sub], webhook)).DispatchAsync(Notification());
+
+        Assert.Empty(webhook.Sent);
+    }
+
+    [Fact]
+    public async Task NoSubscriptions_DispatchesNothing()
+    {
+        var webhook = new RecordingNotifier("webhook");
+
+        await (await DispatcherAsync([], webhook)).DispatchAsync(Notification());
 
         Assert.Empty(webhook.Sent);
     }
@@ -48,13 +75,9 @@ public class NotificationDispatcherTests
     public async Task FiltersByEvent()
     {
         var webhook = new RecordingNotifier("webhook");
-        var opts = new NotificationOptions
-        {
-            Enabled = true,
-            Subscriptions = [new() { Channel = "webhook", Target = "http://x", Events = [NotificationEvent.Completed] }],
-        };
+        var sub = Sub("webhook", "http://x", [NotificationEvent.Completed]);
 
-        await Dispatcher(opts, webhook).DispatchAsync(Notification(NotificationEvent.GateViolated));
+        await (await DispatcherAsync([sub], webhook)).DispatchAsync(Notification(NotificationEvent.GateViolated));
 
         Assert.Empty(webhook.Sent);
     }
@@ -63,16 +86,9 @@ public class NotificationDispatcherTests
     public async Task FiltersByBranchAndInstance()
     {
         var webhook = new RecordingNotifier("webhook");
-        var opts = new NotificationOptions
-        {
-            Enabled = true,
-            Subscriptions =
-            [
-                new() { Channel = "webhook", Target = "http://x", Events = [NotificationEvent.GateViolated], BranchKey = "Beta" },
-            ],
-        };
+        var sub = Sub("webhook", "http://x", [NotificationEvent.GateViolated], branch: "Beta");
 
-        await Dispatcher(opts, webhook).DispatchAsync(Notification(branch: "Alfa"));
+        await (await DispatcherAsync([sub], webhook)).DispatchAsync(Notification(branch: "Alfa"));
 
         Assert.Empty(webhook.Sent);
     }
@@ -82,13 +98,9 @@ public class NotificationDispatcherTests
     {
         var webhook = new RecordingNotifier("webhook");
         var smtp = new RecordingNotifier("smtp");
-        var opts = new NotificationOptions
-        {
-            Enabled = true,
-            Subscriptions = [new() { Channel = "WEBHOOK", Target = "http://x", Events = [NotificationEvent.GateViolated] }],
-        };
+        var sub = Sub("WEBHOOK", "http://x", [NotificationEvent.GateViolated]);
 
-        await Dispatcher(opts, webhook, smtp).DispatchAsync(Notification());
+        await (await DispatcherAsync([sub], webhook, smtp)).DispatchAsync(Notification());
 
         Assert.Single(webhook.Sent);
         Assert.Empty(smtp.Sent);
@@ -99,17 +111,13 @@ public class NotificationDispatcherTests
     {
         var failing = new RecordingNotifier("webhook", throwOnSend: true);
         var smtp = new RecordingNotifier("smtp");
-        var opts = new NotificationOptions
+        var subs = new[]
         {
-            Enabled = true,
-            Subscriptions =
-            [
-                new() { Channel = "webhook", Target = "http://x", Events = [NotificationEvent.GateViolated] },
-                new() { Channel = "smtp", Target = "qa@x", Events = [NotificationEvent.GateViolated] },
-            ],
+            Sub("webhook", "http://x", [NotificationEvent.GateViolated]),
+            Sub("smtp", "qa@x", [NotificationEvent.GateViolated]),
         };
 
-        await Dispatcher(opts, failing, smtp).DispatchAsync(Notification());
+        await (await DispatcherAsync(subs, failing, smtp)).DispatchAsync(Notification());
 
         Assert.Single(smtp.Sent); // smtp still delivered despite webhook throwing
     }

@@ -78,3 +78,11 @@ public enum IgnoreUnit
     Fraction,
     Points,
 }
+
+/// <summary>The kind of batch outcome a notification subscription can fire on.</summary>
+public enum NotificationEvent
+{
+    Completed,
+    GateViolated,
+    Failed,
+}
