@@ -75,6 +75,14 @@ public sealed class DiffPdfClient(HttpClient http)
         return JsonAsync<InstanceReadiness>(HttpMethod.Get, url, null, ct);
     }
 
+    /// <summary>
+    /// Detect the on-disk <c>&lt;root&gt;/&lt;branch&gt;/&lt;instance&gt;</c> tree and reconcile it with the database.
+    /// Dry-run (report only) unless <paramref name="apply"/> is true, in which case branches/instances are
+    /// registered and missing folders are created.
+    /// </summary>
+    public Task<ScopeSyncReport> SyncScopeAsync(bool apply = false, CancellationToken ct = default) =>
+        JsonAsync<ScopeSyncReport>(HttpMethod.Post, $"/api/v1/scope/sync?apply={(apply ? "true" : "false")}", null, ct);
+
     // ---------------- Jobs (observation + control) ----------------
 
     public Task<IReadOnlyList<JobSummary>> ListJobsAsync(
