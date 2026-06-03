@@ -7,6 +7,8 @@ using DiffPdf.Core.Abstractions;
 using DiffPdf.Core.Network;
 using DiffPdf.Core.Storage;
 using DiffPdf.Messaging;
+using DiffPdf.Messaging.Scheduling;
+using DiffPdf.Notifications.DependencyInjection;
 using DiffPdf.Pdf.DependencyInjection;
 using DiffPdf.Persistence;
 using DiffPdf.Persistence.Postgres.DependencyInjection;
@@ -93,6 +95,12 @@ builder.Services.AddHostedService<StaleTaskRecoveryService>();
 // On startup, ensure each registered instance's old/new/reports skeleton exists
 // (runs after the persistence migration above; no-op for the in-memory fallback).
 builder.Services.AddHostedService<InstanceStructureHostedService>();
+
+// Automation (Phase 1): outbound notifications on batch completion / gate violation,
+// and a recurring batch scheduler. Both are no-ops unless enabled in configuration
+// (Notifications:Enabled / Schedules:Enabled).
+builder.Services.AddDiffPdfNotifications(builder.Configuration);
+builder.Services.AddDiffPdfScheduling(builder.Configuration);
 
 var auth = builder.Configuration.GetSection("Auth").Get<AuthOptions>() ?? new AuthOptions();
 builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection("Auth"));

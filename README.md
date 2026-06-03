@@ -66,6 +66,11 @@ a chybové hlášky vyrenderované přímo do PDF.
 - **Klientské SDK (.NET)** — typovaný `HttpClient` klient (`DiffPdf.Client`,
   balitelný jako NuGet) pokrývající celý flow; registrace přes
   `AddDiffPdfClient(...)` a celá dávka jedním voláním `RunBatchAsync(...)`.
+- **Automatizace — plánovač + notifikace** — dávky lze spouštět **periodicky**
+  podle cron rozvrhu (bez ručního REST volání; pre-flight readiness gate zabrání
+  prázdnému běhu) a po doběhnutí rozeslat **notifikaci** (webhook Slack/Teams nebo
+  e-mail) při `Completed` / `GateViolated`. Obojí je konfigurací (`Schedules` /
+  `Notifications`) a ve výchozím stavu vypnuté.
 - **Volitelná OAuth2 autentizace** — vestavěný OpenIddict server s
   client-credentials (M2M) flow vydávajícím JWT bearer tokeny; zapíná se přes
   `Auth:Enabled`.
@@ -469,6 +474,60 @@ Nebo lifecycle ručně: `CreateBatchAsync` (Draft) → `StartJobAsync` → `GetJ
 (poll) → `PauseJobAsync` / `ResumeJobAsync` / `CancelJobAsync` → `GetReportAsync` /
 `GetResultAsync` / `DownloadArtifactAsync`. Non-2xx odpovědi vyhodí `DiffPdfApiException`
 (s HTTP statusem a `detail` z problem+json).
+
+## Automatizace — plánovač a notifikace
+
+Dvě volitelné vrstvy nad dávkovou pipeline, obě konfigurací a **ve výchozím stavu
+vypnuté** (žádný dopad, dokud je nezapneš).
+
+### Plánovač (`Schedules`)
+
+Hosted service spouští dávky periodicky podle **cron** výrazu (5 polí, vyhodnocuje
+se v **UTC**). Před spuštěním projde stejnou readiness bránou jako `…/readiness` —
+když není co porovnávat (prázdné `old`/`new` nebo nedostupná cesta), běh **přeskočí**
+místo založení prázdné úlohy. Vytvoření i zařazení do fronty je atomické (přes stejný
+transactional outbox jako ruční `POST /batch` + `start`).
+
+```jsonc
+"Schedules": {
+  "Enabled": true,
+  "Jobs": [
+    { "BranchKey": "Alfa", "InstanceKey": "LamaEnergy", "Cron": "0 2 * * *", "Enabled": true }  // nightly 02:00 UTC
+  ]
+}
+```
+
+> Plánovač je **single-process** bezpečný (interní „next occurrence" zabrání
+> dvojímu spuštění). Při více replikách API by se rozvrh spustil jednou za repliku;
+> single-fire napříč replikami (DB leader-lease) je plánovaný follow-up (Fáze 2).
+
+### Notifikace (`Notifications`)
+
+Po doběhnutí dávky se podle odběrů rozešle notifikace. Událost je `Completed`
+(brána prošla, nebo žádná není) nebo `GateViolated` (dávka doběhla, ale porušila CI
+bránu). Dva kanály:
+
+- **`webhook`** — POST JSON na URL; payload má pole `text` (kompatibilní se
+  Slack/Teams) a strukturovaný detail pod `diffpdf`.
+- **`smtp`** — e-mail přes nakonfigurovaný SMTP server (`Notifications:Smtp`).
+
+Každý odběr lze omezit na konkrétní `BranchKey` / `InstanceKey`. Doručení je
+best-effort (selhání jednoho odběru neblokuje ostatní ani nezdrží dávku).
+
+```jsonc
+"Notifications": {
+  "Enabled": true,
+  "BaseUrl": "http://localhost:8080",
+  "Smtp": { "Host": "smtp.corp", "Port": 587, "UseSsl": true, "Username": "svc", "Password": "…", "From": "diffpdf@corp" },
+  "Subscriptions": [
+    { "Channel": "webhook", "Target": "https://hooks.slack.com/services/…", "Events": [ "GateViolated", "Completed" ] },
+    { "Channel": "smtp", "Target": "qa@corp", "Events": [ "GateViolated" ], "BranchKey": "Alfa" }
+  ]
+}
+```
+
+> Notifikace na tvrdě **`Failed`** úlohu (nedostupná cesta při běhu, pád pipeline)
+> jsou plánovaný follow-up — dnes pokrývá `Completed` + `GateViolated`.
 
 ## Continuous Integration (GitHub Actions)
 
