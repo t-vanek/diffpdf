@@ -8,6 +8,7 @@ using DiffPdf.Core.Network;
 using DiffPdf.Core.Storage;
 using DiffPdf.Messaging;
 using DiffPdf.Messaging.Scheduling;
+using DiffPdf.Messaging.Triggers;
 using DiffPdf.Notifications.DependencyInjection;
 using DiffPdf.Pdf.DependencyInjection;
 using DiffPdf.Persistence;
@@ -101,6 +102,7 @@ builder.Services.AddHostedService<InstanceStructureHostedService>();
 // (Notifications:Enabled / Schedules:Enabled).
 builder.Services.AddDiffPdfNotifications(builder.Configuration);
 builder.Services.AddDiffPdfScheduling(builder.Configuration);
+builder.Services.AddDiffPdfFolderWatch(builder.Configuration);
 
 var auth = builder.Configuration.GetSection("Auth").Get<AuthOptions>() ?? new AuthOptions();
 builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection("Auth"));
@@ -138,6 +140,7 @@ api.MapScopeEndpoints();
 api.MapBatchEndpoints();
 api.MapJobEndpoints();
 api.MapDiscoveryEndpoints();
+api.MapTriggerEndpoints();
 
 app.MapHub<JobsHub>("/hubs/jobs");
 
