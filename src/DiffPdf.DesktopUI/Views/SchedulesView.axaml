@@ -1,0 +1,84 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:DiffPdf.DesktopUI.ViewModels"
+             xmlns:views="using:DiffPdf.DesktopUI.Views"
+             x:Class="DiffPdf.DesktopUI.Views.SchedulesView"
+             x:DataType="vm:SchedulesViewModel">
+
+  <DockPanel>
+    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+      <TextBlock Text="Schedules" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
+      <ComboBox Width="160" ItemsSource="{Binding Branches}" SelectedItem="{Binding SelectedBranch}">
+        <ComboBox.ItemTemplate><DataTemplate x:CompileBindings="False"><TextBlock Text="{Binding Key}"/></DataTemplate></ComboBox.ItemTemplate>
+      </ComboBox>
+      <ComboBox Width="160" ItemsSource="{Binding Instances}" SelectedItem="{Binding SelectedInstance}">
+        <ComboBox.ItemTemplate><DataTemplate x:CompileBindings="False"><TextBlock Text="{Binding Key}"/></DataTemplate></ComboBox.ItemTemplate>
+      </ComboBox>
+      <Button Content="Obnovit" Command="{Binding RefreshCommand}"/>
+      <TextBlock Text="{Binding Info}" Foreground="#9CDCFE" VerticalAlignment="Center"/>
+      <TextBlock Text="{Binding Error}" Foreground="#C0392B" VerticalAlignment="Center"/>
+    </StackPanel>
+
+    <Grid ColumnDefinitions="*,470">
+      <DockPanel Grid.Column="0" Margin="0,0,8,0">
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="6" Margin="0,0,0,6">
+          <Button Content="Nový" Command="{Binding NewCommand}"/>
+          <Button Content="Editovat" Command="{Binding EditSelectedCommand}"/>
+          <Button Content="Smazat" Command="{Binding DeleteCommand}"/>
+          <Button Content="Run now" Command="{Binding RunNowCommand}"/>
+          <Button Content="Historie" Command="{Binding LoadRunsCommand}"/>
+        </StackPanel>
+
+        <DataGrid DockPanel.Dock="Bottom" Height="200" x:CompileBindings="False" ItemsSource="{Binding Runs}"
+                  IsReadOnly="True" AutoGenerateColumns="False" CanUserResizeColumns="True">
+          <DataGrid.Columns>
+            <DataGridTextColumn Header="StartedAt" Binding="{Binding StartedAt}" Width="180"/>
+            <DataGridTextColumn Header="Outcome" Binding="{Binding Outcome}" Width="110"/>
+            <DataGridTextColumn Header="Diff" Binding="{Binding Differing}" Width="60"/>
+            <DataGridTextColumn Header="Err" Binding="{Binding Errors}" Width="60"/>
+            <DataGridTextColumn Header="Passed" Binding="{Binding Passed}" Width="70"/>
+            <DataGridTextColumn Header="JobId" Binding="{Binding JobId}" Width="*"/>
+          </DataGrid.Columns>
+        </DataGrid>
+
+        <DataGrid x:CompileBindings="False" ItemsSource="{Binding Schedules}" SelectedItem="{Binding SelectedSchedule}"
+                  IsReadOnly="True" AutoGenerateColumns="False" CanUserResizeColumns="True">
+          <DataGrid.Columns>
+            <DataGridTextColumn Header="Key" Binding="{Binding Key}" Width="140"/>
+            <DataGridTextColumn Header="Cron" Binding="{Binding Cron}" Width="140"/>
+            <DataGridTextColumn Header="Enabled" Binding="{Binding Enabled}" Width="80"/>
+            <DataGridTextColumn Header="LastRun" Binding="{Binding LastRunAt}" Width="180"/>
+            <DataGridTextColumn Header="v" Binding="{Binding Version}" Width="50"/>
+          </DataGrid.Columns>
+        </DataGrid>
+      </DockPanel>
+
+      <ScrollViewer Grid.Column="1">
+        <StackPanel Spacing="6">
+          <TextBlock Text="Rozvrh" FontWeight="Bold"/>
+          <TextBox Text="{Binding Key}" PlaceholderText="Key" IsEnabled="{Binding !IsEditing}"/>
+          <TextBox Text="{Binding Name}" PlaceholderText="Name"/>
+          <TextBox Text="{Binding Cron}" PlaceholderText="Cron (např. 0 2 * * *)"/>
+          <TextBox Text="{Binding SearchPattern}" PlaceholderText="SearchPattern (*.pdf)"/>
+          <WrapPanel>
+            <CheckBox Content="Recursive" IsChecked="{Binding Recursive}" Margin="0,0,12,0"/>
+            <CheckBox Content="Enabled" IsChecked="{Binding Enabled}" Margin="0,0,12,0"/>
+            <StackPanel Width="160">
+              <TextBlock Text="MaxDegreeOfParallelism"/>
+              <NumericUpDown Value="{Binding MaxDegreeOfParallelism}" Minimum="0" Maximum="64" FormatString="0"/>
+            </StackPanel>
+          </WrapPanel>
+
+          <Border BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="4" Padding="8">
+            <views:ComparisonOptionsEditor DataContext="{Binding Options}"/>
+          </Border>
+          <Border BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="4" Padding="8">
+            <views:BatchGateEditor DataContext="{Binding Gate}"/>
+          </Border>
+
+          <Button Content="Uložit rozvrh" Command="{Binding SaveCommand}" HorizontalAlignment="Left"/>
+        </StackPanel>
+      </ScrollViewer>
+    </Grid>
+  </DockPanel>
+</UserControl>

@@ -80,6 +80,9 @@ Klient tedy obsluhuje jen automatizaci a sleduje výsledky.
   složek; credentialy a sdílení se konfigurují centrálně (pojmenované profily + aliasy).
 - **Klientské SDK (.NET)** — typovaný `HttpClient` klient (`DiffPdf.Client`, balitelný
   jako NuGet) pokrývající celý flow vč. správy rozvrhů a odběrů.
+- **Desktop klient pro testera (Avalonia)** — multiplatformní GUI (`DiffPdf.DesktopUI`), které
+  přes SDK **plně ovládá server a flow** (branches/instances/readiness, rozvrhy, watche, odběry,
+  triggery, single compare, joby) a **živě sleduje běžící úlohy** přes SignalR.
 - **Volitelná OAuth2 autentizace** — vestavěný OpenIddict server s client-credentials
   (M2M) flow vydávajícím JWT bearer tokeny.
 
@@ -236,6 +239,20 @@ dotnet run --project src/DiffPdf.Api
 Pro vizuální režim vyžaduje Ghostscript na `PATH` (nebo nastav `GHOSTSCRIPT_PATH`). Kořen
 artefaktů přepíšeš přes `DIFFPDF_ARTIFACT_ROOT`. Build & testy viz
 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#build-testy-a-ci).
+
+### Desktop klient pro testera (Avalonia)
+
+GUI pro ruční řízení a sledování serveru (`DiffPdf.DesktopUI`). Spusť proti běžícímu API:
+
+```bash
+dotnet run --project src/DiffPdf.Api        # server (default http://localhost:5275, auth vypnuto)
+dotnet run --project src/DiffPdf.DesktopUI  # GUI klient
+```
+
+V připojovací liště zadej URL serveru (a volitelně ClientId/Secret, je-li zapnutá autentizace)
+a klikni **Connect**. Levý panel přepíná sekce: Dashboard, Branches, Instances, Schedules,
+Watches, Subscriptions, Triggers/Run, Single compare, Discovery, Jobs. Sekce **Jobs** ukazuje
+**živý progress** běžící dávky (SignalR) a umožní stáhnout zvýrazněné diff-PDF artefakty.
 
 ## Dokumentace pro vývojáře
 

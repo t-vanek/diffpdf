@@ -21,6 +21,9 @@ public sealed class InMemoryBranchStore : IBranchStore
 
     public Task<IReadOnlyList<Branch>> ListAsync(CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<Branch>>(_byKey.Values.OrderBy(b => b.Key).ToList());
+
+    public Task<bool> DeleteByKeyAsync(string key, CancellationToken ct = default) =>
+        Task.FromResult(_byKey.TryRemove(key, out _));
 }
 
 public sealed class InMemoryInstanceStore : IInstanceStore
@@ -51,4 +54,7 @@ public sealed class InMemoryInstanceStore : IInstanceStore
     public Task<IReadOnlyList<ComparisonInstance>> ListAsync(Guid branchId, CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<ComparisonInstance>>(
             _byKey.Values.Where(i => i.BranchId == branchId).OrderBy(i => i.Key).ToList());
+
+    public Task<bool> DeleteByKeyAsync(Guid branchId, string key, CancellationToken ct = default) =>
+        Task.FromResult(_byKey.TryRemove((branchId, key), out _));
 }

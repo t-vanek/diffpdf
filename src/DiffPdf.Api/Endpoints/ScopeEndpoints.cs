@@ -41,6 +41,31 @@ public static class ScopeEndpoints
             return branch is null ? Results.NotFound() : Results.Ok(branch);
         }).WithSummary("Get a branch").Produces<Branch>().ProducesProblem(StatusCodes.Status404NotFound);
 
+        group.MapDelete("/{branchKey}", async (
+            string branchKey, IBranchStore branches, IInstanceStore instances, IJobStore jobs, CancellationToken ct) =>
+        {
+            var branch = await branches.GetByKeyAsync(branchKey, ct);
+            if (branch is null) return Results.NotFound();
+
+            // Guard 1: a branch that still holds instances must not be deleted (delete the instances first).
+            var branchInstances = await instances.ListAsync(branch.Id, ct);
+            if (branchInstances.Count > 0)
+                return Results.Problem(
+                    $"Branch '{branchKey}' has {branchInstances.Count} instance(s); delete those first.",
+                    statusCode: StatusCodes.Status409Conflict);
+
+            // Guard 2: do not delete while a job for this branch is still active.
+            if (await HasActiveJobsAsync(jobs, branchKey, ct))
+                return Results.Problem(
+                    $"Branch '{branchKey}' has an active job (Draft/Queued/Running/Paused); cancel or wait for it first.",
+                    statusCode: StatusCodes.Status409Conflict);
+
+            await branches.DeleteByKeyAsync(branchKey, ct);
+            return Results.NoContent();
+        }).WithSummary("Delete a branch (409 if it has instances or an active job)")
+          .Produces(StatusCodes.Status204NoContent)
+          .ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
+
         group.MapPost("/{branchKey}/instances", async (
             string branchKey, CreateInstanceRequest request,
             IBranchStore branches, IInstanceStore instances, IInstanceStructureService structure,
@@ -96,6 +121,34 @@ public static class ScopeEndpoints
             var instance = await instances.GetByKeyAsync(branch.Id, instanceKey, ct);
             return instance is null ? Results.NotFound() : Results.Ok(instance);
         }).WithSummary("Get an instance").Produces<ComparisonInstance>().ProducesProblem(StatusCodes.Status404NotFound);
+
+        group.MapDelete("/{branchKey}/instances/{instanceKey}", async (
+            string branchKey, string instanceKey,
+            IBranchStore branches, IInstanceStore instances,
+            IScheduleStore schedules, IWatchStore watches, IJobStore jobs, CancellationToken ct) =>
+        {
+            var branch = await branches.GetByKeyAsync(branchKey, ct);
+            if (branch is null) return Results.NotFound();
+            var instance = await instances.GetByKeyAsync(branch.Id, instanceKey, ct);
+            if (instance is null) return Results.NotFound();
+
+            // Guard against orphaning anything that references the instance (schedules / watch / jobs).
+            if ((await schedules.ListByInstanceAsync(instance.Id, ct)).Count > 0)
+                return Results.Problem($"Instance '{instanceKey}' has schedule(s); delete those first.", statusCode: StatusCodes.Status409Conflict);
+            if (await watches.GetByInstanceAsync(instance.Id, ct) is not null)
+                return Results.Problem($"Instance '{instanceKey}' has a folder-watch; delete it first.", statusCode: StatusCodes.Status409Conflict);
+
+            var instanceJobs = await jobs.ListAsync(new JobListQuery { BranchKey = branchKey, InstanceKey = instanceKey }, ct);
+            if (instanceJobs.Any(j => ActiveStatuses.Contains(j.Status)))
+                return Results.Problem($"Instance '{instanceKey}' has an active job; cancel or wait for it first.", statusCode: StatusCodes.Status409Conflict);
+            if (instanceJobs.Count > 0)
+                return Results.Problem($"Instance '{instanceKey}' has job history; it cannot be deleted (history is preserved).", statusCode: StatusCodes.Status409Conflict);
+
+            await instances.DeleteByKeyAsync(branch.Id, instanceKey, ct);
+            return Results.NoContent();
+        }).WithSummary("Delete an instance (409 if it has schedules, a watch, or any jobs)")
+          .Produces(StatusCodes.Status204NoContent)
+          .ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/{branchKey}/instances/{instanceKey}/structure", async (
             string branchKey, string instanceKey,
@@ -156,5 +209,18 @@ public static class ScopeEndpoints
         var branch = await branches.GetByKeyAsync(branchKey, ct);
         if (branch is null) return null;
         return await instances.GetByKeyAsync(branch.Id, instanceKey, ct);
+    }
+
+    private static readonly JobStatus[] ActiveStatuses =
+        [JobStatus.Draft, JobStatus.Queued, JobStatus.Running, JobStatus.Paused];
+
+    private static async Task<bool> HasActiveJobsAsync(IJobStore jobs, string branchKey, CancellationToken ct)
+    {
+        foreach (var status in ActiveStatuses)
+        {
+            var list = await jobs.ListAsync(new JobListQuery { BranchKey = branchKey, Status = status }, ct);
+            if (list.Count > 0) return true;
+        }
+        return false;
     }
 }

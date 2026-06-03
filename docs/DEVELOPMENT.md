@@ -342,6 +342,33 @@ a `CreateSubscriptionAsync` … pro notifikační odběry. Sledování úloh: `G
 / `GetResultAsync` / `DownloadArtifactAsync`. Non-2xx odpovědi vyhodí `DiffPdfApiException`
 (s HTTP statusem a `detail` z problem+json).
 
+## Desktop klient pro testera (DiffPdf.DesktopUI)
+
+GUI nad SDK — **[../src/DiffPdf.DesktopUI](../src/DiffPdf.DesktopUI)**. Multiplatformní
+**Avalonia 12** (Fluent) + **CommunityToolkit.Mvvm** + `Microsoft.Extensions.DependencyInjection`,
+`net10.0`, project reference na `DiffPdf.Client` (žádné HTTP/JSON ručně). Tester přes něj
+**plně ovládá server a flow** a **živě sleduje běžící úlohy**.
+
+**Architektura (MVVM):**
+- `App.axaml.cs` postaví DI kontejner (services + všechny VM) a otevře `MainWindow`;
+  `ViewLocator` mapuje `…ViewModels.XViewModel` → `…Views.XView` konvencí.
+- **`ServerSession`** (singleton) drží `DiffPdfClient` z connection baru — bez creds plain
+  `HttpClient`, s creds přes SDK `ClientCredentialsTokenHandler`; spojení ověří `HealthAsync`.
+- **`JobProgressHubClient`** připojí SignalR `HubConnection` na `/hubs/jobs` (token z `TokenSource`
+  při zapnutém auth), `JoinJob`/`JoinBranch`, event `jobProgress` → marshalováno na UI vlákno.
+- **`NavigationService`** — skok mezi stránkami (trigger / run-now → otevři Job).
+- **`PageViewModel`** (base) má `Title`/`NavOrder`/`ActivateAsync` (lazy load při výběru); každá
+  sekce je registrovaná v `PageRegistration` a objeví se v nav railu. Sdílené editory
+  `ComparisonOptionsEditor` + `BatchGateEditor` (reuse v Schedules i Single compare).
+
+**Sekce:** Dashboard (status/readiness/health), Branches, Instances (+ structure/readiness),
+Schedules (CRUD + run-now + historie), Watches, Subscriptions, Triggers/Run, Single compare,
+Discovery, Jobs (list/detail/tasky/report/result/artefakty/akce + **živý SignalR progress**).
+
+Spuštění viz [README](../README.md#desktop-klient-pro-testera-avalonia). Avalonia se **staví
+cross-platform** (CI staví celé solution); běh vyžaduje grafické prostředí, takže GUI nemá
+automatizované testy — pokrytí SDK ↔ API zajišťují integrační testy.
+
 ## Automatizace — plánovač a notifikace
 
 Dvě vrstvy nad dávkovou pipeline, obě **spravované za běhu přes API a uložené v DB** (ne

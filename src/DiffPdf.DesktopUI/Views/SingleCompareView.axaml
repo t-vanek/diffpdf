@@ -1,0 +1,31 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:DiffPdf.DesktopUI.ViewModels"
+             xmlns:views="using:DiffPdf.DesktopUI.Views"
+             x:Class="DiffPdf.DesktopUI.Views.SingleCompareView"
+             x:DataType="vm:SingleCompareViewModel">
+
+  <DockPanel>
+    <StackPanel DockPanel.Dock="Top" Spacing="6" Margin="0,0,0,8">
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <TextBlock Text="Single compare" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
+        <Button Content="Porovnat" Command="{Binding CompareCommand}"/>
+        <TextBlock Text="{Binding Error}" Foreground="#C0392B" VerticalAlignment="Center"/>
+      </StackPanel>
+      <TextBox Text="{Binding OldPath}" PlaceholderText="OldPath (cesta k PDF)"/>
+      <TextBox Text="{Binding NewPath}" PlaceholderText="NewPath (cesta k PDF)"/>
+    </StackPanel>
+
+    <Grid ColumnDefinitions="460,*">
+      <Border Grid.Column="0" Margin="0,0,8,0" BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="4" Padding="8">
+        <ScrollViewer>
+          <views:ComparisonOptionsEditor DataContext="{Binding Options}"/>
+        </ScrollViewer>
+      </Border>
+
+      <TextBox Grid.Column="1" Text="{Binding ResultJson, Mode=OneWay}" IsReadOnly="True"
+               AcceptsReturn="True" TextWrapping="NoWrap" FontFamily="Cascadia Mono,Consolas,monospace"
+               VerticalAlignment="Stretch"/>
+    </Grid>
+  </DockPanel>
+</UserControl>

@@ -9,6 +9,12 @@ public interface IBranchStore
     Task<Branch> CreateAsync(string key, string name, CancellationToken ct = default);
     Task<Branch?> GetByKeyAsync(string key, CancellationToken ct = default);
     Task<IReadOnlyList<Branch>> ListAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Deletes a branch by key; returns false if it does not exist. The caller must first ensure the
+    /// branch has no instances and no active jobs (the API endpoint enforces this).
+    /// </summary>
+    Task<bool> DeleteByKeyAsync(string key, CancellationToken ct = default);
 }
 
 /// <summary>Persistence for instances under a branch.</summary>
@@ -19,4 +25,10 @@ public interface IInstanceStore
         Guid branchId, string key, string name, string basePath, string? credentialProfile, CancellationToken ct = default);
     Task<ComparisonInstance?> GetByKeyAsync(Guid branchId, string key, CancellationToken ct = default);
     Task<IReadOnlyList<ComparisonInstance>> ListAsync(Guid branchId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Deletes an instance by key within a branch; returns false if it does not exist. The caller must
+    /// first ensure nothing references it (schedules / watches / jobs); the API endpoint enforces this.
+    /// </summary>
+    Task<bool> DeleteByKeyAsync(Guid branchId, string key, CancellationToken ct = default);
 }

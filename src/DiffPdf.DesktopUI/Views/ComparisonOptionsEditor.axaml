@@ -1,0 +1,76 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:DiffPdf.DesktopUI.ViewModels"
+             x:Class="DiffPdf.DesktopUI.Views.ComparisonOptionsEditor"
+             x:DataType="vm:ComparisonOptionsViewModel">
+
+  <StackPanel Spacing="6">
+    <TextBlock Text="ComparisonOptions" FontWeight="Bold"/>
+
+    <WrapPanel>
+      <StackPanel Width="150" Margin="0,0,8,6">
+        <TextBlock Text="Mode"/>
+        <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Modes}" SelectedItem="{Binding Mode}"/>
+      </StackPanel>
+      <StackPanel Width="150" Margin="0,0,8,6">
+        <TextBlock Text="Strictness"/>
+        <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Strictnesses}" SelectedItem="{Binding Strictness}"/>
+      </StackPanel>
+      <StackPanel Width="150" Margin="0,0,8,6">
+        <TextBlock Text="Renderer"/>
+        <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Renderers}" SelectedItem="{Binding Renderer}"/>
+      </StackPanel>
+      <StackPanel Width="110" Margin="0,0,8,6">
+        <TextBlock Text="DPI"/>
+        <NumericUpDown Value="{Binding Dpi}" Minimum="1" Maximum="1200" Increment="10" FormatString="0"/>
+      </StackPanel>
+    </WrapPanel>
+
+    <WrapPanel>
+      <StackPanel Width="150" Margin="0,0,8,6">
+        <TextBlock Text="ShiftTolerance (px)"/>
+        <NumericUpDown Value="{Binding ShiftTolerance}" Minimum="0" Maximum="64" FormatString="0"/>
+      </StackPanel>
+      <StackPanel Width="150" Margin="0,0,8,6">
+        <TextBlock Text="VisualThreshold (0-1)"/>
+        <NumericUpDown Value="{Binding VisualThreshold}" Minimum="0" Maximum="1" Increment="0.01" FormatString="0.###"/>
+      </StackPanel>
+      <StackPanel Width="160" Margin="0,0,8,6">
+        <TextBlock Text="TextDiffThreshold (0-1)"/>
+        <NumericUpDown Value="{Binding TextDifferenceThreshold}" Minimum="0" Maximum="1" Increment="0.01" FormatString="0.###"/>
+      </StackPanel>
+      <StackPanel Width="100" Margin="0,0,8,6">
+        <TextBlock Text="Pages from"/>
+        <NumericUpDown Value="{Binding PagesFrom}" Minimum="1" FormatString="0"/>
+      </StackPanel>
+      <StackPanel Width="100" Margin="0,0,8,6">
+        <TextBlock Text="Pages to"/>
+        <NumericUpDown Value="{Binding PagesTo}" Minimum="1" FormatString="0"/>
+      </StackPanel>
+    </WrapPanel>
+
+    <WrapPanel>
+      <StackPanel Width="150" Margin="0,0,8,6">
+        <TextBlock Text="Highlight layout"/>
+        <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Layouts}" SelectedItem="{Binding HighlightLayout}"/>
+      </StackPanel>
+      <StackPanel Width="150" Margin="0,0,8,6">
+        <TextBlock Text="Highlight style"/>
+        <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Styles}" SelectedItem="{Binding HighlightStyle}"/>
+      </StackPanel>
+    </WrapPanel>
+
+    <WrapPanel>
+      <CheckBox Content="NormalizeWhitespace" IsChecked="{Binding NormalizeWhitespace}" Margin="0,0,12,0"/>
+      <CheckBox Content="AlignPages" IsChecked="{Binding AlignPages}" Margin="0,0,12,0"/>
+      <CheckBox Content="DetectBlankPages" IsChecked="{Binding DetectBlankPages}" Margin="0,0,12,0"/>
+      <CheckBox Content="DetectContentErrors" IsChecked="{Binding DetectContentErrors}" Margin="0,0,12,0"/>
+      <CheckBox Content="ProduceHighlightedPdf" IsChecked="{Binding ProduceHighlightedPdf}"/>
+    </WrapPanel>
+
+    <TextBlock Text="IgnoreTextPatterns (čárkou oddělené)"/>
+    <TextBox Text="{Binding IgnoreTextPatterns}"/>
+    <TextBlock Text="ContentErrorPatterns (čárkou oddělené)"/>
+    <TextBox Text="{Binding ContentErrorPatterns}"/>
+  </StackPanel>
+</UserControl>

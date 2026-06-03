@@ -34,6 +34,12 @@ public sealed class SqlServerBranchStore(DiffPdfDbContext db, EntityMapper mappe
         var rows = await db.Branches.AsNoTracking().OrderBy(x => x.Key).ToListAsync(ct);
         return rows.Select(mapper.ToDomain).ToList();
     }
+
+    public async Task<bool> DeleteByKeyAsync(string key, CancellationToken ct = default)
+    {
+        int rows = await db.Branches.Where(x => x.Key == key).ExecuteDeleteAsync(ct);
+        return rows > 0;
+    }
 }
 
 public sealed class SqlServerInstanceStore(DiffPdfDbContext db, EntityMapper mapper) : IInstanceStore
@@ -73,5 +79,11 @@ public sealed class SqlServerInstanceStore(DiffPdfDbContext db, EntityMapper map
         var rows = await db.Instances.AsNoTracking()
             .Where(x => x.BranchId == branchId).OrderBy(x => x.Key).ToListAsync(ct);
         return rows.Select(mapper.ToDomain).ToList();
+    }
+
+    public async Task<bool> DeleteByKeyAsync(Guid branchId, string key, CancellationToken ct = default)
+    {
+        int rows = await db.Instances.Where(x => x.BranchId == branchId && x.Key == key).ExecuteDeleteAsync(ct);
+        return rows > 0;
     }
 }

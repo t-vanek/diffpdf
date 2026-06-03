@@ -1,0 +1,39 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:DiffPdf.DesktopUI.ViewModels"
+        x:Class="DiffPdf.DesktopUI.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Width="1280" Height="820"
+        Title="diffpdf — tester">
+
+  <DockPanel>
+    <!-- Connection bar -->
+    <Border DockPanel.Dock="Top" Padding="10" Background="#252526">
+      <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+        <TextBlock Text="Server" VerticalAlignment="Center" Foreground="White"/>
+        <TextBox Width="280" Text="{Binding ServerUrl}" PlaceholderText="http://localhost:5275"/>
+        <TextBox Width="150" Text="{Binding ClientId}" PlaceholderText="ClientId (volitelné)"/>
+        <TextBox Width="130" Text="{Binding ClientSecret}" PlaceholderText="Secret" PasswordChar="•"/>
+        <Button Content="Connect" Command="{Binding ConnectCommand}" IsVisible="{Binding !IsConnected}"/>
+        <Button Content="Disconnect" Command="{Binding DisconnectCommand}" IsVisible="{Binding IsConnected}"/>
+        <TextBlock Text="{Binding ConnectionStatus}" VerticalAlignment="Center" Foreground="#9CDCFE"/>
+        <TextBlock Text="{Binding Error}" VerticalAlignment="Center" Foreground="#FF6B6B"/>
+      </StackPanel>
+    </Border>
+
+    <!-- Nav rail -->
+    <ListBox DockPanel.Dock="Left" Width="210"
+             ItemsSource="{Binding Pages}"
+             SelectedItem="{Binding SelectedPage}"
+             IsEnabled="{Binding IsConnected}">
+      <ListBox.ItemTemplate>
+        <DataTemplate x:DataType="vm:PageViewModel">
+          <TextBlock Text="{Binding Title}" Padding="6,4"/>
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+
+    <!-- Active page -->
+    <ContentControl Margin="10" Content="{Binding SelectedPage}"/>
+  </DockPanel>
+</Window>
