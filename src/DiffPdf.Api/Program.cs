@@ -20,11 +20,28 @@ using DiffPdf.Worker.DependencyInjection;
 using Serilog;
 using Wolverine;
 
-Log.Logger = new LoggerConfiguration().WriteTo.Console().CreateBootstrapLogger();
+// Resolve the log directory to an absolute path so it is stable regardless of the process working
+// directory (a Windows Service starts in System32, not the install folder). Override with DIFFPDF_LOG_DIR.
+string logDirectory = Environment.GetEnvironmentVariable("DIFFPDF_LOG_DIR")
+    ?? Path.Combine(AppContext.BaseDirectory, "logs");
+const string logOutputTemplate = "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}";
+
+// Bootstrap logger writes to console AND file, so messages emitted before the host starts — notably the
+// database startup gate below — are captured even when no console is attached (Windows Service / IIS).
+Log.Logger = new LoggerConfiguration()
+    .WriteTo.Console()
+    .WriteTo.File(
+        Path.Combine(logDirectory, "diffpdf-.log"),
+        rollingInterval: RollingInterval.Day,
+        retainedFileCountLimit: 14,
+        outputTemplate: logOutputTemplate)
+    .CreateBootstrapLogger();
 
 var builder = WebApplication.CreateBuilder(args);
 
-string logDirectory = Environment.GetEnvironmentVariable("DIFFPDF_LOG_DIR") ?? "logs";
+// Run under the Windows Service Control Manager when launched as a service; a no-op as a console process.
+builder.Services.AddWindowsService(options => options.ServiceName = "DiffPdf API");
+
 builder.Services.AddSerilog((services, loggerConfiguration) => loggerConfiguration
     .ReadFrom.Configuration(builder.Configuration)
     .ReadFrom.Services(services)
@@ -33,7 +50,7 @@ builder.Services.AddSerilog((services, loggerConfiguration) => loggerConfigurati
         Path.Combine(logDirectory, "diffpdf-.log"),
         rollingInterval: RollingInterval.Day,
         retainedFileCountLimit: 14,
-        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}"));
+        outputTemplate: logOutputTemplate));
 
 builder.Services.ConfigureHttpJsonOptions(o =>
 {
@@ -163,6 +180,16 @@ api.MapWatchEndpoints();
 api.MapStatusEndpoints();
 
 app.MapHub<JobsHub>("/hubs/jobs");
+
+// Wolverine and the EF stores require the relational database to exist and be reachable at startup
+// (Wolverine provisions its inbox/outbox in StartAsync and cannot tolerate a missing database). Rather
+// than crash-loop while the server is briefly unavailable, block here — keeping the process alive and
+// logging — until the server is reachable, then create the application database if it is missing, before
+// starting the host. Skipped for the in-memory dev/test fallback. NOTE: while waiting, Kestrel is not yet
+// listening; as a Windows Service, make the service depend on the database service
+// (sc config DiffPdfApi depend= MSSQLSERVER) and enable Recovery → Restart so a longer outage self-heals.
+if (!string.IsNullOrWhiteSpace(relational))
+    await DatabaseStartupGate.WaitAndEnsureDatabaseAsync(relational!, useSqlServer);
 
 app.Run();
 Log.CloseAndFlush();
