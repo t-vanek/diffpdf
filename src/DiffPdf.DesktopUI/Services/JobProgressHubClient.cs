@@ -1,18 +1,8 @@
 using Avalonia.Threading;
+using DiffPdf.Client;
 using Microsoft.AspNetCore.SignalR.Client;
 
 namespace DiffPdf.DesktopUI.Services;
-
-/// <summary>Live job progress pushed from one batch run (matches the server's payload shape).</summary>
-public sealed record JobProgress(
-    Guid JobId,
-    string BranchKey,
-    string InstanceKey,
-    string Status,
-    int ProcessedCount,
-    int TotalCount,
-    double Progress,
-    string? Error);
 
 /// <summary>
 /// Wraps a SignalR <see cref="HubConnection"/> to the server's <c>/hubs/jobs</c> hub. Joins job/branch

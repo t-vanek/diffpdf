@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.SignalR.Client;
 
 namespace DiffPdf.Client;
 
@@ -152,6 +153,34 @@ public sealed class DiffPdfClient(HttpClient http)
             }
             await Task.Delay(delay, ct);
         }
+    }
+
+    // ---------------- Realtime job progress (SignalR) ----------------
+
+    /// <summary>
+    /// Opens a SignalR connection to the server's job-progress hub, joins the given job's group and invokes
+    /// <paramref name="onProgress"/> for each push. Dispose the returned <see cref="HubConnection"/> to stop.
+    /// For an authenticated server supply <paramref name="accessTokenProvider"/>. Live progress is a
+    /// notification channel only — REST (<see cref="GetJobAsync"/>) stays the source of truth, so a missed
+    /// event can be recovered by reloading the job.
+    /// </summary>
+    public async Task<HubConnection> SubscribeToJobProgressAsync(
+        Guid jobId, Action<JobProgress> onProgress,
+        Func<Task<string?>>? accessTokenProvider = null, CancellationToken ct = default)
+    {
+        if (http.BaseAddress is null)
+            throw new InvalidOperationException("The HttpClient has no BaseAddress to derive the hub URL from.");
+
+        var hubUrl = new Uri($"{http.BaseAddress.GetLeftPart(UriPartial.Authority)}/hubs/jobs");
+        var connection = new HubConnectionBuilder()
+            .WithUrl(hubUrl, o => { if (accessTokenProvider is not null) o.AccessTokenProvider = accessTokenProvider; })
+            .WithAutomaticReconnect()
+            .Build();
+
+        connection.On<JobProgress>("jobProgress", onProgress);
+        await connection.StartAsync(ct);
+        await connection.InvokeAsync("JoinJob", jobId, ct);
+        return connection;
     }
 
     // ---------------- Schedules ----------------

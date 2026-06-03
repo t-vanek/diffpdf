@@ -155,6 +155,9 @@ public partial class InstancesViewModel : PageViewModel
     {
         if (SelectedBranch is null || SelectedInstance is null)
             throw new InvalidOperationException("Vyber instanci v seznamu.");
+        if (!await _dialogs.ConfirmAsync("Opravit strukturu",
+                $"Vytvoří chybějící old/new/reports pro '{SelectedInstance.Key}' a nahradí soubor kolidující s názvem složky. Pokračovat?"))
+            return;
         Structure = await _session.Require().EnsureStructureAsync(SelectedBranch.Key, SelectedInstance.Key);
         Readiness = await _session.Require().GetReadinessAsync(SelectedBranch.Key, SelectedInstance.Key, sampleSize: 10);
     });

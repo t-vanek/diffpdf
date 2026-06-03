@@ -10,6 +10,7 @@ namespace DiffPdf.DesktopUI.ViewModels;
 public partial class DiscoveryViewModel : PageViewModel
 {
     private readonly ServerSession _session;
+    private readonly DialogService _dialogs;
 
     public override string Title => "Discovery";
     public override int NavOrder => 8;
@@ -19,7 +20,11 @@ public partial class DiscoveryViewModel : PageViewModel
 
     [ObservableProperty] private string? _syncInfo;
 
-    public DiscoveryViewModel(ServerSession session) => _session = session;
+    public DiscoveryViewModel(ServerSession session, DialogService dialogs)
+    {
+        _session = session;
+        _dialogs = dialogs;
+    }
 
     public override Task ActivateAsync() => RunAsync(LoadAsync);
 
@@ -43,7 +48,12 @@ public partial class DiscoveryViewModel : PageViewModel
     /// <summary>Apply scope sync: register discovered folders and create the missing skeleton.</summary>
     [RelayCommand]
     private Task ApplySyncAsync() => RunAsync(async () =>
-        SyncInfo = Summarize(await _session.Require().SyncScopeAsync(apply: true)));
+    {
+        if (!await _dialogs.ConfirmAsync("Synchronizovat scope",
+                "Zaregistruje nalezené složky do databáze a vytvoří chybějící old/new/reports na disku. Pokračovat?"))
+            return;
+        SyncInfo = Summarize(await _session.Require().SyncScopeAsync(apply: true));
+    });
 
     private static string Summarize(ScopeSyncReport r)
     {
