@@ -157,6 +157,14 @@ public sealed class DiffPdfClient(HttpClient http)
     public async Task<Guid> RunScheduleNowAsync(string branchKey, string instanceKey, string scheduleKey, CancellationToken ct = default) =>
         (await JsonAsync<RunScheduleResult>(HttpMethod.Post, $"{SchedulesUrl(branchKey, instanceKey)}/{Esc(scheduleKey)}/run", null, ct)).JobId;
 
+    /// <summary>Run history of a schedule (newest first).</summary>
+    public Task<IReadOnlyList<ScheduleRunResponse>> ListScheduleRunsAsync(
+        string branchKey, string instanceKey, string scheduleKey, int? limit = null, CancellationToken ct = default)
+    {
+        string url = $"{SchedulesUrl(branchKey, instanceKey)}/{Esc(scheduleKey)}/runs" + (limit is { } l ? $"?limit={l}" : "");
+        return JsonAsync<IReadOnlyList<ScheduleRunResponse>>(HttpMethod.Get, url, null, ct);
+    }
+
     // ---------------- Notification subscriptions ----------------
 
     public Task<SubscriptionResponse> CreateSubscriptionAsync(CreateSubscriptionRequest request, CancellationToken ct = default) =>

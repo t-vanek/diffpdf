@@ -26,6 +26,9 @@ public sealed partial class EntityMapper
     [MapProperty(nameof(SubscriptionEntity.EventsJson), nameof(NotificationSubscription.Events))]
     public partial NotificationSubscription ToDomain(SubscriptionEntity entity);
 
+    [MapProperty(nameof(ScheduleRunEntity.GateViolationsJson), nameof(ScheduleRun.GateViolations))]
+    public partial ScheduleRun ToDomain(ScheduleRunEntity entity);
+
     // User-defined conversions Mapperly uses for the jsonb columns.
     private static BatchComparisonRequest MapRequest(string json) =>
         DiffPdfJson.Deserialize<BatchComparisonRequest>(json);
@@ -44,4 +47,7 @@ public sealed partial class EntityMapper
 
     private static IReadOnlyList<NotificationEvent> MapEvents(string json) =>
         DiffPdfJson.Deserialize<IReadOnlyList<NotificationEvent>>(json);
+
+    private static IReadOnlyList<string> MapGateViolations(string? json) =>
+        string.IsNullOrEmpty(json) ? [] : DiffPdfJson.Deserialize<IReadOnlyList<string>>(json);
 }

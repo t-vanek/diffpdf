@@ -213,6 +213,24 @@ public sealed class SqlServerJobStore(DiffPdfDbContext db, EntityMapper mapper) 
         return (r.GetInt32(0), r.GetInt32(1));
     }
 
+    public async Task<IReadOnlyList<ComparisonJob>> ListPrunableArtifactsAsync(DateTimeOffset completedBefore, int limit, CancellationToken ct = default)
+    {
+        var rows = await db.Jobs.AsNoTracking()
+            .Where(j => (j.Status == "Completed" || j.Status == "Failed" || j.Status == "Cancelled")
+                     && j.CompletedAt != null && j.CompletedAt < completedBefore
+                     && j.ArtifactsPrunedAt == null)
+            .OrderBy(j => j.CompletedAt)
+            .Take(limit)
+            .ToListAsync(ct);
+        return rows.Select(mapper.ToDomain).ToList();
+    }
+
+    public async Task MarkArtifactsPrunedAsync(Guid id, DateTimeOffset at, CancellationToken ct = default)
+    {
+        await db.Jobs.Where(j => j.Id == id)
+            .ExecuteUpdateAsync(s => s.SetProperty(j => j.ArtifactsPrunedAt, at), ct);
+    }
+
     internal static JobEntity ToEntity(ComparisonJob job) => new()
     {
         Id = job.Id,

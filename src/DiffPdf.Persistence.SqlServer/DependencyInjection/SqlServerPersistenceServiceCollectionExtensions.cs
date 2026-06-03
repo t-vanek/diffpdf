@@ -22,7 +22,9 @@ public static class SqlServerPersistenceServiceCollectionExtensions
         services.AddScoped<IInstanceStore, SqlServerInstanceStore>();
         services.AddScoped<IScheduleStore, SqlServerScheduleStore>();
         services.AddScoped<ISubscriptionStore, SqlServerSubscriptionStore>();
+        services.AddScoped<IScheduleRunStore, SqlServerScheduleRunStore>();
         services.AddScoped<IJobSubmissionService, SqlServerJobSubmissionService>();
+        services.AddSingleton<ILeaderElection>(new SqlServerLeaderElection(connectionString));
 
         services.AddHostedService(sp => new SqlServerMigrationHostedService(
             connectionString, sp.GetRequiredService<ILogger<SqlServerMigrationHostedService>>()));

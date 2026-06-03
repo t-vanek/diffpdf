@@ -125,6 +125,37 @@ public static class SqlServerMigrator
 
         if not exists (select 1 from sys.indexes where name = 'ix_notification_subscriptions_enabled' and object_id = object_id(N'notification_subscriptions'))
         create index ix_notification_subscriptions_enabled on notification_subscriptions (enabled);
+
+        if object_id(N'automation_leader', N'U') is null
+        create table automation_leader (
+            role        nvarchar(64) not null primary key,
+            owner       nvarchar(256) not null,
+            acquired_at datetimeoffset not null constraint df_automation_leader_acquired default sysdatetimeoffset(),
+            renewed_at  datetimeoffset not null constraint df_automation_leader_renewed default sysdatetimeoffset(),
+            expires_at  datetimeoffset not null
+        );
+
+        if object_id(N'schedule_runs', N'U') is null
+        create table schedule_runs (
+            id uniqueidentifier not null primary key,
+            schedule_id uniqueidentifier not null references comparison_schedules(id) on delete cascade,
+            job_id uniqueidentifier not null unique,
+            started_at datetimeoffset not null constraint df_schedule_runs_started default sysdatetimeoffset(),
+            completed_at datetimeoffset null,
+            outcome nvarchar(32) not null constraint df_schedule_runs_outcome default 'Pending',
+            differing int not null constraint df_schedule_runs_differing default 0,
+            errors int not null constraint df_schedule_runs_errors default 0,
+            files_with_content_errors int not null constraint df_schedule_runs_fwce default 0,
+            passed bit not null constraint df_schedule_runs_passed default 0,
+            gate_violations_json nvarchar(max) null,
+            error nvarchar(max) null
+        );
+
+        if not exists (select 1 from sys.indexes where name = 'ix_schedule_runs_schedule_started' and object_id = object_id(N'schedule_runs'))
+        create index ix_schedule_runs_schedule_started on schedule_runs (schedule_id, started_at desc);
+
+        if col_length(N'jobs', N'artifacts_pruned_at') is null
+        alter table jobs add artifacts_pruned_at datetimeoffset null;
         """;
 
     public static async Task MigrateAsync(string connectionString, CancellationToken ct = default)

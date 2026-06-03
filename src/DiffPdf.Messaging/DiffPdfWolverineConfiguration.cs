@@ -1,15 +1,13 @@
 using DiffPdf.Messaging.Handlers;
-using DiffPdf.Messaging.Messages;
 using Wolverine;
 using Wolverine.EntityFrameworkCore;
 using Wolverine.ErrorHandling;
 using Wolverine.Postgresql;
-using Wolverine.RabbitMQ;
 using Wolverine.SqlServer;
 
 namespace DiffPdf.Messaging;
 
-/// <summary>Relational database backing Wolverine's durable inbox/outbox.</summary>
+/// <summary>Relational database backing Wolverine's durable inbox/outbox + local queues.</summary>
 public enum DiffPdfDatabase
 {
     Postgres,
@@ -18,20 +16,16 @@ public enum DiffPdfDatabase
 
 public static class DiffPdfWolverineConfiguration
 {
-    public const string BatchQueue = "diffpdf.batch.commands";
-
     /// <summary>
-    /// Wires Wolverine for diffpdf: RabbitMQ transport for the batch command,
-    /// a relational durable inbox/outbox (PostgreSQL or SQL Server), and handler
-    /// discovery for this assembly.
+    /// Wires Wolverine for diffpdf <b>without any external broker</b>: commands flow through
+    /// DB-backed <b>durable local queues</b> (PostgreSQL or SQL Server), with a transactional
+    /// inbox/outbox and retry. Messages are persisted, so they survive a restart and are
+    /// processed in-process by Wolverine's durable agents — no RabbitMQ required.
     /// </summary>
     public static void ConfigureDiffPdfMessaging(
         this WolverineOptions opts,
-        string rabbitConnectionString,
         string databaseConnectionString,
-        DiffPdfDatabase database = DiffPdfDatabase.Postgres,
-        int listenerCount = 2,
-        int preFetchCount = 4)
+        DiffPdfDatabase database = DiffPdfDatabase.Postgres)
     {
         opts.UseRuntimeCompilation();
         opts.Discovery.IncludeAssembly(typeof(RunBatchComparisonHandler).Assembly);
@@ -42,22 +36,14 @@ public static class DiffPdfWolverineConfiguration
             opts.PersistMessagesWithPostgresql(databaseConnectionString);
         opts.UseEntityFrameworkCoreTransactions();
 
-        // Transient failures (IO / network / broker blips) are retried with
-        // cooldown, then dead-lettered. Permanent failures are recorded by the
-        // handler and acknowledged, so they never bubble to this policy.
+        // Transient failures (IO / network blips) are retried with cooldown, then dead-lettered.
+        // Permanent failures are recorded by the handler and acknowledged, so they never bubble here.
         opts.Policies.OnException(ExceptionClassifier.IsTransient)
             .RetryWithCooldown(TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10));
 
-        opts.UseRabbitMq(new Uri(rabbitConnectionString))
-            .AutoProvision();
-
-        opts.PublishMessage<RunBatchComparison>()
-            .ToRabbitQueue(BatchQueue)
-            .UseDurableOutbox();
-
-        opts.ListenToRabbitQueue(BatchQueue)
-            .PreFetchCount((ushort)preFetchCount)
-            .ListenerCount(listenerCount)
-            .UseDurableInbox();
+        // No external broker: every command (RunBatchComparison, IndexBatch, CompareFilePair,
+        // FinalizeBatch, …) is routed to a durable local queue persisted in the relational store,
+        // giving the same at-least-once + survives-restart guarantees RabbitMQ provided, single-node.
+        opts.Policies.UseDurableLocalQueues();
     }
 }

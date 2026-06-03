@@ -26,3 +26,14 @@ public sealed record BatchFinished(
     bool Passed,
     string[] GateViolations,
     DateTimeOffset CompletedAt);
+
+/// <summary>
+/// Domain event published when a batch hard-fails (e.g. indexing could not pair the folders).
+/// Consumed by the notification handler to raise a <c>Failed</c> notification.
+/// </summary>
+public sealed record BatchFailed(
+    Guid JobId,
+    string BranchKey,
+    string InstanceKey,
+    string Error,
+    DateTimeOffset OccurredAt);

@@ -144,7 +144,8 @@ public static class ScheduleEndpoints
             var schedule = await schedules.GetByKeyAsync(instance.Id, scheduleKey, ct);
             if (schedule is null) return Results.NotFound();
 
-            // Same pre-flight gate the removed POST /jobs/{id}/start used to enforce.
+            // Same pre-flight gate the removed POST /jobs/{id}/start used to enforce. The launcher
+            // records the schedule run (before publishing the command) from LaunchSpec.ScheduleId.
             var result = await launcher.LaunchAsync(schedule.BranchKey, schedule.InstanceKey, LaunchSpec.FromSchedule(schedule), ct);
             if (result.JobId is not { } jobId)
                 return Results.Problem(
@@ -155,6 +156,21 @@ public static class ScheduleEndpoints
             return Results.Accepted($"/api/v1/jobs/{jobId}", new { jobId });
         }).WithSummary("Run the schedule now (202 + job id; 422 when there is nothing to compare)")
           .ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status422UnprocessableEntity);
+
+        group.MapGet("/{scheduleKey}/runs", async (
+            string branchKey, string instanceKey, string scheduleKey, int? limit,
+            IBranchStore branches, IInstanceStore instances, IScheduleStore schedules,
+            IScheduleRunStore runs, CancellationToken ct) =>
+        {
+            var (_, instance) = await ResolveAsync(branchKey, instanceKey, branches, instances, ct);
+            if (instance is null) return Results.NotFound();
+            var schedule = await schedules.GetByKeyAsync(instance.Id, scheduleKey, ct);
+            if (schedule is null) return Results.NotFound();
+
+            var history = await runs.ListByScheduleAsync(schedule.Id, Math.Clamp(limit ?? 50, 1, 200), ct);
+            return Results.Ok(history.Select(ScheduleRunResponse.From));
+        }).WithSummary("Run history of a schedule (newest first; ?limit=N, default 50)")
+          .Produces<IEnumerable<ScheduleRunResponse>>().ProducesProblem(StatusCodes.Status404NotFound);
     }
 
     private static bool TryValidateCron(string cron, out string? error)

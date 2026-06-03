@@ -11,10 +11,15 @@ namespace DiffPdf.Messaging.Handlers;
 /// <summary>Pairs the job's folders into file-pair tasks, sets the total, and dispatches a task each.</summary>
 public sealed class IndexBatchHandler
 {
-    public static async Task Handle(
+    /// <summary>
+    /// Returns a <see cref="BatchFailed"/> event (cascaded by Wolverine) when indexing hard-fails,
+    /// so a <c>Failed</c> notification is raised; null on the normal path.
+    /// </summary>
+    public static async Task<BatchFailed?> Handle(
         IndexBatch command,
         IJobStore jobStore,
         IFilePairTaskStore taskStore,
+        IScheduleRunStore scheduleRuns,
         IStorageProvisioner provisioner,
         IMessageBus bus,
         ILogger<IndexBatchHandler> logger,
@@ -24,7 +29,7 @@ public sealed class IndexBatchHandler
         if (job is null || job.Status != JobStatus.Running)
         {
             logger.LogInformation("IndexBatch skipped for {JobId} (status {Status}).", command.JobId, job?.Status);
-            return;
+            return null;
         }
 
         await provisioner.EnsureJobFoldersAsync(job, ct);
@@ -38,8 +43,10 @@ public sealed class IndexBatchHandler
         catch (Exception ex)
         {
             logger.LogError(ex, "Indexing failed for job {JobId}", job.Id);
+            var now = DateTimeOffset.UtcNow;
             await jobStore.FailAsync(job.Id, ex.Message, job.Version, ct);
-            return;
+            await scheduleRuns.CompleteByJobAsync(job.Id, ScheduleRunOutcome.Failed, 0, 0, 0, false, [], ex.Message, now, ct);
+            return new BatchFailed(job.Id, job.BranchKey, job.InstanceKey, ex.Message, now);
         }
 
         await jobStore.SetTotalAsync(job.Id, pairs.Count, ct);
@@ -47,7 +54,7 @@ public sealed class IndexBatchHandler
         if (pairs.Count == 0)
         {
             await bus.PublishAsync(new FinalizeBatch(job.Id));
-            return;
+            return null;
         }
 
         var tasks = pairs.Select(p => new FilePairTask
@@ -65,5 +72,6 @@ public sealed class IndexBatchHandler
             await bus.PublishAsync(new CompareFilePair(job.Id, task.Id));
 
         logger.LogInformation("Job {JobId} indexed into {Count} file-pair tasks.", job.Id, tasks.Count);
+        return null;
     }
 }

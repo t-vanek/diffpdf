@@ -52,12 +52,19 @@ Klient tedy obsluhuje jen automatizaci a sleduje výsledky.
 - **Automatizace (runtime resources)** — dávky se spouští **jen** automaticky: periodicky
   podle **cron rozvrhu**, nebo akcí **„spusť teď"** nad rozvrhem. Každý rozvrh nese
   vlastní porovnávací volby a CI bránu. Po doběhnutí se rozešle **notifikace** (webhook
-  Slack/Teams nebo e-mail) při `Completed` / `GateViolated`. Rozvrhy i odběry jsou
-  plnohodnotné **API resources v DB** (CRUD za běhu, bez restartu).
+  Slack/Teams nebo e-mail) při `Completed` / `GateViolated` / **`Failed`** (tvrdě spadlá
+  úloha). Rozvrhy i odběry jsou plnohodnotné **API resources v DB** (CRUD za běhu, bez restartu).
 - **On-demand triggery + folder-watch** — dávku lze spustit i **webhookem**
   (`POST /api/v1/triggers/{branch}/{instance}`), **fan-outem** přes celou větev
   (`POST …/branches/{branch}/run`), nebo nechat **sledovat složku** `new/` a spustit
   dávku automaticky, jakmile se drop souborů ustálí (konfigurace `Watches`).
+- **Multi-replika single-fire** — plánovač i folder-watch jsou za HA bezpečné: přes
+  **DB leader-lease** spouští dávky jen jedna („vedoucí") replika, takže rozvrh ani drop
+  nevystřelí jednou za každou repliku.
+- **Historie běhů + retence** — každý rozvrh vede **historii běhů**
+  (`GET …/schedules/{key}/runs`: kdy, jobId, výsledek), takže je vidět, jestli poslední běhy
+  prošly. Volitelná **retence** (leader-gated) maže staré report-artefakty podle stáří, aby
+  disk nerostl donekonečna (DB řádky i historie zůstávají).
 - **Durable pipeline** — dávka se rozpadne na jednotlivé dvojice; jeden poškozený PDF
   dávku nezabije, transientní chyby se opakují a spadlý worker se zotaví, takže dávka
   pokračuje místo zaseknutí.
@@ -82,8 +89,7 @@ Klient tedy obsluhuje jen automatizaci a sleduje výsledky.
 | **PostgreSQL / SQL Server** | Perzistentní zdroj pravdy o stavu úloh (volitelný provider). |
 | **EF Core** (Npgsql / Microsoft.Data.SqlClient) | Typovaný přístup k DB s optimistic concurrency. |
 | **Mapperly** | Source-generated mapování entit na doménové modely bez reflexe. |
-| **RabbitMQ** | Distribuovaný transport práce mezi API a workery. |
-| **Wolverine** | Orchestrace zpráv s durable inbox/outbox, retry a dead-letterem. |
+| **Wolverine** | Zpracování příkazů přes **DB-backed durable local queues** (inbox/outbox, retry, dead-letter) — bez externího brokeru. |
 | **SignalR** | Realtime push progressu úloh ke klientům. |
 | **Serilog** | Strukturované logování do konzole i rotovaného souboru. |
 | **OpenIddict** | OAuth2 server pro bezpečný přístup strojových klientů. |
@@ -94,12 +100,12 @@ Klient tedy obsluhuje jen automatizaci a sleduje výsledky.
 
 ```bash
 docker compose up --build
-# Spustí PostgreSQL + RabbitMQ + API na http://localhost:8080.
+# Spustí PostgreSQL + API na http://localhost:8080 (žádný broker — práce běží nad DB).
 # Vstup je složka instance ./samples/LamaEnergy (old/ vs new/); reports se píší tamtéž.
 ```
 
 Image instaluje Ghostscript a nativní závislosti pro SkiaSharp/PDFium; compose nastaví
-`ConnectionStrings__Postgres` / `__RabbitMq` a `Storage__RootPath`. Pak stačí vytvořit
+`ConnectionStrings__Postgres` a `Storage__RootPath`. Pak stačí vytvořit
 větev + instanci + rozvrh:
 
 ```bash
@@ -142,11 +148,11 @@ connection stringu (SQL Server má přednost, je-li nastaven):
 ConnectionStrings__SqlServer: Server=sqlserver,1433;Database=diffpdf;User Id=sa;Password=…;TrustServerCertificate=True
 # jinak:
 ConnectionStrings__Postgres:  Host=postgres;Port=5432;Database=diffpdf;Username=diffpdf;Password=diffpdf
-ConnectionStrings__RabbitMq:  amqp://diffpdf:diffpdf@rabbitmq:5672/
 ```
 
-Schéma se vytvoří idempotentně při startu. **Bez** DB + RabbitMQ spadne API zpět na
-in-memory úložiště a in-process transport (jednoinstanční dev režim).
+Schéma se vytvoří idempotentně při startu; práce běží na **DB-backed durable local queues**
+(žádný externí broker — vše perzistentní v téže databázi, přežije restart). **Bez** databáze
+spadne API zpět na in-memory úložiště a in-process transport (jednoinstanční dev režim).
 
 ### Síťové složky a credentialy
 
@@ -241,6 +247,6 @@ Další knihovny: PdfPig (Apache 2.0), PdfSharp (MIT), SkiaSharp (MIT).
 
 - SSIM perceptuální skórování; strukturální shlukování regionů.
 - Multi-tenant izolace artefaktů a oprávnění per scope.
-- Single-fire plánovače napříč replikami (DB leader-lease).
-- Notifikace na tvrdě `Failed` úlohu (dnes `Completed` + `GateViolated`).
+- Folder-watch jako runtime resource (dnes statická config `Watches`).
+- Retence i pro DB řádky jobů (dnes se maže jen on-disk artefakt).
 - Runtime mount autentizovaného UNC přímo v durable pipeline.

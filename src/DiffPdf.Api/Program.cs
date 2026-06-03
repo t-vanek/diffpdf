@@ -7,6 +7,7 @@ using DiffPdf.Core.Abstractions;
 using DiffPdf.Core.Network;
 using DiffPdf.Core.Storage;
 using DiffPdf.Messaging;
+using DiffPdf.Messaging.Retention;
 using DiffPdf.Messaging.Scheduling;
 using DiffPdf.Messaging.Triggers;
 using DiffPdf.Notifications.DependencyInjection;
@@ -55,24 +56,24 @@ builder.Services.AddDiffPdfWorker();
 
 string? postgres = builder.Configuration.GetConnectionString("Postgres");
 string? sqlServer = builder.Configuration.GetConnectionString("SqlServer");
-string? rabbit = builder.Configuration.GetConnectionString("RabbitMq");
 
 // SQL Server wins when both relational connection strings are configured.
 bool useSqlServer = !string.IsNullOrWhiteSpace(sqlServer);
 string? relational = useSqlServer ? sqlServer : postgres;
 
-if (!string.IsNullOrWhiteSpace(relational) && !string.IsNullOrWhiteSpace(rabbit))
+if (!string.IsNullOrWhiteSpace(relational))
 {
-    // Production / full stack: relational source of truth + RabbitMQ transport via Wolverine.
+    // Production / full stack: relational source of truth + DB-backed durable local queues
+    // (no external broker) via Wolverine.
     if (useSqlServer)
     {
         builder.Services.AddSqlServerPersistence(relational);
-        builder.Host.UseWolverine(opts => opts.ConfigureDiffPdfMessaging(rabbit, relational, DiffPdfDatabase.SqlServer));
+        builder.Host.UseWolverine(opts => opts.ConfigureDiffPdfMessaging(relational, DiffPdfDatabase.SqlServer));
     }
     else
     {
         builder.Services.AddPostgresPersistence(relational);
-        builder.Host.UseWolverine(opts => opts.ConfigureDiffPdfMessaging(rabbit, relational, DiffPdfDatabase.Postgres));
+        builder.Host.UseWolverine(opts => opts.ConfigureDiffPdfMessaging(relational, DiffPdfDatabase.Postgres));
     }
 }
 else
@@ -84,6 +85,8 @@ else
     builder.Services.AddSingleton<IInstanceStore, InMemoryInstanceStore>();
     builder.Services.AddSingleton<IScheduleStore, InMemoryScheduleStore>();
     builder.Services.AddSingleton<ISubscriptionStore, InMemorySubscriptionStore>();
+    builder.Services.AddSingleton<IScheduleRunStore, InMemoryScheduleRunStore>();
+    builder.Services.AddSingleton<ILeaderElection, InMemoryLeaderElection>();
     builder.Services.AddScoped<IJobSubmissionService, SimpleJobSubmissionService>();
     builder.Host.UseWolverine(opts =>
     {
@@ -104,6 +107,7 @@ builder.Services.AddHostedService<InstanceStructureHostedService>();
 builder.Services.AddDiffPdfNotifications(builder.Configuration);
 builder.Services.AddDiffPdfScheduling();
 builder.Services.AddDiffPdfFolderWatch(builder.Configuration);
+builder.Services.AddDiffPdfRetention(builder.Configuration);
 
 var auth = builder.Configuration.GetSection("Auth").Get<AuthOptions>() ?? new AuthOptions();
 builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection("Auth"));

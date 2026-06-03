@@ -1,3 +1,4 @@
+using DiffPdf.Core.Abstractions;
 using DiffPdf.Persistence;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -12,17 +13,22 @@ namespace DiffPdf.Messaging.Scheduling;
 /// within one tick — no restart. Idle (but alive) when the store has no enabled schedules.
 /// </summary>
 /// <remarks>
-/// Single-process safe (the per-Id next-occurrence state prevents double firing). Running multiple
-/// API replicas would fire each schedule once per replica — multi-replica single-fire (a DB
-/// leader-lease) is the documented Phase-2 follow-up.
+/// Multi-replica safe: each tick first acquires/renews the shared <see cref="AutomationLeader"/>
+/// lease via <see cref="ILeaderElection"/>; only the leading replica reconciles and launches, so a
+/// schedule fires once across the cluster (the in-memory fallback always leads). On leader death a
+/// stand-by takes over within ~<see cref="AutomationLeader.Lease"/>; its reconciler re-seeds without
+/// firing, so failover does not double-launch.
 /// </remarks>
 public sealed class ScheduledBatchService(
     IServiceScopeFactory scopeFactory,
+    ILeaderElection leader,
+    IWorkerInstanceIdProvider workerInstance,
     ILogger<ScheduledBatchService> logger) : BackgroundService
 {
     private static readonly TimeSpan TickInterval = TimeSpan.FromSeconds(20);
 
     private readonly ScheduleReconciler _reconciler = new();
+    private bool _wasLeader;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -46,8 +52,20 @@ public sealed class ScheduledBatchService(
         }
     }
 
-    private async Task TickAsync(CancellationToken ct)
+    internal async Task TickAsync(CancellationToken ct)
     {
+        // Only the automation leader reconciles + launches, so each schedule fires once across replicas.
+        bool isLeader = await leader.TryAcquireAsync(AutomationLeader.Role, workerInstance.WorkerInstanceId, AutomationLeader.Lease, ct);
+        if (isLeader != _wasLeader)
+        {
+            logger.LogInformation(isLeader
+                ? "This replica is now the automation leader (scheduler active)."
+                : "This replica is no longer the automation leader (scheduler idle).");
+            _wasLeader = isLeader;
+        }
+        if (!isLeader)
+            return;
+
         await using var scope = scopeFactory.CreateAsyncScope();
         var store = scope.ServiceProvider.GetRequiredService<IScheduleStore>();
         var launcher = scope.ServiceProvider.GetRequiredService<IBatchLauncher>();
@@ -66,6 +84,7 @@ public sealed class ScheduledBatchService(
                 var result = await launcher.LaunchAsync(s.BranchKey, s.InstanceKey, LaunchSpec.FromSchedule(s), ct);
                 if (result.JobId is { } id)
                 {
+                    // The launcher already recorded the schedule run (before publishing the command).
                     await store.TouchLastRunAsync(s.Id, DateTimeOffset.UtcNow, ct);
                     logger.LogInformation("Scheduled batch {JobId} launched for {Branch}/{Instance}/{Key}.",
                         id, s.BranchKey, s.InstanceKey, s.Key);

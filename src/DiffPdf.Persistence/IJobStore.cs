@@ -45,4 +45,10 @@ public interface IJobStore
 
     /// <summary>Atomically increments processed count and returns the new (processed, total).</summary>
     Task<(int Processed, int Total)> IncrementProcessedAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>Finished jobs completed before the cutoff whose artifacts have not yet been pruned (retention).</summary>
+    Task<IReadOnlyList<ComparisonJob>> ListPrunableArtifactsAsync(DateTimeOffset completedBefore, int limit, CancellationToken ct = default);
+
+    /// <summary>Marks a job's on-disk artifacts as pruned, so retention skips it on the next pass.</summary>
+    Task MarkArtifactsPrunedAsync(Guid id, DateTimeOffset at, CancellationToken ct = default);
 }

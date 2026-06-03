@@ -241,6 +241,28 @@ public sealed class InMemoryJobStore : IJobStore
         }
     }
 
+    public Task<IReadOnlyList<ComparisonJob>> ListPrunableArtifactsAsync(DateTimeOffset completedBefore, int limit, CancellationToken ct = default)
+    {
+        var result = _jobs.Values
+            .Where(j => j.Status is JobStatus.Completed or JobStatus.Failed or JobStatus.Cancelled
+                     && j.CompletedAt is { } c && c < completedBefore
+                     && j.ArtifactsPrunedAt is null)
+            .OrderBy(j => j.CompletedAt)
+            .Take(limit)
+            .ToList();
+        return Task.FromResult<IReadOnlyList<ComparisonJob>>(result);
+    }
+
+    public Task MarkArtifactsPrunedAsync(Guid id, DateTimeOffset at, CancellationToken ct = default)
+    {
+        lock (_gate)
+        {
+            if (_jobs.TryGetValue(id, out var job))
+                _jobs[id] = job with { ArtifactsPrunedAt = at };
+        }
+        return Task.CompletedTask;
+    }
+
     private ComparisonJob Guard(Guid id, long expectedVersion, params JobStatus[] allowed)
     {
         if (!_jobs.TryGetValue(id, out var job))

@@ -6,9 +6,9 @@ namespace DiffPdf.Persistence.SqlServer;
 
 /// <summary>
 /// Transactional outbox: inserts the job and enqueues the command in the same
-/// database transaction via Wolverine's EF Core outbox, then flushes the message
-/// to RabbitMQ. The job and its message are persisted atomically — neither can
-/// exist without the other.
+/// database transaction via Wolverine's EF Core outbox, then flushes it to the
+/// durable local queue. The job and its message are persisted atomically — neither
+/// can exist without the other.
 /// </summary>
 public sealed class SqlServerJobSubmissionService(IDbContextOutbox<DiffPdfDbContext> outbox) : IJobSubmissionService
 {
