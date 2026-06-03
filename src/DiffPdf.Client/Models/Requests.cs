@@ -31,16 +31,3 @@ public sealed record SingleComparisonRequest
     public required string NewPath { get; init; }
     public ComparisonOptions Options { get; init; } = new();
 }
-
-/// <summary>Probe a single folder for reachability + PDF count, optionally validating a scope.</summary>
-public sealed record DiscoverFolderRequest
-{
-    public required string Folder { get; init; }
-    public NetworkCredentials? Credentials { get; init; }
-    public string? CredentialProfile { get; init; }
-    public string SearchPattern { get; init; } = "*.pdf";
-    public bool Recursive { get; init; } = true;
-    public int SampleSize { get; init; } = 20;
-    public string? BranchKey { get; init; }
-    public string? InstanceKey { get; init; }
-}

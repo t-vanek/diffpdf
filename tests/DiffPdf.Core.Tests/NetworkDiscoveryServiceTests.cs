@@ -31,38 +31,6 @@ public class NetworkDiscoveryServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task DiscoverFolder_CountsPdfs_AndSamples()
-    {
-        string dir = MakeFolder("old", "a.pdf", "sub/b.pdf", "notes.txt");
-
-        var result = await Service().DiscoverFolderAsync(dir);
-
-        Assert.True(result.Reachable);
-        Assert.Null(result.Error);
-        Assert.Equal(2, result.FileCount); // only *.pdf
-        Assert.Contains("a.pdf", result.SampleFiles);
-        Assert.Contains("sub/b.pdf", result.SampleFiles);
-    }
-
-    [Fact]
-    public async Task DiscoverFolder_MissingFolder_ReportsUnreachable()
-    {
-        var result = await Service().DiscoverFolderAsync(Path.Combine(_root, "does-not-exist"));
-
-        Assert.False(result.Reachable);
-        Assert.NotNull(result.Error);
-    }
-
-    [Fact]
-    public async Task DiscoverFolder_UnknownShare_ReportsConfigError()
-    {
-        var result = await Service().DiscoverFolderAsync("share:ghost/x");
-
-        Assert.False(result.Reachable);
-        Assert.Contains("Unknown share", result.Error);
-    }
-
-    [Fact]
     public async Task PreviewPairing_ClassifiesMatchedAndUnmatched()
     {
         string oldDir = MakeFolder("old", "same.pdf", "only-old.pdf");

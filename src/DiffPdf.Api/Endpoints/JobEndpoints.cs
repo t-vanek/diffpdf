@@ -92,11 +92,10 @@ public static class JobEndpoints
             if (!report.Reachable)
                 return Results.Problem($"Instance base path is not reachable: {report.Error}", statusCode: StatusCodes.Status400BadRequest);
 
-            int oldPdfs = report.Items.FirstOrDefault(i => i.Name == "old")?.PdfCount ?? 0;
-            int newPdfs = report.Items.FirstOrDefault(i => i.Name == "new")?.PdfCount ?? 0;
-            if (oldPdfs == 0 || newPdfs == 0)
+            // Same "OK to submit a batch" gate the readiness endpoint reports.
+            if (!report.HasComparableInputs)
                 return Results.Problem(
-                    $"Nothing to compare: 'old' has {oldPdfs} PDF(s), 'new' has {newPdfs}. Both folders must contain at least one PDF.",
+                    $"Nothing to compare: 'old' has {report.OldPdfCount} PDF(s), 'new' has {report.NewPdfCount}. Both folders must contain at least one PDF.",
                     statusCode: StatusCodes.Status422UnprocessableEntity);
 
             var queued = await jobStore.EnqueueAsync(id, ct);

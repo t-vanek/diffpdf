@@ -42,20 +42,26 @@ public sealed class DiffPdfClient(HttpClient http)
     public Task<Instance?> GetInstanceAsync(string branchKey, string instanceKey, CancellationToken ct = default) =>
         GetOrNullAsync<Instance>($"/api/v1/branches/{Esc(branchKey)}/instances/{Esc(instanceKey)}", ct);
 
-    /// <summary>Read-only structure inspection (+ old/new PDF counts; pass <paramref name="includeFiles"/> for the full file list).</summary>
-    public Task<InstanceStructureReport> GetStructureAsync(string branchKey, string instanceKey, bool includeFiles = false, CancellationToken ct = default) =>
-        JsonAsync<InstanceStructureReport>(
-            HttpMethod.Get, $"/api/v1/branches/{Esc(branchKey)}/instances/{Esc(instanceKey)}/structure?includeFiles={(includeFiles ? "true" : "false")}", null, ct);
-
     /// <summary>Create/repair the old/new/reports structure.</summary>
     public Task<InstanceStructureReport> EnsureStructureAsync(string branchKey, string instanceKey, bool includeFiles = false, CancellationToken ct = default) =>
         JsonAsync<InstanceStructureReport>(
             HttpMethod.Post, $"/api/v1/branches/{Esc(branchKey)}/instances/{Esc(instanceKey)}/structure?includeFiles={(includeFiles ? "true" : "false")}", null, ct);
 
-    /// <summary>Batch readiness: how old/new pair up and whether a job may be submitted.</summary>
-    public Task<InstanceReadiness> GetReadinessAsync(string branchKey, string instanceKey, int? sampleSize = null, CancellationToken ct = default) =>
-        JsonAsync<InstanceReadiness>(
-            HttpMethod.Get, $"/api/v1/branches/{Esc(branchKey)}/instances/{Esc(instanceKey)}/readiness{(sampleSize is { } s ? $"?sampleSize={s}" : "")}", null, ct);
+    /// <summary>
+    /// Batch readiness: the folder-skeleton state (<see cref="InstanceReadiness.Structure"/>:
+    /// old/new/reports + PDF counts, optionally the full file list via <paramref name="includeFiles"/>),
+    /// how old/new pair up, and whether a job may be submitted.
+    /// </summary>
+    public Task<InstanceReadiness> GetReadinessAsync(
+        string branchKey, string instanceKey, int? sampleSize = null, bool includeFiles = false, CancellationToken ct = default)
+    {
+        var q = new List<string>();
+        if (sampleSize is { } s) q.Add($"sampleSize={s}");
+        if (includeFiles) q.Add("includeFiles=true");
+        string url = $"/api/v1/branches/{Esc(branchKey)}/instances/{Esc(instanceKey)}/readiness"
+            + (q.Count > 0 ? "?" + string.Join("&", q) : "");
+        return JsonAsync<InstanceReadiness>(HttpMethod.Get, url, null, ct);
+    }
 
     // ---------------- Batch + jobs ----------------
 
@@ -143,9 +149,6 @@ public sealed class DiffPdfClient(HttpClient http)
 
     public Task<NetworkConfigSummary> ListSharesAsync(CancellationToken ct = default) =>
         JsonAsync<NetworkConfigSummary>(HttpMethod.Get, "/api/v1/discovery/shares", null, ct);
-
-    public Task<FolderDiscoveryResult> DiscoverFolderAsync(DiscoverFolderRequest request, CancellationToken ct = default) =>
-        JsonAsync<FolderDiscoveryResult>(HttpMethod.Post, "/api/v1/discovery/folder", request, ct);
 
     /// <summary>Compares a single old/new pair synchronously. Returns the raw result JSON (the per-page model is deep).</summary>
     public Task<JsonElement> CompareSingleAsync(SingleComparisonRequest request, CancellationToken ct = default) =>

@@ -36,12 +36,10 @@ public class DiffPdfClientIntegrationTests(WebApplicationFactory<Program> factor
             Assert.NotNull(created.Structure);
             Assert.True(created.Structure!.Ok);
 
-            // 3) structure inspect: old/new exist but empty
-            var structure = await diff.GetStructureAsync(bk, ik, includeFiles: true);
-            Assert.Equal(0, structure.Items.Single(i => i.Name == "old").PdfCount);
-
-            // 4) readiness: not ready (nothing to compare)
-            var readiness = await diff.GetReadinessAsync(bk, ik);
+            // 3) readiness now carries the structure inspection too: old/new exist but empty,
+            //    so it is not ready (nothing to compare)
+            var readiness = await diff.GetReadinessAsync(bk, ik, includeFiles: true);
+            Assert.Equal(0, readiness.Structure.Items.Single(i => i.Name == "old").PdfCount);
             Assert.False(readiness.Ready);
 
             // 5) create a Draft job

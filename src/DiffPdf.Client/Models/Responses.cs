@@ -59,9 +59,14 @@ public sealed record InstanceStructureReport
     public bool Ok { get; init; }
 }
 
-/// <summary>Pre-flight readiness of an instance for a batch.</summary>
+/// <summary>
+/// Pre-flight readiness of an instance for a batch: the folder-skeleton inspection
+/// (<see cref="Structure"/>) combined with a dry-run pairing of old vs new.
+/// </summary>
 public sealed record InstanceReadiness
 {
+    /// <summary>Folder-skeleton state: old/new/reports presence + PDF counts (+ files when requested).</summary>
+    public InstanceStructureReport Structure { get; init; } = new();
     public bool Reachable { get; init; }
     public int OldPdfCount { get; init; }
     public int NewPdfCount { get; init; }
@@ -150,38 +155,6 @@ public sealed record FilePairTaskSummary
     public int AttemptCount { get; init; }
     public string? ResultStatus { get; init; }
     public string? Error { get; init; }
-}
-
-/// <summary>What a single folder probe found.</summary>
-public sealed record FolderDiscovery
-{
-    public bool Reachable { get; init; }
-    public string ResolvedPath { get; init; } = "";
-    public string? ShareName { get; init; }
-    public int FileCount { get; init; }
-    public IReadOnlyList<string> SampleFiles { get; init; } = [];
-    public string? Error { get; init; }
-}
-
-/// <summary>Result of validating that a branch/instance scope exists.</summary>
-public sealed record ScopeCheck
-{
-    public string BranchKey { get; init; } = "";
-    public bool BranchExists { get; init; }
-    public string? BranchName { get; init; }
-    public string InstanceKey { get; init; } = "";
-    public bool InstanceExists { get; init; }
-    public string? InstanceName { get; init; }
-    public bool Ok { get; init; }
-}
-
-/// <summary>A folder probe enriched with an optional scope check and readiness verdict.</summary>
-public sealed record FolderDiscoveryResult
-{
-    public ScopeCheck? Scope { get; init; }
-    public FolderDiscovery Folder { get; init; } = new();
-    public bool HasPdfs { get; init; }
-    public bool Ready { get; init; }
 }
 
 /// <summary>Configured network: named shares + credential-profile names (never secrets).</summary>

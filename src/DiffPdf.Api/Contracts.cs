@@ -35,59 +35,6 @@ public sealed record SubmitBatchRequest
     public BatchGate? Gate { get; init; }
 }
 
-/// <summary>Probe a single folder (local, UNC or a <c>share:</c> alias) for reachability and PDF count.</summary>
-public sealed record DiscoverFolderRequest
-{
-    public required string Folder { get; init; }
-
-    /// <summary>Inline credentials (when allowed). Prefer <see cref="CredentialProfile"/>.</summary>
-    public NetworkCredentials? Credentials { get; init; }
-
-    /// <summary>Name of a configured credential profile.</summary>
-    public string? CredentialProfile { get; init; }
-
-    public string SearchPattern { get; init; } = "*.pdf";
-    public bool Recursive { get; init; } = true;
-
-    /// <summary>Maximum number of relative paths returned as a sample.</summary>
-    public int SampleSize { get; init; } = 20;
-
-    /// <summary>
-    /// Optional branch key. When set (together with <see cref="InstanceKey"/>),
-    /// the probe also verifies the scope exists. Leave both null to skip the scope check.
-    /// </summary>
-    public string? BranchKey { get; init; }
-
-    /// <summary>Optional instance key under the branch; validated alongside it.</summary>
-    public string? InstanceKey { get; init; }
-}
-
-/// <summary>Result of validating that a branch/instance scope exists.</summary>
-public sealed record ScopeCheck(
-    string BranchKey,
-    bool BranchExists,
-    string? BranchName,
-    string InstanceKey,
-    bool InstanceExists,
-    string? InstanceName)
-{
-    /// <summary>True only when both the branch and the instance under it exist.</summary>
-    public bool Ok => BranchExists && InstanceExists;
-}
-
-/// <summary>A folder probe enriched with an optional scope check and an overall readiness verdict.</summary>
-public sealed record FolderDiscoveryResult(ScopeCheck? Scope, FolderDiscovery Folder)
-{
-    /// <summary>Whether the folder contains at least one matching PDF.</summary>
-    public bool HasPdfs => Folder.FileCount > 0;
-
-    /// <summary>
-    /// True when the folder is reachable and contains PDFs, and — if a scope was
-    /// requested — the branch and instance both exist. The "OK to submit a batch" signal.
-    /// </summary>
-    public bool Ready => Folder.Reachable && HasPdfs && (Scope?.Ok ?? true);
-}
-
 /// <summary>Configured network: named shares and credential-profile names (never secrets).</summary>
 public sealed record NetworkConfigSummary(IReadOnlyList<ShareInfo> Shares, IReadOnlyList<string> CredentialProfiles);
 
@@ -100,21 +47,30 @@ public sealed record CreateInstanceRequest(string Key, string Name, string BaseP
 public sealed record CreatedInstanceResponse(ComparisonInstance Instance, InstanceStructureReport? Structure);
 
 /// <summary>
-/// Pre-flight readiness of an instance for a batch: how the old/new folders pair up
-/// and whether a job may be submitted. <see cref="Ready"/> mirrors the batch gate
-/// (both input folders must hold at least one PDF).
+/// Pre-flight readiness of an instance for a batch. Combines the folder-skeleton
+/// inspection (<see cref="Structure"/>: old/new/reports state + PDF counts, optionally
+/// the file lists) with a dry-run pairing of old vs new. <see cref="Ready"/> mirrors the
+/// batch gate (both input folders must hold at least one PDF).
 /// </summary>
 public sealed record InstanceReadiness(
-    bool Reachable,
-    int OldPdfCount,
-    int NewPdfCount,
+    InstanceStructureReport Structure,
     int Matched,
     int OnlyInOld,
     int OnlyInNew,
     IReadOnlyList<string> SampleOnlyInOld,
     IReadOnlyList<string> SampleOnlyInNew,
     bool Ready,
-    string? Error);
+    string? Error)
+{
+    /// <summary>Whether the instance base path was reachable.</summary>
+    public bool Reachable => Structure.Reachable;
+
+    /// <summary>Number of *.pdf files in the <c>old</c> input folder.</summary>
+    public int OldPdfCount => Structure.OldPdfCount;
+
+    /// <summary>Number of *.pdf files in the <c>new</c> input folder.</summary>
+    public int NewPdfCount => Structure.NewPdfCount;
+}
 
 /// <summary>Per-file-pair task view.</summary>
 public sealed record FilePairTaskSummary

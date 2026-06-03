@@ -5,15 +5,6 @@ using Microsoft.Extensions.Logging;
 
 namespace DiffPdf.Core.Network;
 
-/// <summary>What a single folder probe found.</summary>
-public sealed record FolderDiscovery(
-    bool Reachable,
-    string ResolvedPath,
-    string? ShareName,
-    int FileCount,
-    IReadOnlyList<string> SampleFiles,
-    string? Error);
-
 /// <summary>
 /// A dry-run of a batch: how the old and new folders pair up, without comparing
 /// any PDFs. Lets a tester validate paths, credentials and pairing before
@@ -32,20 +23,11 @@ public sealed record PairingPreview(
     string? Error);
 
 /// <summary>
-/// "Discovery mode": connects to configured / ad-hoc folders and reports what is
-/// reachable and what would be compared — without running a comparison.
+/// "Discovery mode": connects to configured folders and reports how they would pair
+/// up — without running a comparison. Backs the instance readiness pre-flight.
 /// </summary>
 public interface INetworkDiscoveryService
 {
-    Task<FolderDiscovery> DiscoverFolderAsync(
-        string folder,
-        NetworkCredentials? inlineCredentials = null,
-        string? credentialProfile = null,
-        string searchPattern = "*.pdf",
-        bool recursive = true,
-        int sampleSize = 20,
-        CancellationToken ct = default);
-
     Task<PairingPreview> PreviewPairingAsync(
         string oldFolder,
         string newFolder,
@@ -65,43 +47,6 @@ public sealed class NetworkDiscoveryService(
     INetworkShareConnector shareConnector,
     ILogger<NetworkDiscoveryService> logger) : INetworkDiscoveryService
 {
-    public Task<FolderDiscovery> DiscoverFolderAsync(
-        string folder,
-        NetworkCredentials? inlineCredentials = null,
-        string? credentialProfile = null,
-        string searchPattern = "*.pdf",
-        bool recursive = true,
-        int sampleSize = 20,
-        CancellationToken ct = default) =>
-        Task.Run(() =>
-        {
-            ResolvedFolder resolved;
-            try
-            {
-                resolved = resolver.Resolve(folder, inlineCredentials, credentialProfile);
-            }
-            catch (NetworkConfigurationException ex)
-            {
-                return new FolderDiscovery(false, folder, null, 0, [], ex.Message);
-            }
-
-            try
-            {
-                using var connection = shareConnector.Connect(resolved.Path, resolved.Credentials);
-                var (count, files) = PdfFolderScanner.Scan(connection.Path, searchPattern, recursive, sampleSize, ct);
-                return new FolderDiscovery(true, resolved.Path, resolved.ShareName, count, files, null);
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning(ex, "Folder discovery failed for {Folder}", resolved.Path);
-                return new FolderDiscovery(false, resolved.Path, resolved.ShareName, 0, [], ex.Message);
-            }
-        }, ct);
-
     public Task<PairingPreview> PreviewPairingAsync(
         string oldFolder,
         string newFolder,
