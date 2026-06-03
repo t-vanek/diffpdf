@@ -156,6 +156,24 @@ public static class SqlServerMigrator
 
         if col_length(N'jobs', N'artifacts_pruned_at') is null
         alter table jobs add artifacts_pruned_at datetimeoffset null;
+
+        if object_id(N'folder_watches', N'U') is null
+        create table folder_watches (
+            id uniqueidentifier not null primary key,
+            branch_id uniqueidentifier not null references branches(id),
+            instance_id uniqueidentifier not null unique references instances(id),
+            branch_key nvarchar(256) not null,
+            instance_key nvarchar(256) not null,
+            stability_seconds int not null constraint df_folder_watches_stability default 30,
+            enabled bit not null constraint df_folder_watches_enabled default 1,
+            created_at datetimeoffset not null constraint df_folder_watches_created default sysdatetimeoffset(),
+            updated_at datetimeoffset null,
+            last_triggered_at datetimeoffset null,
+            version bigint not null constraint df_folder_watches_version default 1
+        );
+
+        if not exists (select 1 from sys.indexes where name = 'ix_folder_watches_enabled' and object_id = object_id(N'folder_watches'))
+        create index ix_folder_watches_enabled on folder_watches (enabled);
         """;
 
     public static async Task MigrateAsync(string connectionString, CancellationToken ct = default)

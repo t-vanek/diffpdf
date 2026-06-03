@@ -116,3 +116,18 @@ public sealed class ScheduleRunEntity
     public string? GateViolationsJson { get; set; }
     public string? Error { get; set; }
 }
+
+public sealed class WatchEntity
+{
+    public Guid Id { get; set; }
+    public Guid BranchId { get; set; }
+    public Guid InstanceId { get; set; }
+    public string BranchKey { get; set; } = string.Empty;
+    public string InstanceKey { get; set; } = string.Empty;
+    public int StabilitySeconds { get; set; } = 30;
+    public bool Enabled { get; set; } = true;
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? UpdatedAt { get; set; }
+    public DateTimeOffset? LastTriggeredAt { get; set; }
+    public long Version { get; set; } = 1;
+}

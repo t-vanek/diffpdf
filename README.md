@@ -57,7 +57,8 @@ Klient tedy obsluhuje jen automatizaci a sleduje výsledky.
 - **On-demand triggery + folder-watch** — dávku lze spustit i **webhookem**
   (`POST /api/v1/triggers/{branch}/{instance}`), **fan-outem** přes celou větev
   (`POST …/branches/{branch}/run`), nebo nechat **sledovat složku** `new/` a spustit
-  dávku automaticky, jakmile se drop souborů ustálí (konfigurace `Watches`).
+  dávku automaticky, jakmile se drop souborů ustálí. Folder-watch je **runtime resource**
+  spravovaný přes API (`PUT …/instances/{i}/watch`) — bez editace configu a restartu.
 - **Multi-replika single-fire** — plánovač i folder-watch jsou za HA bezpečné: přes
   **DB leader-lease** spouští dávky jen jedna („vedoucí") replika, takže rozvrh ani drop
   nevystřelí jednou za každou repliku.
@@ -247,6 +248,5 @@ Další knihovny: PdfPig (Apache 2.0), PdfSharp (MIT), SkiaSharp (MIT).
 
 - SSIM perceptuální skórování; strukturální shlukování regionů.
 - Multi-tenant izolace artefaktů a oprávnění per scope.
-- Folder-watch jako runtime resource (dnes statická config `Watches`).
 - Retence i pro DB řádky jobů (dnes se maže jen on-disk artefakt).
 - Runtime mount autentizovaného UNC přímo v durable pipeline.

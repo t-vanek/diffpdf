@@ -29,6 +29,8 @@ public sealed partial class EntityMapper
     [MapProperty(nameof(ScheduleRunEntity.GateViolationsJson), nameof(ScheduleRun.GateViolations))]
     public partial ScheduleRun ToDomain(ScheduleRunEntity entity);
 
+    public partial FolderWatch ToDomain(WatchEntity entity);
+
     // User-defined conversions Mapperly uses for the jsonb columns.
     private static BatchComparisonRequest MapRequest(string json) =>
         DiffPdfJson.Deserialize<BatchComparisonRequest>(json);

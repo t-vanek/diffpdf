@@ -165,6 +165,24 @@ public sealed class DiffPdfClient(HttpClient http)
         return JsonAsync<IReadOnlyList<ScheduleRunResponse>>(HttpMethod.Get, url, null, ct);
     }
 
+    // ---------------- Folder-watch ----------------
+
+    /// <summary>Creates or replaces the instance's folder-watch (arms the watcher).</summary>
+    public Task<WatchResponse> SetWatchAsync(string branchKey, string instanceKey, SetWatchRequest request, CancellationToken ct = default) =>
+        JsonAsync<WatchResponse>(HttpMethod.Put, $"/api/v1/branches/{Esc(branchKey)}/instances/{Esc(instanceKey)}/watch", request, ct);
+
+    public Task<WatchResponse?> GetWatchAsync(string branchKey, string instanceKey, CancellationToken ct = default) =>
+        GetOrNullAsync<WatchResponse>($"/api/v1/branches/{Esc(branchKey)}/instances/{Esc(instanceKey)}/watch", ct);
+
+    public async Task DeleteWatchAsync(string branchKey, string instanceKey, CancellationToken ct = default)
+    {
+        using var resp = await SendRawAsync(HttpMethod.Delete, $"/api/v1/branches/{Esc(branchKey)}/instances/{Esc(instanceKey)}/watch", null, ct);
+    }
+
+    /// <summary>Lists all folder-watches across instances.</summary>
+    public Task<IReadOnlyList<WatchResponse>> ListWatchesAsync(CancellationToken ct = default) =>
+        JsonAsync<IReadOnlyList<WatchResponse>>(HttpMethod.Get, "/api/v1/watches", null, ct);
+
     // ---------------- Notification subscriptions ----------------
 
     public Task<SubscriptionResponse> CreateSubscriptionAsync(CreateSubscriptionRequest request, CancellationToken ct = default) =>

@@ -264,3 +264,39 @@ public sealed record InstanceRunResult(string InstanceKey, string Outcome, Guid?
 
 /// <summary>Result of triggering every enabled instance under a branch.</summary>
 public sealed record BranchRunResult(string BranchKey, int Launched, int Skipped, IReadOnlyList<InstanceRunResult> Instances);
+
+// ---------------- Automation: folder-watch ----------------
+
+/// <summary>Create or replace an instance's folder-watch.</summary>
+public sealed record SetWatchRequest
+{
+    public int StabilitySeconds { get; init; } = 30;
+    public bool Enabled { get; init; } = true;
+}
+
+/// <summary>An instance's folder-watch as returned by the API.</summary>
+public sealed record WatchResponse
+{
+    public required Guid Id { get; init; }
+    public required string BranchKey { get; init; }
+    public required string InstanceKey { get; init; }
+    public int StabilitySeconds { get; init; }
+    public bool Enabled { get; init; }
+    public DateTimeOffset CreatedAt { get; init; }
+    public DateTimeOffset? UpdatedAt { get; init; }
+    public DateTimeOffset? LastTriggeredAt { get; init; }
+    public long Version { get; init; }
+
+    public static WatchResponse From(FolderWatch w) => new()
+    {
+        Id = w.Id,
+        BranchKey = w.BranchKey,
+        InstanceKey = w.InstanceKey,
+        StabilitySeconds = w.StabilitySeconds,
+        Enabled = w.Enabled,
+        CreatedAt = w.CreatedAt,
+        UpdatedAt = w.UpdatedAt,
+        LastTriggeredAt = w.LastTriggeredAt,
+        Version = w.Version,
+    };
+}

@@ -4,94 +4,113 @@ using DiffPdf.Persistence;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace DiffPdf.Messaging.Triggers;
 
 /// <summary>
-/// Polls each watched instance's <c>new/</c> folder and launches a batch once a drop has
-/// settled (see <see cref="WatchState"/>). Polling (rather than FileSystemWatcher) works
-/// uniformly for local, mounted and UNC/CIFS shares.
+/// Polls each enabled folder-watch's instance <c>new/</c> folder and launches a batch once a drop
+/// has settled (see <see cref="WatchState"/>). Watches are runtime-managed in <see cref="IWatchStore"/>
+/// and re-read every tick, so adding / removing / disabling a watch via the API takes effect within
+/// one tick — no restart. Polling (rather than FileSystemWatcher) works uniformly for local, mounted
+/// and UNC/CIFS shares.
 /// </summary>
 /// <remarks>
 /// Multi-replica safe: each tick first acquires/renews the shared <see cref="AutomationLeader"/>
-/// lease via <see cref="ILeaderElection"/>; only the leading replica scans + launches (the in-memory
-/// fallback always leads). The per-folder dedupe state is in-memory, so a leadership change may
-/// re-trigger the most recent drop once — concurrent replicas never double-launch.
+/// lease; only the leading replica scans + launches. Per-folder dedupe state is in-memory, so a
+/// leadership change may re-trigger the most recent drop once; concurrent replicas never double-launch.
 /// </remarks>
 public sealed class FolderWatchService(
     IServiceScopeFactory scopeFactory,
     ILeaderElection leader,
     IWorkerInstanceIdProvider workerInstance,
-    IOptions<WatchOptions> options,
     ILogger<FolderWatchService> logger) : BackgroundService
 {
+    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(15);
+
+    private readonly Dictionary<Guid, WatchState> _states = new();
     private bool _wasLeader;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var opts = options.Value;
-        var watches = opts.Folders.Where(w => w.Enabled).ToList();
-        if (!opts.Enabled || watches.Count == 0)
-        {
-            logger.LogInformation("Folder-watch disabled or no folders configured.");
-            return;
-        }
+        logger.LogInformation("Folder-watch started (DB-backed, {Poll}s poll).", PollInterval.TotalSeconds);
 
-        var states = watches.Select(_ => new WatchState()).ToArray();
-        logger.LogInformation("Folder-watch started for {Count} folder(s), polling every {Poll}s.", watches.Count, opts.PollSeconds);
-
-        using var timer = new PeriodicTimer(opts.PollInterval);
+        using var timer = new PeriodicTimer(PollInterval);
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
-            // Only the automation leader scans + launches, so a drop fires once across replicas.
-            bool isLeader = await leader.TryAcquireAsync(AutomationLeader.Role, workerInstance.WorkerInstanceId, AutomationLeader.Lease, stoppingToken);
-            if (isLeader != _wasLeader)
+            try
             {
-                logger.LogInformation(isLeader
-                    ? "This replica is now the automation leader (folder-watch active)."
-                    : "This replica is no longer the automation leader (folder-watch idle).");
-                _wasLeader = isLeader;
+                await TickAsync(stoppingToken);
             }
-            if (!isLeader)
-                continue;
-
-            for (int i = 0; i < watches.Count; i++)
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
-                var watch = watches[i];
-                try
-                {
-                    await using var scope = scopeFactory.CreateAsyncScope();
-                    var sp = scope.ServiceProvider;
-
-                    var branch = await sp.GetRequiredService<IBranchStore>().GetByKeyAsync(watch.BranchKey, stoppingToken);
-                    var instance = branch is null
-                        ? null
-                        : await sp.GetRequiredService<IInstanceStore>().GetByKeyAsync(branch.Id, watch.InstanceKey, stoppingToken);
-                    if (instance is null || !instance.Enabled)
-                        continue;
-
-                    var manifest = sp.GetRequiredService<IFolderManifestScanner>()
-                        .ScanNewFolder(instance.BasePath, instance.CredentialProfile, stoppingToken);
-                    if (manifest is null)
-                        continue; // unreachable this tick; retry next time
-
-                    if (states[i].Observe(manifest, DateTimeOffset.UtcNow, watch.Stability))
-                    {
-                        logger.LogInformation("Folder-watch: stable drop in {Branch}/{Instance} ({Count} file(s)); launching.",
-                            watch.BranchKey, watch.InstanceKey, manifest.FileCount);
-                        await sp.GetRequiredService<IBatchLauncher>().LaunchAsync(watch.BranchKey, watch.InstanceKey, LaunchSpec.Default, stoppingToken);
-                    }
-                }
-                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-                {
-                    return;
-                }
-                catch (Exception ex)
-                {
-                    logger.LogError(ex, "Folder-watch pass failed for {Branch}/{Instance}.", watch.BranchKey, watch.InstanceKey);
-                }
+                return;
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Folder-watch tick failed.");
             }
         }
+    }
+
+    internal async Task TickAsync(CancellationToken ct)
+    {
+        bool isLeader = await leader.TryAcquireAsync(AutomationLeader.Role, workerInstance.WorkerInstanceId, AutomationLeader.Lease, ct);
+        if (isLeader != _wasLeader)
+        {
+            logger.LogInformation(isLeader
+                ? "This replica is now the automation leader (folder-watch active)."
+                : "This replica is no longer the automation leader (folder-watch idle).");
+            _wasLeader = isLeader;
+        }
+        if (!isLeader)
+            return;
+
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var sp = scope.ServiceProvider;
+        var watchStore = sp.GetRequiredService<IWatchStore>();
+        var instances = sp.GetRequiredService<IInstanceStore>();
+        var scanner = sp.GetRequiredService<IFolderManifestScanner>();
+        var launcher = sp.GetRequiredService<IBatchLauncher>();
+
+        var watches = await watchStore.ListEnabledAsync(ct);
+        var live = new HashSet<Guid>();
+
+        foreach (var watch in watches)
+        {
+            live.Add(watch.Id);
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                var instance = await instances.GetByKeyAsync(watch.BranchId, watch.InstanceKey, ct);
+                if (instance is null || !instance.Enabled)
+                    continue;
+
+                var manifest = scanner.ScanNewFolder(instance.BasePath, instance.CredentialProfile, ct);
+                if (manifest is null)
+                    continue; // unreachable this tick; retry next time
+
+                var state = _states.TryGetValue(watch.Id, out var s) ? s : (_states[watch.Id] = new WatchState());
+                if (state.Observe(manifest, DateTimeOffset.UtcNow, watch.Stability))
+                {
+                    logger.LogInformation("Folder-watch: stable drop in {Branch}/{Instance} ({Count} file(s)); launching.",
+                        watch.BranchKey, watch.InstanceKey, manifest.FileCount);
+                    var result = await launcher.LaunchAsync(watch.BranchKey, watch.InstanceKey, LaunchSpec.Default, ct);
+                    if (result.JobId is not null)
+                        await watchStore.TouchLastTriggeredAsync(watch.Id, DateTimeOffset.UtcNow, ct);
+                }
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Folder-watch pass failed for {Branch}/{Instance}.", watch.BranchKey, watch.InstanceKey);
+            }
+        }
+
+        // Drop debounce state for watches that vanished (deleted or disabled at runtime).
+        foreach (var goneId in _states.Keys.Where(id => !live.Contains(id)).ToList())
+            _states.Remove(goneId);
     }
 }
