@@ -55,8 +55,8 @@ a chybové hlášky vyrenderované přímo do PDF.
   `share:<jméno>`), nebo volitelně inline per složka (Windows `WNetAddConnection2`,
   Linux CIFS mount).
 - **Discovery režim** — suchý běh přes `/api/v1/discovery`: ověř existenci scope
-  (větev + instance), dostupnost cesty, počet PDF a párování old/new
-  ještě než odešleš dávku.
+  (větev + instance), dostupnost cesty a počet PDF ve složce ještě než odešleš
+  dávku. (Párování old/new pokrývá `…/readiness` nad konfigurovanou instancí.)
 - **Řízení životního cyklu úlohy** — vytvoření a spuštění jsou oddělené: dávka
   vznikne jako `Draft`, samostatný `start` ji po pre-flight kontrole zařadí do
   fronty. Běžící úlohu lze **pozastavit, obnovit, zrušit i restartovat**;
@@ -225,7 +225,6 @@ Všechny aplikační cesty jsou pod prefixem **`/api/v1`**.
 | `GET`  | `/api/v1/jobs/{id}/artifacts/{**path}` | Stažení zvýrazněného diff-PDF. |
 | `GET`  | `/api/v1/discovery/shares` | Výpis nakonfigurovaných sdílení a jmen credential profilů. |
 | `POST` | `/api/v1/discovery/folder` | Probe složky — dostupnost + počet PDF + ukázka cest; volitelně ověří i scope (větev/instance) a vrátí `ready`. |
-| `POST` | `/api/v1/discovery/preview` | Suchý běh párování old/new (bez porovnání); volitelně ověří i scope a vrátí `ready`. |
 
 OpenAPI dokument je na `/openapi/v1.json`, interaktivní **Swagger UI** na `/swagger`.
 Chyby se vrací jako **`application/problem+json`** (RFC 9457 ProblemDetails).
@@ -411,20 +410,16 @@ curl -X POST http://localhost:8080/api/v1/discovery/folder \
   -H 'Content-Type: application/json' \
   -d '{ "folder": "share:lama/old",
         "branchKey": "Alfa", "instanceKey": "LamaEnergy" }'
-
-# suchý běh párování old vs new — kolik matched / onlyInOld / onlyInNew
-curl -X POST http://localhost:8080/api/v1/discovery/preview \
-  -H 'Content-Type: application/json' \
-  -d '{ "oldFolder": "share:reports/baseline", "newFolder": "share:reports/build-123" }'
 ```
 
 Discovery přijímá stejné odkazy na sdílení/profily jako dávka. Nedostupná cesta
 nebo neznámý alias vrátí `reachable: false` s důvodem v `error`, ne chybu 500.
 
-Když do `/discovery/folder` nebo `/discovery/preview` přidáš `branchKey`
-+ `instanceKey` (oba, nebo žádný), odpověď navíc nese `scope` s příznaky
-`branchExists` / `instanceExists` a celkový `ready` (cesty dostupné,
-obsahují PDF a scope existuje) — jediný pre-flight check, než pošleš dávku.
+Když do `/discovery/folder` přidáš `branchKey` + `instanceKey` (oba, nebo žádný),
+odpověď navíc nese `scope` s příznaky `branchExists` / `instanceExists` a celkový
+`ready` (cesta dostupná, obsahuje PDF a scope existuje) — pre-flight check, než
+pošleš dávku. Párování old/new nad konfigurovanou instancí (kolik matched /
+onlyInOld / onlyInNew) pokrývá `GET …/instances/{key}/readiness`.
 
 ### Větve, instance a struktura úložiště
 

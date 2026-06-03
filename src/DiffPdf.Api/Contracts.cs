@@ -88,44 +88,6 @@ public sealed record FolderDiscoveryResult(ScopeCheck? Scope, FolderDiscovery Fo
     public bool Ready => Folder.Reachable && HasPdfs && (Scope?.Ok ?? true);
 }
 
-/// <summary>Dry-run a batch: how an old/new folder pair lines up, without comparing.</summary>
-public sealed record PreviewPairingRequest
-{
-    public required string OldFolder { get; init; }
-    public required string NewFolder { get; init; }
-
-    public NetworkCredentials? OldFolderCredentials { get; init; }
-    public NetworkCredentials? NewFolderCredentials { get; init; }
-    public string? OldFolderCredentialProfile { get; init; }
-    public string? NewFolderCredentialProfile { get; init; }
-
-    public string SearchPattern { get; init; } = "*.pdf";
-    public bool Recursive { get; init; } = true;
-    public int SampleSize { get; init; } = 20;
-
-    /// <summary>
-    /// Optional branch key. When set (together with <see cref="InstanceKey"/>),
-    /// the dry-run also verifies the scope exists. Leave both null to skip the scope check.
-    /// </summary>
-    public string? BranchKey { get; init; }
-
-    /// <summary>Optional instance key under the branch; validated alongside it.</summary>
-    public string? InstanceKey { get; init; }
-}
-
-/// <summary>A pairing dry-run enriched with an optional scope check and an overall readiness verdict.</summary>
-public sealed record PairingPreviewResult(ScopeCheck? Scope, PairingPreview Pairing)
-{
-    /// <summary>Whether the folders yielded at least one PDF to pair.</summary>
-    public bool HasPdfs => Pairing.Total > 0;
-
-    /// <summary>
-    /// True when the folders are reachable and contain PDFs, and — if a scope was
-    /// requested — the branch and instance both exist. The "OK to submit a batch" signal.
-    /// </summary>
-    public bool Ready => Pairing.Reachable && HasPdfs && (Scope?.Ok ?? true);
-}
-
 /// <summary>Configured network: named shares and credential-profile names (never secrets).</summary>
 public sealed record NetworkConfigSummary(IReadOnlyList<ShareInfo> Shares, IReadOnlyList<string> CredentialProfiles);
 
