@@ -1,0 +1,45 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:DiffPdf.DesktopUI.ViewModels"
+             x:Class="DiffPdf.DesktopUI.Views.BranchesView"
+             x:DataType="vm:BranchesViewModel">
+
+  <DockPanel>
+    <!-- Toolbar: all actions side by side, with icons -->
+    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+      <TextBlock Text="Branches" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
+      <Button Content="🔄 Obnovit" Command="{Binding RefreshCommand}"/>
+      <Button Content="➕ Vytvořit branch" Command="{Binding ShowCreateCommand}"/>
+      <Button Content="🗑 Smazat branch" Command="{Binding DeleteCommand}"
+              IsEnabled="{Binding SelectedBranch, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+      <TextBlock Text="{Binding Info}" Foreground="#9CDCFE" VerticalAlignment="Center"/>
+      <TextBlock Text="{Binding Error}" Foreground="#C0392B" VerticalAlignment="Center"/>
+    </StackPanel>
+
+    <!-- Reveal form (appears on Vytvořit branch) -->
+    <Border DockPanel.Dock="Top" IsVisible="{Binding ShowCreateForm}"
+            BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,0,8">
+      <StackPanel Spacing="8">
+        <TextBlock Text="Nový branch" FontWeight="Bold"/>
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <TextBox Width="200" Text="{Binding NewKey}" PlaceholderText="Key (např. Alfa)"/>
+          <TextBox Width="260" Text="{Binding NewName}" PlaceholderText="Name"/>
+          <Button Content="Uložit" Command="{Binding SaveCreateCommand}"/>
+          <Button Content="Zrušit" Command="{Binding CancelCreateCommand}"/>
+        </StackPanel>
+        <TextBlock Text="{Binding ValidationError}" Foreground="#C0392B" TextWrapping="Wrap"
+                   IsVisible="{Binding ValidationError, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+      </StackPanel>
+    </Border>
+
+    <DataGrid x:CompileBindings="False" ItemsSource="{Binding Branches}" SelectedItem="{Binding SelectedBranch}"
+              IsReadOnly="True" AutoGenerateColumns="False" CanUserResizeColumns="True">
+      <DataGrid.Columns>
+        <DataGridTextColumn Header="Key" Binding="{Binding Key}" Width="180"/>
+        <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*"/>
+        <DataGridTextColumn Header="Enabled" Binding="{Binding Enabled}" Width="90"/>
+        <DataGridTextColumn Header="Created" Binding="{Binding CreatedAt}" Width="200"/>
+      </DataGrid.Columns>
+    </DataGrid>
+  </DockPanel>
+</UserControl>

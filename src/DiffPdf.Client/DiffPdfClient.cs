@@ -29,6 +29,12 @@ public sealed class DiffPdfClient(HttpClient http)
     public Task<Branch?> GetBranchAsync(string branchKey, CancellationToken ct = default) =>
         GetOrNullAsync<Branch>($"/api/v1/branches/{Esc(branchKey)}", ct);
 
+    /// <summary>Deletes a branch. Throws DiffPdfApiException 409 if it has instances or an active job; 404 if unknown.</summary>
+    public async Task DeleteBranchAsync(string branchKey, CancellationToken ct = default)
+    {
+        using var resp = await SendRawAsync(HttpMethod.Delete, $"/api/v1/branches/{Esc(branchKey)}", null, ct);
+    }
+
     // ---------------- Instances ----------------
 
     public Task<CreatedInstanceResponse> CreateInstanceAsync(
@@ -41,6 +47,12 @@ public sealed class DiffPdfClient(HttpClient http)
 
     public Task<Instance?> GetInstanceAsync(string branchKey, string instanceKey, CancellationToken ct = default) =>
         GetOrNullAsync<Instance>($"/api/v1/branches/{Esc(branchKey)}/instances/{Esc(instanceKey)}", ct);
+
+    /// <summary>Deletes an instance. Throws DiffPdfApiException 409 if it has schedules, a watch, or any jobs; 404 if unknown.</summary>
+    public async Task DeleteInstanceAsync(string branchKey, string instanceKey, CancellationToken ct = default)
+    {
+        using var resp = await SendRawAsync(HttpMethod.Delete, $"/api/v1/branches/{Esc(branchKey)}/instances/{Esc(instanceKey)}", null, ct);
+    }
 
     /// <summary>Create/repair the old/new/reports structure.</summary>
     public Task<InstanceStructureReport> EnsureStructureAsync(string branchKey, string instanceKey, bool includeFiles = false, CancellationToken ct = default) =>

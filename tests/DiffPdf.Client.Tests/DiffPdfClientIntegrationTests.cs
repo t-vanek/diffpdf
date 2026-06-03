@@ -320,4 +320,60 @@ public class DiffPdfClientIntegrationTests(WebApplicationFactory<Program> factor
         Assert.Contains(status.Services, s => s.Service == "scheduler");
         Assert.Contains(status.Services, s => s.Service == "retention");
     }
+
+    [Fact]
+    public async Task Branch_Delete_RespectsInstanceGuard()
+    {
+        var diff = NewClient();
+
+        // Empty branch deletes cleanly (204) and is then gone.
+        var (bk1, _) = FreshKeys();
+        await diff.CreateBranchAsync(new(bk1, "Empty"));
+        await diff.DeleteBranchAsync(bk1);
+        Assert.Null(await diff.GetBranchAsync(bk1));
+
+        // A branch that holds an instance cannot be deleted (409) and stays.
+        var (bk2, ik) = FreshKeys();
+        await diff.CreateBranchAsync(new(bk2, "WithInstance"));
+        string basePath = Path.Combine(Path.GetTempPath(), "diffpdf-del-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            await diff.CreateInstanceAsync(bk2, new(ik, "Inst", basePath));
+            var ex = await Assert.ThrowsAsync<DiffPdfApiException>(() => diff.DeleteBranchAsync(bk2));
+            Assert.Equal(HttpStatusCode.Conflict, ex.StatusCode);
+            Assert.NotNull(await diff.GetBranchAsync(bk2));
+        }
+        finally
+        {
+            try { Directory.Delete(basePath, recursive: true); } catch (IOException) { }
+        }
+    }
+
+    [Fact]
+    public async Task Instance_Delete_RespectsScheduleGuard()
+    {
+        var diff = NewClient();
+        var (bk, ik) = FreshKeys();
+        await diff.CreateBranchAsync(new(bk, "B"));
+        string basePath = Path.Combine(Path.GetTempPath(), "diffpdf-idel-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            await diff.CreateInstanceAsync(bk, new(ik, "Inst", basePath));
+
+            // Empty instance deletes (204) and is then gone.
+            await diff.DeleteInstanceAsync(bk, ik);
+            Assert.Null(await diff.GetInstanceAsync(bk, ik));
+
+            // Re-create + add a schedule -> the instance can no longer be deleted (409).
+            await diff.CreateInstanceAsync(bk, new(ik, "Inst", basePath));
+            await diff.CreateScheduleAsync(bk, ik, new CreateScheduleRequest { Key = "nightly", Cron = "0 2 * * *" });
+            var ex = await Assert.ThrowsAsync<DiffPdfApiException>(() => diff.DeleteInstanceAsync(bk, ik));
+            Assert.Equal(HttpStatusCode.Conflict, ex.StatusCode);
+            Assert.NotNull(await diff.GetInstanceAsync(bk, ik));
+        }
+        finally
+        {
+            try { Directory.Delete(basePath, recursive: true); } catch (IOException) { }
+        }
+    }
 }

@@ -1,0 +1,118 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:DiffPdf.DesktopUI.ViewModels"
+             x:Class="DiffPdf.DesktopUI.Views.JobsView"
+             x:DataType="vm:JobsViewModel"
+             x:Name="Root">
+
+  <DockPanel>
+    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+      <TextBlock Text="Jobs" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
+      <TextBox Width="130" Text="{Binding FilterBranch}" PlaceholderText="Branch"/>
+      <TextBox Width="130" Text="{Binding FilterInstance}" PlaceholderText="Instance"/>
+      <ComboBox Width="130" ItemsSource="{Binding StatusFilters}" SelectedItem="{Binding FilterStatus}"/>
+      <Button Content="Obnovit" Command="{Binding RefreshCommand}"/>
+      <TextBlock Text="{Binding Info}" Foreground="#9CDCFE" VerticalAlignment="Center"/>
+      <TextBlock Text="{Binding Error}" Foreground="#C0392B" VerticalAlignment="Center"/>
+    </StackPanel>
+
+    <Grid ColumnDefinitions="*,540">
+      <DataGrid Grid.Column="0" Margin="0,0,8,0" x:CompileBindings="False" ItemsSource="{Binding Jobs}"
+                SelectedItem="{Binding SelectedJob}" IsReadOnly="True" AutoGenerateColumns="False" CanUserResizeColumns="True">
+        <DataGrid.Columns>
+          <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="90"/>
+          <DataGridTextColumn Header="Branch" Binding="{Binding BranchKey}" Width="110"/>
+          <DataGridTextColumn Header="Instance" Binding="{Binding InstanceKey}" Width="110"/>
+          <DataGridTextColumn Header="Progress" Binding="{Binding Progress, StringFormat='{}{0:P0}'}" Width="80"/>
+          <DataGridTextColumn Header="Created" Binding="{Binding CreatedAt}" Width="170"/>
+          <DataGridTextColumn Header="Id" Binding="{Binding Id}" Width="*"/>
+        </DataGrid.Columns>
+      </DataGrid>
+
+      <ScrollViewer Grid.Column="1">
+        <StackPanel Spacing="8">
+          <!-- Summary + live progress -->
+          <Border BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="4" Padding="10"
+                  IsVisible="{Binding SelectedJob, Converter={x:Static ObjectConverters.IsNotNull}}">
+            <StackPanel Spacing="4">
+              <TextBlock Text="{Binding SelectedJob.Id, StringFormat='Job {0}'}" FontWeight="Bold"/>
+              <TextBlock Text="{Binding LiveStatus, StringFormat='Stav: {0}'}"/>
+              <ProgressBar Minimum="0" Maximum="1" Value="{Binding LiveProgress}"/>
+              <TextBlock Text="{Binding LiveProgress, StringFormat='{}{0:P0}'}"/>
+              <TextBlock Text="{Binding SelectedJob.CreatedAt, StringFormat='Vytvořeno: {0}'}"/>
+              <TextBlock Text="{Binding SelectedJob.CompletedAt, StringFormat='Dokončeno: {0}'}"/>
+              <TextBlock Text="{Binding SelectedJob.Error}" Foreground="#C0392B" TextWrapping="Wrap"/>
+            </StackPanel>
+          </Border>
+
+          <WrapPanel>
+            <Button Content="Pause" Command="{Binding PauseCommand}" Margin="0,0,6,6"/>
+            <Button Content="Resume" Command="{Binding ResumeCommand}" Margin="0,0,6,6"/>
+            <Button Content="Cancel" Command="{Binding CancelCommand}" Margin="0,0,6,6"/>
+            <Button Content="Retry" Command="{Binding RetryCommand}" Margin="0,0,6,6"/>
+            <Button Content="Tasky" Command="{Binding LoadTasksCmdCommand}" Margin="0,0,6,6"/>
+            <Button Content="Report" Command="{Binding LoadReportCommand}" Margin="0,0,6,6"/>
+            <Button Content="Result" Command="{Binding LoadResultCommand}" Margin="0,0,6,6"/>
+          </WrapPanel>
+
+          <TextBlock Text="Tasky" FontWeight="Bold"/>
+          <DataGrid x:CompileBindings="False" ItemsSource="{Binding Tasks}" IsReadOnly="True" Height="160"
+                    AutoGenerateColumns="False" CanUserResizeColumns="True">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Soubor" Binding="{Binding RelativePath}" Width="*"/>
+              <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="90"/>
+              <DataGridTextColumn Header="Pokus" Binding="{Binding AttemptCount}" Width="60"/>
+              <DataGridTextColumn Header="Výsledek" Binding="{Binding ResultStatus}" Width="90"/>
+            </DataGrid.Columns>
+          </DataGrid>
+
+          <!-- Report -->
+          <Border BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="4" Padding="10"
+                  IsVisible="{Binding Report, Converter={x:Static ObjectConverters.IsNotNull}}">
+            <StackPanel Spacing="4">
+              <TextBlock Text="Report" FontWeight="Bold"/>
+              <TextBlock Text="{Binding Report.Total, StringFormat='Total: {0}'}"/>
+              <TextBlock Text="{Binding Report.Identical, StringFormat='Identical: {0}'}"/>
+              <TextBlock Text="{Binding Report.Differing, StringFormat='Differing: {0}'}"/>
+              <TextBlock Text="{Binding Report.OnlyInOld, StringFormat='Only old: {0}'}"/>
+              <TextBlock Text="{Binding Report.OnlyInNew, StringFormat='Only new: {0}'}"/>
+              <TextBlock Text="{Binding Report.Errors, StringFormat='Errors: {0}'}"/>
+              <TextBlock Text="{Binding Report.Passed, StringFormat='Passed: {0}'}"/>
+              <DataGrid x:CompileBindings="False" ItemsSource="{Binding Report.Files}" IsReadOnly="True" Height="200"
+                        AutoGenerateColumns="False" CanUserResizeColumns="True">
+                <DataGrid.Columns>
+                  <DataGridTextColumn Header="Soubor" Binding="{Binding RelativePath}" Width="*"/>
+                  <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="90"/>
+                  <DataGridTextColumn Header="Sim" Binding="{Binding Similarity, StringFormat='{}{0:P0}'}" Width="70"/>
+                  <DataGridTextColumn Header="Δstran" Binding="{Binding DifferingPages}" Width="70"/>
+                  <DataGridTemplateColumn Header="Diff" Width="80">
+                    <DataGridTemplateColumn.CellTemplate>
+                      <DataTemplate>
+                        <Button Content="PDF" Command="{Binding DataContext.DownloadCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                      </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                  </DataGridTemplateColumn>
+                </DataGrid.Columns>
+              </DataGrid>
+            </StackPanel>
+          </Border>
+
+          <!-- CI result -->
+          <Border BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="4" Padding="10"
+                  IsVisible="{Binding Result, Converter={x:Static ObjectConverters.IsNotNull}}">
+            <StackPanel Spacing="4">
+              <TextBlock Text="CI result" FontWeight="Bold"/>
+              <TextBlock Text="{Binding Result.Passed, StringFormat='Passed: {0}'}"/>
+              <TextBlock Text="{Binding Result.Gated, StringFormat='Gated: {0}'}"/>
+              <ItemsControl x:CompileBindings="False" ItemsSource="{Binding Result.Violations}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate><TextBlock Text="{Binding}" Foreground="#C0392B"/></DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </Border>
+        </StackPanel>
+      </ScrollViewer>
+    </Grid>
+  </DockPanel>
+</UserControl>

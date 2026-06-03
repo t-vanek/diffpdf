@@ -1,0 +1,87 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:DiffPdf.DesktopUI.ViewModels"
+             x:Class="DiffPdf.DesktopUI.Views.DashboardView"
+             x:DataType="vm:DashboardViewModel">
+
+  <ScrollViewer>
+    <StackPanel Spacing="10">
+
+      <StackPanel Orientation="Horizontal" Spacing="10">
+        <TextBlock Text="Provozní stav" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
+        <Button Content="Obnovit" Command="{Binding RefreshCommand}"/>
+        <CheckBox Content="Auto (5 s)" IsChecked="{Binding AutoRefresh}" VerticalAlignment="Center"/>
+        <TextBlock Text="{Binding Error}" Foreground="#C0392B" VerticalAlignment="Center"/>
+      </StackPanel>
+
+      <Border BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="4" Padding="10">
+        <StackPanel Spacing="4">
+          <TextBlock Text="Replika" FontWeight="Bold"/>
+          <TextBlock Text="{Binding Status.Replica.WorkerInstanceId, StringFormat='Worker: {0}'}"/>
+          <TextBlock Text="{Binding Status.Replica.Version, StringFormat='Verze: {0}'}"/>
+          <TextBlock Text="{Binding Status.Replica.Environment, StringFormat='Prostředí: {0}'}"/>
+          <TextBlock Text="{Binding Status.Replica.UptimeSeconds, StringFormat='Uptime (s): {0:N0}'}"/>
+          <TextBlock Text="{Binding Healthy, StringFormat='Liveness healthy: {0}'}"/>
+        </StackPanel>
+      </Border>
+
+      <Border BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="4" Padding="10">
+        <StackPanel Spacing="4">
+          <TextBlock Text="Leader" FontWeight="Bold"/>
+          <TextBlock Text="{Binding Status.Leader.Owner, StringFormat='Vlastník: {0}'}"/>
+          <TextBlock Text="{Binding Status.Leader.IsThisReplica, StringFormat='Tato replika vede: {0}'}"/>
+          <TextBlock Text="{Binding Status.Leader.LeaseHealthy, StringFormat='Lease platná: {0}'}"/>
+          <TextBlock Text="{Binding Status.Leader.ExpiresAt, StringFormat='Expirace: {0}'}"/>
+        </StackPanel>
+      </Border>
+
+      <Border BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="4" Padding="10">
+        <StackPanel Spacing="4">
+          <TextBlock Text="Backlog &amp; zdroje" FontWeight="Bold"/>
+          <TextBlock Text="{Binding Status.Backlog.QueuedJobs, StringFormat='Queued joby: {0}'}"/>
+          <TextBlock Text="{Binding Status.Backlog.RunningJobs, StringFormat='Running joby: {0}'}"/>
+          <TextBlock Text="{Binding Status.Backlog.PausedJobs, StringFormat='Paused joby: {0}'}"/>
+          <TextBlock Text="{Binding Status.Backlog.ActiveTasks, StringFormat='Aktivní tasky: {0}'}"/>
+          <TextBlock Text="{Binding Status.EnabledSchedules, StringFormat='Aktivní rozvrhy: {0}'}"/>
+          <TextBlock Text="{Binding Status.EnabledWatches, StringFormat='Aktivní watche: {0}'}"/>
+          <TextBlock Text="{Binding Status.RetentionEnabled, StringFormat='Retence zapnutá: {0}'}"/>
+        </StackPanel>
+      </Border>
+
+      <Border BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="4" Padding="10">
+        <StackPanel Spacing="4">
+          <TextBlock Text="Závislosti" FontWeight="Bold"/>
+          <TextBlock Text="{Binding Status.Dependencies.Database.Ok, StringFormat='DB ok: {0}'}"/>
+          <TextBlock Text="{Binding Status.Dependencies.Database.Detail}" Foreground="#888"/>
+          <TextBlock Text="{Binding Status.Dependencies.Renderer.Ok, StringFormat='Renderer ok: {0}'}"/>
+          <TextBlock Text="{Binding Status.Dependencies.Renderer.Detail}" Foreground="#888"/>
+          <TextBlock Text="{Binding Status.Dependencies.Storage.Ok, StringFormat='Storage ok: {0}'}"/>
+          <TextBlock Text="{Binding Status.Dependencies.Storage.Detail}" Foreground="#888"/>
+        </StackPanel>
+      </Border>
+
+      <TextBlock Text="Služby (heartbeat této repliky)" FontWeight="Bold"/>
+      <DataGrid x:CompileBindings="False" ItemsSource="{Binding Status.Services}" IsReadOnly="True"
+                AutoGenerateColumns="False" Height="170" CanUserResizeColumns="True">
+        <DataGrid.Columns>
+          <DataGridTextColumn Header="Služba" Binding="{Binding Service}" Width="140"/>
+          <DataGridTextColumn Header="Last tick" Binding="{Binding LastTickAt}" Width="200"/>
+          <DataGridTextColumn Header="Leader tick" Binding="{Binding LastLeaderActiveAt}" Width="200"/>
+          <DataGridTextColumn Header="Ticks" Binding="{Binding TickCount}" Width="80"/>
+          <DataGridTextColumn Header="Last error" Binding="{Binding LastError}" Width="*"/>
+        </DataGrid.Columns>
+      </DataGrid>
+
+      <TextBlock Text="Readiness checky" FontWeight="Bold"/>
+      <DataGrid x:CompileBindings="False" ItemsSource="{Binding Readiness.Checks}" IsReadOnly="True"
+                AutoGenerateColumns="False" Height="120" CanUserResizeColumns="True">
+        <DataGrid.Columns>
+          <DataGridTextColumn Header="Check" Binding="{Binding Name}" Width="140"/>
+          <DataGridTextColumn Header="Ok" Binding="{Binding Ok}" Width="80"/>
+          <DataGridTextColumn Header="Detail" Binding="{Binding Detail}" Width="*"/>
+        </DataGrid.Columns>
+      </DataGrid>
+
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

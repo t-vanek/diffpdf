@@ -1,0 +1,94 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:DiffPdf.DesktopUI.ViewModels"
+             x:Class="DiffPdf.DesktopUI.Views.InstancesView"
+             x:DataType="vm:InstancesViewModel">
+
+  <DockPanel>
+    <!-- Toolbar: branch selector + actions with icons -->
+    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+      <TextBlock Text="Instances" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
+      <TextBlock Text="Branch:" VerticalAlignment="Center"/>
+      <ComboBox Width="180" ItemsSource="{Binding Branches}" SelectedItem="{Binding SelectedBranch}">
+        <ComboBox.ItemTemplate><DataTemplate x:CompileBindings="False"><TextBlock Text="{Binding Key}"/></DataTemplate></ComboBox.ItemTemplate>
+      </ComboBox>
+      <Button Content="🔄 Obnovit" Command="{Binding RefreshCommand}"/>
+      <Button Content="➕ Vytvořit instanci" Command="{Binding ShowCreateCommand}"/>
+      <Button Content="🗑 Smazat instanci" Command="{Binding DeleteCommand}"
+              IsEnabled="{Binding SelectedInstance, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+      <TextBlock Text="{Binding Info}" Foreground="#9CDCFE" VerticalAlignment="Center"/>
+      <TextBlock Text="{Binding Error}" Foreground="#C0392B" VerticalAlignment="Center"/>
+    </StackPanel>
+
+    <!-- Reveal create form -->
+    <Border DockPanel.Dock="Top" IsVisible="{Binding ShowCreateForm}"
+            BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,0,8">
+      <StackPanel Spacing="8">
+        <TextBlock Text="Nová instance" FontWeight="Bold"/>
+        <WrapPanel>
+          <TextBox Width="180" Margin="0,0,8,6" Text="{Binding NewKey}" PlaceholderText="Key"/>
+          <TextBox Width="200" Margin="0,0,8,6" Text="{Binding NewName}" PlaceholderText="Name"/>
+          <TextBox Width="320" Margin="0,0,8,6" Text="{Binding NewBasePath}" PlaceholderText="BasePath (lokál / UNC / share:alias)"/>
+          <TextBox Width="220" Margin="0,0,8,6" Text="{Binding NewCredentialProfile}" PlaceholderText="CredentialProfile (volitelné)"/>
+        </WrapPanel>
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <CheckBox Content="Založit složky (ensureStructure)" IsChecked="{Binding EnsureStructure}" VerticalAlignment="Center"/>
+          <Button Content="Uložit" Command="{Binding SaveCreateCommand}"/>
+          <Button Content="Zrušit" Command="{Binding CancelCreateCommand}"/>
+        </StackPanel>
+        <TextBlock Text="{Binding ValidationError}" Foreground="#C0392B" TextWrapping="Wrap"
+                   IsVisible="{Binding ValidationError, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+      </StackPanel>
+    </Border>
+
+    <Grid ColumnDefinitions="*,420">
+      <DataGrid Grid.Column="0" Margin="0,0,8,0" x:CompileBindings="False" ItemsSource="{Binding Instances}"
+                SelectedItem="{Binding SelectedInstance}" IsReadOnly="True" AutoGenerateColumns="False" CanUserResizeColumns="True">
+        <DataGrid.Columns>
+          <DataGridTextColumn Header="Key" Binding="{Binding Key}" Width="150"/>
+          <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="150"/>
+          <DataGridTextColumn Header="BasePath" Binding="{Binding BasePath}" Width="*"/>
+          <DataGridTextColumn Header="Cred" Binding="{Binding CredentialProfile}" Width="100"/>
+        </DataGrid.Columns>
+      </DataGrid>
+
+      <ScrollViewer Grid.Column="1">
+        <StackPanel Spacing="10">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Content="Structure" Command="{Binding EnsureStructureCmdCommand}"/>
+            <Button Content="Readiness" Command="{Binding ReadinessCommand}"/>
+          </StackPanel>
+
+          <Border BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="4" Padding="10"
+                  IsVisible="{Binding Readiness, Converter={x:Static ObjectConverters.IsNotNull}}">
+            <StackPanel Spacing="4">
+              <TextBlock Text="Readiness" FontWeight="Bold"/>
+              <TextBlock Text="{Binding Readiness.Ready, StringFormat='Ready: {0}'}"/>
+              <TextBlock Text="{Binding Readiness.Reachable, StringFormat='Reachable: {0}'}"/>
+              <TextBlock Text="{Binding Readiness.OldPdfCount, StringFormat='old PDF: {0}'}"/>
+              <TextBlock Text="{Binding Readiness.NewPdfCount, StringFormat='new PDF: {0}'}"/>
+              <TextBlock Text="{Binding Readiness.Matched, StringFormat='Matched: {0}'}"/>
+              <TextBlock Text="{Binding Readiness.OnlyInOld, StringFormat='Only old: {0}'}"/>
+              <TextBlock Text="{Binding Readiness.OnlyInNew, StringFormat='Only new: {0}'}"/>
+              <TextBlock Text="{Binding Readiness.Error}" Foreground="#C0392B" TextWrapping="Wrap"/>
+            </StackPanel>
+          </Border>
+
+          <Border BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="4" Padding="10"
+                  IsVisible="{Binding Structure, Converter={x:Static ObjectConverters.IsNotNull}}">
+            <StackPanel Spacing="4">
+              <TextBlock Text="Structure" FontWeight="Bold"/>
+              <TextBlock Text="{Binding Structure.Ok, StringFormat='Ok: {0}'}"/>
+              <TextBlock Text="{Binding Structure.BasePath}" TextWrapping="Wrap"/>
+              <ItemsControl x:CompileBindings="False" ItemsSource="{Binding Structure.Items}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate><TextBlock Text="{Binding Name}"/></DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </Border>
+        </StackPanel>
+      </ScrollViewer>
+    </Grid>
+  </DockPanel>
+</UserControl>

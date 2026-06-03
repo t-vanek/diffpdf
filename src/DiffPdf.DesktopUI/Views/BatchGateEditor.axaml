@@ -1,0 +1,27 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:DiffPdf.DesktopUI.ViewModels"
+             x:Class="DiffPdf.DesktopUI.Views.BatchGateEditor"
+             x:DataType="vm:BatchGateViewModel">
+
+  <StackPanel Spacing="6">
+    <CheckBox Content="CI brána (BatchGate)" IsChecked="{Binding Enabled}" FontWeight="Bold"/>
+    <StackPanel Spacing="6" IsEnabled="{Binding Enabled}">
+      <CheckBox Content="FailOnAnyDifference" IsChecked="{Binding FailOnAnyDifference}"/>
+      <WrapPanel>
+        <StackPanel Width="150" Margin="0,0,8,6">
+          <TextBlock Text="MaxDifferingFiles"/>
+          <NumericUpDown Value="{Binding MaxDifferingFiles}" Minimum="0" FormatString="0"/>
+        </StackPanel>
+        <StackPanel Width="150" Margin="0,0,8,6">
+          <TextBlock Text="MaxErrors"/>
+          <NumericUpDown Value="{Binding MaxErrors}" Minimum="0" FormatString="0"/>
+        </StackPanel>
+        <StackPanel Width="190" Margin="0,0,8,6">
+          <TextBlock Text="MaxFilesWithContentErrors"/>
+          <NumericUpDown Value="{Binding MaxFilesWithContentErrors}" Minimum="0" FormatString="0"/>
+        </StackPanel>
+      </WrapPanel>
+    </StackPanel>
+  </StackPanel>
+</UserControl>
