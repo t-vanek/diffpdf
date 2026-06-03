@@ -27,4 +27,7 @@ public interface IFilePairTaskStore
     Task<IReadOnlyList<(Guid JobId, Guid TaskId)>> RequeueStaleAsync(CancellationToken ct = default);
 
     Task<IReadOnlyList<FilePairTask>> ListByJobAsync(Guid jobId, CancellationToken ct = default);
+
+    /// <summary>Counts active (Queued or Running) file-pair tasks across all jobs (operational backlog depth).</summary>
+    Task<int> CountActiveAsync(CancellationToken ct = default);
 }

@@ -231,6 +231,19 @@ public sealed class DiffPdfClient(HttpClient http)
         return resp.IsSuccessStatusCode;
     }
 
+    /// <summary>Readiness: dependency checks (database / renderer / storage). Returns the body for both 200 (ready) and 503 (degraded).</summary>
+    public async Task<ReadinessResponse> GetReadinessAsync(CancellationToken ct = default)
+    {
+        using var resp = await http.SendAsync(new HttpRequestMessage(HttpMethod.Get, "/health/ready"), ct);
+        if (resp.StatusCode is not (HttpStatusCode.OK or HttpStatusCode.ServiceUnavailable))
+            throw await ApiException(resp, ct);
+        return (await resp.Content.ReadFromJsonAsync<ReadinessResponse>(Json, ct))!;
+    }
+
+    /// <summary>Full operational status (authenticated): leader, service heartbeats, backlog, dependencies.</summary>
+    public Task<OperationalStatusResponse> GetStatusAsync(CancellationToken ct = default) =>
+        JsonAsync<OperationalStatusResponse>(HttpMethod.Get, "/api/v1/status", null, ct);
+
     // ---------------- plumbing ----------------
 
     private sealed record JobActionResult(int Resumed, int Retried, JobSummary Job);

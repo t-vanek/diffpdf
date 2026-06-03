@@ -51,4 +51,7 @@ public interface IJobStore
 
     /// <summary>Marks a job's on-disk artifacts as pruned, so retention skips it on the next pass.</summary>
     Task MarkArtifactsPrunedAsync(Guid id, DateTimeOffset at, CancellationToken ct = default);
+
+    /// <summary>Counts jobs grouped by status (for the operational backlog view). Doubles as a cheap DB ping.</summary>
+    Task<IReadOnlyDictionary<JobStatus, int>> CountByStatusAsync(CancellationToken ct = default);
 }

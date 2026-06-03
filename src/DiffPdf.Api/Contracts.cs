@@ -300,3 +300,45 @@ public sealed record WatchResponse
         Version = w.Version,
     };
 }
+
+// ---------------- Operational visibility ----------------
+
+/// <summary>Identity, build version and uptime of the responding API replica.</summary>
+public sealed record ReplicaInfo(string WorkerInstanceId, string Version, string Environment, DateTimeOffset StartedAt, double UptimeSeconds);
+
+/// <summary>Who currently holds the automation leader lease (read from the shared database).</summary>
+public sealed record LeaderInfo(
+    string Role, bool IsThisReplica, string? Owner,
+    DateTimeOffset? AcquiredAt, DateTimeOffset? RenewedAt, DateTimeOffset? ExpiresAt, bool LeaseHealthy);
+
+/// <summary>Last activity of one automation background service on this replica.</summary>
+public sealed record ServiceHealthInfo(
+    string Service, DateTimeOffset? LastTickAt, DateTimeOffset? LastLeaderActiveAt,
+    long TickCount, string? LastError, DateTimeOffset? LastErrorAt);
+
+/// <summary>Queue depth from the shared database.</summary>
+public sealed record BacklogInfo(int QueuedJobs, int RunningJobs, int PausedJobs, int ActiveTasks);
+
+/// <summary>A single dependency check result.</summary>
+public sealed record DependencyCheck(string Name, bool Ok, string? Detail);
+
+/// <summary>Health of the external dependencies the server relies on.</summary>
+public sealed record DependenciesInfo(DependencyCheck Database, DependencyCheck Renderer, DependencyCheck Storage);
+
+/// <summary>
+/// Full operational status (authenticated). <see cref="Replica"/>, <see cref="Services"/> and the
+/// renderer/storage checks are <b>per-replica</b> (the responding process); <see cref="Leader"/> and
+/// <see cref="Backlog"/> are <b>shared</b> (read from the database).
+/// </summary>
+public sealed record OperationalStatusResponse(
+    ReplicaInfo Replica,
+    LeaderInfo Leader,
+    IReadOnlyList<ServiceHealthInfo> Services,
+    BacklogInfo Backlog,
+    int EnabledSchedules,
+    int EnabledWatches,
+    bool RetentionEnabled,
+    DependenciesInfo Dependencies);
+
+/// <summary>Readiness summary: overall status plus the per-check breakdown (200 ready / 503 degraded).</summary>
+public sealed record ReadinessResponse(string Status, IReadOnlyList<DependencyCheck> Checks);

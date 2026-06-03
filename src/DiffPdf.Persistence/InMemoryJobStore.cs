@@ -263,6 +263,14 @@ public sealed class InMemoryJobStore : IJobStore
         return Task.CompletedTask;
     }
 
+    public Task<IReadOnlyDictionary<JobStatus, int>> CountByStatusAsync(CancellationToken ct = default)
+    {
+        var counts = _jobs.Values
+            .GroupBy(j => j.Status)
+            .ToDictionary(g => g.Key, g => g.Count());
+        return Task.FromResult<IReadOnlyDictionary<JobStatus, int>>(counts);
+    }
+
     private ComparisonJob Guard(Guid id, long expectedVersion, params JobStatus[] allowed)
     {
         if (!_jobs.TryGetValue(id, out var job))

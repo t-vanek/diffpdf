@@ -25,6 +25,10 @@ public sealed class SqlServerLeaderElection(string connectionString) : ILeaderEl
         ) then 1 else 0 end;
         """;
 
+    private const string ReadSql = """
+        select owner, acquired_at, renewed_at, expires_at from automation_leader where role = @role;
+        """;
+
     public async Task<bool> TryAcquireAsync(string role, string owner, TimeSpan lease, CancellationToken ct = default)
     {
         await using var conn = new SqlConnection(connectionString);
@@ -36,5 +40,21 @@ public sealed class SqlServerLeaderElection(string connectionString) : ILeaderEl
 
         var result = await cmd.ExecuteScalarAsync(ct);
         return result is int i && i == 1;
+    }
+
+    public async Task<LeaderLease?> GetAsync(string role, CancellationToken ct = default)
+    {
+        await using var conn = new SqlConnection(connectionString);
+        await conn.OpenAsync(ct);
+        await using var cmd = new SqlCommand(ReadSql, conn);
+        cmd.Parameters.AddWithValue("@role", role);
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct))
+            return null;
+        return new LeaderLease(
+            reader.GetString(0),
+            reader.GetFieldValue<DateTimeOffset>(1),
+            reader.GetFieldValue<DateTimeOffset>(2),
+            reader.GetFieldValue<DateTimeOffset>(3));
     }
 }

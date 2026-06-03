@@ -23,8 +23,10 @@ public sealed class FolderWatchService(
     IServiceScopeFactory scopeFactory,
     ILeaderElection leader,
     IWorkerInstanceIdProvider workerInstance,
+    IAutomationHeartbeat heartbeat,
     ILogger<FolderWatchService> logger) : BackgroundService
 {
+    private const string ServiceName = "folder-watch";
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(15);
 
     private readonly Dictionary<Guid, WatchState> _states = new();
@@ -47,6 +49,7 @@ public sealed class FolderWatchService(
             }
             catch (Exception ex)
             {
+                heartbeat.Record(ServiceName, false, ex.Message);
                 logger.LogError(ex, "Folder-watch tick failed.");
             }
         }
@@ -62,6 +65,7 @@ public sealed class FolderWatchService(
                 : "This replica is no longer the automation leader (folder-watch idle).");
             _wasLeader = isLeader;
         }
+        heartbeat.Record(ServiceName, isLeader);
         if (!isLeader)
             return;
 

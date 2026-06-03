@@ -66,6 +66,11 @@ Klient tedy obsluhuje jen automatizaci a sleduje výsledky.
   (`GET …/schedules/{key}/runs`: kdy, jobId, výsledek), takže je vidět, jestli poslední běhy
   prošly. Volitelná **retence** (leader-gated) maže staré report-artefakty podle stáří, aby
   disk nerostl donekonečna (DB řádky i historie zůstávají).
+- **Provozní viditelnost** — `GET /api/v1/status` ukáže běžící automatizaci celou přes API
+  (žádné RDP): kdo je **leader** + platnost lease, **ticky služeb** (scheduler/watch/retence),
+  **backlog fronty**, počty aktivních rozvrhů/watchů a stav **závislostí** (DB, Ghostscript,
+  storage). `GET /health/ready` je readiness pro monitory (`200`/`503`); `/health` zůstává
+  levný liveness probe.
 - **Durable pipeline** — dávka se rozpadne na jednotlivé dvojice; jeden poškozený PDF
   dávku nezabije, transientní chyby se opakují a spadlý worker se zotaví, takže dávka
   pokračuje místo zaseknutí.

@@ -125,4 +125,7 @@ public sealed class InMemoryFilePairTaskStore : IFilePairTaskStore
     public Task<IReadOnlyList<FilePairTask>> ListByJobAsync(Guid jobId, CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<FilePairTask>>(
             _tasks.Values.Where(t => t.JobId == jobId).OrderBy(t => t.RelativePath).ToList());
+
+    public Task<int> CountActiveAsync(CancellationToken ct = default) =>
+        Task.FromResult(_tasks.Values.Count(t => t.Status is FilePairTaskStatus.Queued or FilePairTaskStatus.Running));
 }

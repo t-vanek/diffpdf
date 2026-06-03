@@ -1,3 +1,4 @@
+using DiffPdf.Api.Operational;
 using DiffPdf.Core.Abstractions;
 using DiffPdf.Core.Models;
 using DiffPdf.Core.Storage;
@@ -12,8 +13,18 @@ public static class ComparisonEndpoints
     {
         app.MapGet("/", () => Results.Ok(new { service = "diffpdf", status = "ok" }))
             .AllowAnonymous().WithTags("Health").WithSummary("Service info").ExcludeFromDescription();
-        app.MapGet("/health", () => Results.Ok(new { status = "healthy" }))
+
+        // Liveness — cheap, dependency-free, always 200 while the process serves HTTP.
+        app.MapGet("/health", () => Results.Ok(new { status = "healthy", version = BuildInfo.Version, uptimeSeconds = BuildInfo.UptimeSeconds }))
             .AllowAnonymous().WithTags("Health").WithSummary("Liveness probe");
+
+        // Readiness — checks critical dependencies (DB / renderer / storage); 200 ready, 503 degraded.
+        app.MapGet("/health/ready", async (OperationalStatusService status, CancellationToken ct) =>
+        {
+            var (ready, body) = await status.BuildReadinessAsync(ct);
+            return ready ? Results.Ok(body) : Results.Json(body, statusCode: StatusCodes.Status503ServiceUnavailable);
+        }).AllowAnonymous().WithTags("Health").WithSummary("Readiness probe (200 ready / 503 degraded)")
+          .Produces<ReadinessResponse>().Produces<ReadinessResponse>(StatusCodes.Status503ServiceUnavailable);
     }
 
     public static void MapComparisonEndpoints(this IEndpointRouteBuilder group)
