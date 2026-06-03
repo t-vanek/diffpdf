@@ -63,3 +63,39 @@ public sealed class JobEntity
     public string? LockedBy { get; set; }
     public DateTimeOffset? LockedUntil { get; set; }
 }
+
+public sealed class ScheduleEntity
+{
+    public Guid Id { get; set; }
+    public Guid BranchId { get; set; }
+    public Guid InstanceId { get; set; }
+    public string BranchKey { get; set; } = string.Empty;
+    public string InstanceKey { get; set; } = string.Empty;
+    public string Key { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string Cron { get; set; } = string.Empty;
+    public string OptionsJson { get; set; } = string.Empty;
+    public string? GateJson { get; set; }
+    public string SearchPattern { get; set; } = "*.pdf";
+    public bool Recursive { get; set; } = true;
+    public int MaxDegreeOfParallelism { get; set; }
+    public bool Enabled { get; set; } = true;
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? UpdatedAt { get; set; }
+    public DateTimeOffset? LastRunAt { get; set; }
+    public long Version { get; set; } = 1;
+}
+
+public sealed class SubscriptionEntity
+{
+    public Guid Id { get; set; }
+    public string Channel { get; set; } = string.Empty;
+    public string Target { get; set; } = string.Empty;
+    public string EventsJson { get; set; } = string.Empty;
+    public string? BranchKey { get; set; }
+    public string? InstanceKey { get; set; }
+    public bool Enabled { get; set; } = true;
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? UpdatedAt { get; set; }
+    public long Version { get; set; } = 1;
+}

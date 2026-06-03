@@ -180,3 +180,39 @@ public sealed record TokenResponse
     [JsonPropertyName("token_type")] public string TokenType { get; init; } = "";
     [JsonPropertyName("expires_in")] public int ExpiresIn { get; init; }
 }
+
+/// <summary>A recurring schedule as returned by the API.</summary>
+public sealed record ScheduleResponse
+{
+    public Guid Id { get; init; }
+    public string BranchKey { get; init; } = "";
+    public string InstanceKey { get; init; } = "";
+    public string Key { get; init; } = "";
+    public string Name { get; init; } = "";
+    public string Cron { get; init; } = "";
+    public ComparisonOptions Options { get; init; } = new();
+    public BatchGate? Gate { get; init; }
+    public string SearchPattern { get; init; } = "*.pdf";
+    public bool Recursive { get; init; }
+    public int MaxDegreeOfParallelism { get; init; }
+    public bool Enabled { get; init; }
+    public DateTimeOffset CreatedAt { get; init; }
+    public DateTimeOffset? UpdatedAt { get; init; }
+    public DateTimeOffset? LastRunAt { get; init; }
+    public long Version { get; init; }
+}
+
+/// <summary>A notification subscription as returned by the API.</summary>
+public sealed record SubscriptionResponse
+{
+    public Guid Id { get; init; }
+    public string Channel { get; init; } = "";
+    public string Target { get; init; } = "";
+    public IReadOnlyList<NotificationEvent> Events { get; init; } = [];
+    public string? BranchKey { get; init; }
+    public string? InstanceKey { get; init; }
+    public bool Enabled { get; init; }
+    public DateTimeOffset CreatedAt { get; init; }
+    public DateTimeOffset? UpdatedAt { get; init; }
+    public long Version { get; init; }
+}

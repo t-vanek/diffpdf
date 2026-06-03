@@ -23,7 +23,6 @@ logs/
 
 # Job storage (artifacts/reports/logs per scope)
 storage/
-samples/storage/
 
-# Generated per-instance outputs from local runs (instance basePath/reports/{jobId})
-samples/**/reports/
+# Sample / local instance data — not versioned
+samples/

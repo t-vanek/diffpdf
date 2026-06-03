@@ -81,6 +81,8 @@ else
     builder.Services.AddSingleton<IFilePairTaskStore, InMemoryFilePairTaskStore>();
     builder.Services.AddSingleton<IBranchStore, InMemoryBranchStore>();
     builder.Services.AddSingleton<IInstanceStore, InMemoryInstanceStore>();
+    builder.Services.AddSingleton<IScheduleStore, InMemoryScheduleStore>();
+    builder.Services.AddSingleton<ISubscriptionStore, InMemorySubscriptionStore>();
     builder.Services.AddScoped<IJobSubmissionService, SimpleJobSubmissionService>();
     builder.Host.UseWolverine(opts =>
     {
@@ -100,7 +102,7 @@ builder.Services.AddHostedService<InstanceStructureHostedService>();
 // and a recurring batch scheduler. Both are no-ops unless enabled in configuration
 // (Notifications:Enabled / Schedules:Enabled).
 builder.Services.AddDiffPdfNotifications(builder.Configuration);
-builder.Services.AddDiffPdfScheduling(builder.Configuration);
+builder.Services.AddDiffPdfScheduling();
 
 var auth = builder.Configuration.GetSection("Auth").Get<AuthOptions>() ?? new AuthOptions();
 builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection("Auth"));
@@ -135,7 +137,8 @@ app.MapHealthEndpoints();
 var api = app.MapGroup("/api/v1");
 api.MapComparisonEndpoints();
 api.MapScopeEndpoints();
-api.MapBatchEndpoints();
+api.MapScheduleEndpoints();
+api.MapSubscriptionEndpoints();
 api.MapJobEndpoints();
 api.MapDiscoveryEndpoints();
 

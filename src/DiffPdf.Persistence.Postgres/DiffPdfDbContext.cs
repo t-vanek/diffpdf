@@ -9,6 +9,8 @@ public sealed class DiffPdfDbContext(DbContextOptions<DiffPdfDbContext> options)
     public DbSet<InstanceEntity> Instances => Set<InstanceEntity>();
     public DbSet<JobEntity> Jobs => Set<JobEntity>();
     public DbSet<FilePairTaskEntity> FilePairTasks => Set<FilePairTaskEntity>();
+    public DbSet<ScheduleEntity> Schedules => Set<ScheduleEntity>();
+    public DbSet<SubscriptionEntity> Subscriptions => Set<SubscriptionEntity>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -87,6 +89,49 @@ public sealed class DiffPdfDbContext(DbContextOptions<DiffPdfDbContext> options)
             e.Property(x => x.LockedBy).HasColumnName("locked_by");
             e.Property(x => x.LockedUntil).HasColumnName("locked_until");
             e.HasIndex(x => new { x.JobId, x.Status });
+        });
+
+        b.Entity<ScheduleEntity>(e =>
+        {
+            e.ToTable("comparison_schedules");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.BranchId).HasColumnName("branch_id");
+            e.Property(x => x.InstanceId).HasColumnName("instance_id");
+            e.Property(x => x.BranchKey).HasColumnName("branch_key");
+            e.Property(x => x.InstanceKey).HasColumnName("instance_key");
+            e.Property(x => x.Key).HasColumnName("key");
+            e.Property(x => x.Name).HasColumnName("name");
+            e.Property(x => x.Cron).HasColumnName("cron");
+            e.Property(x => x.OptionsJson).HasColumnName("options_json").HasColumnType("jsonb");
+            e.Property(x => x.GateJson).HasColumnName("gate_json").HasColumnType("jsonb");
+            e.Property(x => x.SearchPattern).HasColumnName("search_pattern");
+            e.Property(x => x.Recursive).HasColumnName("recursive");
+            e.Property(x => x.MaxDegreeOfParallelism).HasColumnName("max_degree_of_parallelism");
+            e.Property(x => x.Enabled).HasColumnName("enabled");
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
+            e.Property(x => x.LastRunAt).HasColumnName("last_run_at");
+            e.Property(x => x.Version).HasColumnName("version");
+            e.HasIndex(x => new { x.InstanceId, x.Key }).IsUnique();
+            e.HasIndex(x => x.Enabled);
+        });
+
+        b.Entity<SubscriptionEntity>(e =>
+        {
+            e.ToTable("notification_subscriptions");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.Channel).HasColumnName("channel");
+            e.Property(x => x.Target).HasColumnName("target");
+            e.Property(x => x.EventsJson).HasColumnName("events_json").HasColumnType("jsonb");
+            e.Property(x => x.BranchKey).HasColumnName("branch_key");
+            e.Property(x => x.InstanceKey).HasColumnName("instance_key");
+            e.Property(x => x.Enabled).HasColumnName("enabled");
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
+            e.Property(x => x.Version).HasColumnName("version");
+            e.HasIndex(x => x.Enabled);
         });
     }
 }

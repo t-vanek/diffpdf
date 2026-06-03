@@ -11,30 +11,6 @@ public sealed record SingleComparisonRequest
     public ComparisonOptions Options { get; init; } = new();
 }
 
-/// <summary>
-/// Request body for submitting a batch comparison. The old/new/reports folders are
-/// derived server-side from the target instance's base path, so only the scope
-/// (branch + instance) and tuning options are supplied.
-/// </summary>
-public sealed record SubmitBatchRequest
-{
-    /// <summary>Branch + instance to compare. The job reads <c>{base}/old</c> vs <c>{base}/new</c>.</summary>
-    public required JobScope Scope { get; init; }
-
-    /// <summary>Glob-style search pattern relative to each folder.</summary>
-    public string SearchPattern { get; init; } = "*.pdf";
-
-    public bool Recursive { get; init; } = true;
-
-    public ComparisonOptions Options { get; init; } = new();
-
-    /// <summary>Maximum number of file pairs compared concurrently. 0 = processor count.</summary>
-    public int MaxDegreeOfParallelism { get; init; } = 0;
-
-    /// <summary>Optional pass/fail criteria for CI gating. Null = no gating.</summary>
-    public BatchGate? Gate { get; init; }
-}
-
 /// <summary>Configured network: named shares and credential-profile names (never secrets).</summary>
 public sealed record NetworkConfigSummary(IReadOnlyList<ShareInfo> Shares, IReadOnlyList<string> CredentialProfiles);
 
@@ -119,5 +95,130 @@ public sealed record JobSummary
         CreatedAt = job.CreatedAt,
         CompletedAt = job.CompletedAt,
         Error = job.Error,
+    };
+}
+
+// ---------------- Automation: schedules ----------------
+
+/// <summary>Create a schedule under an instance. It runs the instance's old/new folders on its cron with the given options/gate.</summary>
+public sealed record CreateScheduleRequest
+{
+    public required string Key { get; init; }
+    public string? Name { get; init; }
+    public required string Cron { get; init; }
+    public ComparisonOptions Options { get; init; } = new();
+    public BatchGate? Gate { get; init; }
+    public string SearchPattern { get; init; } = "*.pdf";
+    public bool Recursive { get; init; } = true;
+    public int MaxDegreeOfParallelism { get; init; }
+    public bool Enabled { get; init; } = true;
+}
+
+/// <summary>Update a schedule. <see cref="Version"/> guards against concurrent edits (409 on mismatch).</summary>
+public sealed record UpdateScheduleRequest
+{
+    public string? Name { get; init; }
+    public required string Cron { get; init; }
+    public ComparisonOptions Options { get; init; } = new();
+    public BatchGate? Gate { get; init; }
+    public string SearchPattern { get; init; } = "*.pdf";
+    public bool Recursive { get; init; } = true;
+    public int MaxDegreeOfParallelism { get; init; }
+    public bool Enabled { get; init; } = true;
+    public required long Version { get; init; }
+}
+
+/// <summary>A schedule as returned by the API.</summary>
+public sealed record ScheduleResponse
+{
+    public required Guid Id { get; init; }
+    public required string BranchKey { get; init; }
+    public required string InstanceKey { get; init; }
+    public required string Key { get; init; }
+    public required string Name { get; init; }
+    public required string Cron { get; init; }
+    public required ComparisonOptions Options { get; init; }
+    public BatchGate? Gate { get; init; }
+    public required string SearchPattern { get; init; }
+    public bool Recursive { get; init; }
+    public int MaxDegreeOfParallelism { get; init; }
+    public bool Enabled { get; init; }
+    public DateTimeOffset CreatedAt { get; init; }
+    public DateTimeOffset? UpdatedAt { get; init; }
+    public DateTimeOffset? LastRunAt { get; init; }
+    public long Version { get; init; }
+
+    public static ScheduleResponse From(ComparisonSchedule s) => new()
+    {
+        Id = s.Id,
+        BranchKey = s.BranchKey,
+        InstanceKey = s.InstanceKey,
+        Key = s.Key,
+        Name = s.Name,
+        Cron = s.Cron,
+        Options = s.Options,
+        Gate = s.Gate,
+        SearchPattern = s.SearchPattern,
+        Recursive = s.Recursive,
+        MaxDegreeOfParallelism = s.MaxDegreeOfParallelism,
+        Enabled = s.Enabled,
+        CreatedAt = s.CreatedAt,
+        UpdatedAt = s.UpdatedAt,
+        LastRunAt = s.LastRunAt,
+        Version = s.Version,
+    };
+}
+
+// ---------------- Automation: notification subscriptions ----------------
+
+/// <summary>Create a notification subscription routing finished-batch events to a webhook or e-mail.</summary>
+public sealed record CreateSubscriptionRequest
+{
+    public required string Channel { get; init; }
+    public required string Target { get; init; }
+    public required IReadOnlyList<NotificationEvent> Events { get; init; }
+    public string? BranchKey { get; init; }
+    public string? InstanceKey { get; init; }
+    public bool Enabled { get; init; } = true;
+}
+
+/// <summary>Update a subscription. <see cref="Version"/> guards against concurrent edits (409 on mismatch).</summary>
+public sealed record UpdateSubscriptionRequest
+{
+    public required string Channel { get; init; }
+    public required string Target { get; init; }
+    public required IReadOnlyList<NotificationEvent> Events { get; init; }
+    public string? BranchKey { get; init; }
+    public string? InstanceKey { get; init; }
+    public bool Enabled { get; init; } = true;
+    public required long Version { get; init; }
+}
+
+/// <summary>A subscription as returned by the API.</summary>
+public sealed record SubscriptionResponse
+{
+    public required Guid Id { get; init; }
+    public required string Channel { get; init; }
+    public required string Target { get; init; }
+    public required IReadOnlyList<NotificationEvent> Events { get; init; }
+    public string? BranchKey { get; init; }
+    public string? InstanceKey { get; init; }
+    public bool Enabled { get; init; }
+    public DateTimeOffset CreatedAt { get; init; }
+    public DateTimeOffset? UpdatedAt { get; init; }
+    public long Version { get; init; }
+
+    public static SubscriptionResponse From(NotificationSubscription s) => new()
+    {
+        Id = s.Id,
+        Channel = s.Channel,
+        Target = s.Target,
+        Events = s.Events,
+        BranchKey = s.BranchKey,
+        InstanceKey = s.InstanceKey,
+        Enabled = s.Enabled,
+        CreatedAt = s.CreatedAt,
+        UpdatedAt = s.UpdatedAt,
+        Version = s.Version,
     };
 }

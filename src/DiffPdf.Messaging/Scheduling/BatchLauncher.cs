@@ -7,16 +7,31 @@ using Microsoft.Extensions.Logging;
 
 namespace DiffPdf.Messaging.Scheduling;
 
+/// <summary>The comparison knobs a launched batch runs with (carried by a schedule or a run-now action).</summary>
+public sealed record LaunchSpec(
+    ComparisonOptions Options,
+    BatchGate? Gate,
+    string SearchPattern,
+    bool Recursive,
+    int MaxDegreeOfParallelism)
+{
+    public static LaunchSpec FromSchedule(ComparisonSchedule s) =>
+        new(s.Options, s.Gate, s.SearchPattern, s.Recursive, s.MaxDegreeOfParallelism);
+}
+
 /// <summary>
-/// Creates and starts a batch for a configured branch/instance in one step — the
-/// automation equivalent of <c>POST /batch</c> + <c>POST /jobs/{id}/start</c>. The job is
-/// persisted as <see cref="JobStatus.Queued"/> and its run command published atomically
-/// (transactional outbox on relational stores).
+/// Creates and starts a batch for a configured branch/instance in one step — the automation
+/// equivalent of the (removed) manual <c>POST /batch</c> + <c>POST /jobs/{id}/start</c>. The job
+/// is persisted as <see cref="JobStatus.Queued"/> and its run command published atomically
+/// (transactional outbox on relational stores). Shared by the scheduler and the run-now endpoint.
 /// </summary>
 public interface IBatchLauncher
 {
-    /// <summary>Returns the new job id, or null when the run was skipped (missing/disabled scope, nothing to compare, unreachable base).</summary>
-    Task<Guid?> LaunchAsync(string branchKey, string instanceKey, CancellationToken ct = default);
+    /// <summary>
+    /// Returns the new job id, or null when the run was skipped (missing/disabled scope, nothing to
+    /// compare, unreachable base). The same pre-flight gate the readiness endpoint reports.
+    /// </summary>
+    Task<Guid?> LaunchAsync(string branchKey, string instanceKey, LaunchSpec spec, CancellationToken ct = default);
 }
 
 /// <inheritdoc />
@@ -28,19 +43,19 @@ public sealed class BatchLauncher(
     IJobSubmissionService submission,
     ILogger<BatchLauncher> logger) : IBatchLauncher
 {
-    public async Task<Guid?> LaunchAsync(string branchKey, string instanceKey, CancellationToken ct = default)
+    public async Task<Guid?> LaunchAsync(string branchKey, string instanceKey, LaunchSpec spec, CancellationToken ct = default)
     {
         var branch = await branches.GetByKeyAsync(branchKey, ct);
         if (branch is null || !branch.Enabled)
         {
-            logger.LogWarning("Skipping scheduled run: branch '{Branch}' not found or disabled.", branchKey);
+            logger.LogWarning("Skipping run: branch '{Branch}' not found or disabled.", branchKey);
             return null;
         }
 
         var instance = await instances.GetByKeyAsync(branch.Id, instanceKey, ct);
         if (instance is null || !instance.Enabled)
         {
-            logger.LogWarning("Skipping scheduled run: instance '{Branch}/{Instance}' not found or disabled.", branchKey, instanceKey);
+            logger.LogWarning("Skipping run: instance '{Branch}/{Instance}' not found or disabled.", branchKey, instanceKey);
             return null;
         }
 
@@ -49,7 +64,7 @@ public sealed class BatchLauncher(
         if (!report.HasComparableInputs)
         {
             logger.LogInformation(
-                "Skipping scheduled run for {Branch}/{Instance}: nothing to compare (old={Old}, new={New}, reachable={Reachable}).",
+                "Skipping run for {Branch}/{Instance}: nothing to compare (old={Old}, new={New}, reachable={Reachable}).",
                 branchKey, instanceKey, report.OldPdfCount, report.NewPdfCount, report.Reachable);
             return null;
         }
@@ -61,7 +76,7 @@ public sealed class BatchLauncher(
         }
         catch (NetworkConfigurationException ex)
         {
-            logger.LogWarning(ex, "Skipping scheduled run for {Branch}/{Instance}: {Message}", branchKey, instanceKey, ex.Message);
+            logger.LogWarning(ex, "Skipping run for {Branch}/{Instance}: {Message}", branchKey, instanceKey, ex.Message);
             return null;
         }
 
@@ -76,6 +91,11 @@ public sealed class BatchLauncher(
                 OldFolder = InstanceFolders.Old(basePath),
                 NewFolder = InstanceFolders.New(basePath),
                 ReportsFolder = InstanceFolders.Reports(basePath),
+                SearchPattern = spec.SearchPattern,
+                Recursive = spec.Recursive,
+                Options = spec.Options,
+                MaxDegreeOfParallelism = spec.MaxDegreeOfParallelism,
+                Gate = spec.Gate,
                 OldFolderCredentials = baseResolved.Credentials,
                 NewFolderCredentials = baseResolved.Credentials,
             },
@@ -84,7 +104,7 @@ public sealed class BatchLauncher(
         };
 
         await submission.SubmitAsync(job, new RunBatchComparison(job.Id, branchKey, instanceKey), ct);
-        logger.LogInformation("Scheduled batch {JobId} launched for {Branch}/{Instance}.", job.Id, branchKey, instanceKey);
+        logger.LogInformation("Batch {JobId} launched for {Branch}/{Instance}.", job.Id, branchKey, instanceKey);
         return job.Id;
     }
 }

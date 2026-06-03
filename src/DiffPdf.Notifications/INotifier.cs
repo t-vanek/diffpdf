@@ -1,3 +1,5 @@
+using DiffPdf.Core.Models;
+
 namespace DiffPdf.Notifications;
 
 /// <summary>Delivers a notification over one concrete channel (webhook, e-mail, …).</summary>

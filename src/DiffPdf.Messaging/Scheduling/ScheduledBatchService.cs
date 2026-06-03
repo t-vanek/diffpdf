@@ -1,87 +1,83 @@
-using Cronos;
+using DiffPdf.Persistence;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace DiffPdf.Messaging.Scheduling;
 
 /// <summary>
-/// Fires recurring batches on their cron cadence (UTC). Parses each schedule's cron once,
-/// then on a short timer launches any that have come due via <see cref="IBatchLauncher"/>.
+/// Fires due batches on their cron cadence (UTC). Every tick it re-reads the enabled schedules from
+/// <see cref="IScheduleStore"/> (a fresh DI scope) and reconciles them through a
+/// <see cref="ScheduleReconciler"/>, so schedules created/edited/deleted via the API take effect
+/// within one tick — no restart. Idle (but alive) when the store has no enabled schedules.
 /// </summary>
 /// <remarks>
-/// Single-process safe (an in-memory "next occurrence" per schedule prevents double firing).
-/// Running multiple API replicas would fire each schedule once per replica — multi-replica
-/// single-fire (a DB leader-lease) is the documented Phase-2 follow-up.
+/// Single-process safe (the per-Id next-occurrence state prevents double firing). Running multiple
+/// API replicas would fire each schedule once per replica — multi-replica single-fire (a DB
+/// leader-lease) is the documented Phase-2 follow-up.
 /// </remarks>
 public sealed class ScheduledBatchService(
     IServiceScopeFactory scopeFactory,
-    IOptions<ScheduleOptions> options,
     ILogger<ScheduledBatchService> logger) : BackgroundService
 {
     private static readonly TimeSpan TickInterval = TimeSpan.FromSeconds(20);
 
+    private readonly ScheduleReconciler _reconciler = new();
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var opts = options.Value;
-        if (!opts.Enabled || opts.Jobs.Count == 0)
-        {
-            logger.LogInformation("Batch scheduler disabled or no schedules configured.");
-            return;
-        }
-
-        var entries = new List<(ScheduledBatch Def, CronExpression Cron, DateTime? Next)>();
-        foreach (var job in opts.Jobs)
-        {
-            if (!job.Enabled)
-                continue;
-            try
-            {
-                var cron = CronExpression.Parse(job.Cron);
-                entries.Add((job, cron, cron.GetNextOccurrence(DateTime.UtcNow)));
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Ignoring schedule for {Branch}/{Instance}: invalid cron '{Cron}'.",
-                    job.BranchKey, job.InstanceKey, job.Cron);
-            }
-        }
-
-        if (entries.Count == 0)
-        {
-            logger.LogWarning("Batch scheduler enabled but no valid schedules to run.");
-            return;
-        }
-
-        logger.LogInformation("Batch scheduler started with {Count} schedule(s).", entries.Count);
+        logger.LogInformation("Batch scheduler started (DB-backed, {Interval}s tick).", TickInterval.TotalSeconds);
 
         using var timer = new PeriodicTimer(TickInterval);
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
-            var now = DateTime.UtcNow;
-            for (int i = 0; i < entries.Count; i++)
+            try
             {
-                var (def, cron, next) = entries[i];
-                if (next is not { } due || now < due)
-                    continue;
+                await TickAsync(stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Scheduler tick failed.");
+            }
+        }
+    }
 
-                try
-                {
-                    await using var scope = scopeFactory.CreateAsyncScope();
-                    var launcher = scope.ServiceProvider.GetRequiredService<IBatchLauncher>();
-                    await launcher.LaunchAsync(def.BranchKey, def.InstanceKey, stoppingToken);
-                }
-                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-                {
-                    return;
-                }
-                catch (Exception ex)
-                {
-                    logger.LogError(ex, "Scheduled launch for {Branch}/{Instance} failed.", def.BranchKey, def.InstanceKey);
-                }
+    private async Task TickAsync(CancellationToken ct)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var store = scope.ServiceProvider.GetRequiredService<IScheduleStore>();
+        var launcher = scope.ServiceProvider.GetRequiredService<IBatchLauncher>();
 
-                entries[i] = (def, cron, cron.GetNextOccurrence(now));
+        var schedules = await store.ListEnabledAsync(ct);
+        var due = _reconciler.Reconcile(
+            DateTime.UtcNow, schedules,
+            (s, ex) => logger.LogError(ex, "Ignoring schedule {Branch}/{Instance}/{Key}: invalid cron '{Cron}'.",
+                s.BranchKey, s.InstanceKey, s.Key, s.Cron));
+
+        foreach (var s in due)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                var jobId = await launcher.LaunchAsync(s.BranchKey, s.InstanceKey, LaunchSpec.FromSchedule(s), ct);
+                if (jobId is { } id)
+                {
+                    await store.TouchLastRunAsync(s.Id, DateTimeOffset.UtcNow, ct);
+                    logger.LogInformation("Scheduled batch {JobId} launched for {Branch}/{Instance}/{Key}.",
+                        id, s.BranchKey, s.InstanceKey, s.Key);
+                }
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Scheduled launch for {Branch}/{Instance}/{Key} failed.", s.BranchKey, s.InstanceKey, s.Key);
             }
         }
     }

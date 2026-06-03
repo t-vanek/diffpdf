@@ -19,6 +19,13 @@ public sealed partial class EntityMapper
     [MapProperty(nameof(FilePairTaskEntity.ResultJson), nameof(FilePairTask.Result))]
     public partial FilePairTask ToDomain(FilePairTaskEntity entity);
 
+    [MapProperty(nameof(ScheduleEntity.OptionsJson), nameof(ComparisonSchedule.Options))]
+    [MapProperty(nameof(ScheduleEntity.GateJson), nameof(ComparisonSchedule.Gate))]
+    public partial ComparisonSchedule ToDomain(ScheduleEntity entity);
+
+    [MapProperty(nameof(SubscriptionEntity.EventsJson), nameof(NotificationSubscription.Events))]
+    public partial NotificationSubscription ToDomain(SubscriptionEntity entity);
+
     // User-defined conversions Mapperly uses for the json columns.
     private static BatchComparisonRequest MapRequest(string json) =>
         DiffPdfJson.Deserialize<BatchComparisonRequest>(json);
@@ -28,4 +35,13 @@ public sealed partial class EntityMapper
 
     private static FilePairResult? MapResult(string? json) =>
         string.IsNullOrEmpty(json) ? null : DiffPdfJson.Deserialize<FilePairResult>(json);
+
+    private static ComparisonOptions MapOptions(string json) =>
+        DiffPdfJson.Deserialize<ComparisonOptions>(json);
+
+    private static BatchGate? MapGate(string? json) =>
+        string.IsNullOrEmpty(json) ? null : DiffPdfJson.Deserialize<BatchGate>(json);
+
+    private static IReadOnlyList<NotificationEvent> MapEvents(string json) =>
+        DiffPdfJson.Deserialize<IReadOnlyList<NotificationEvent>>(json);
 }

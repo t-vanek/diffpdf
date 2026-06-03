@@ -82,6 +82,49 @@ public static class SqlServerMigrator
 
         if not exists (select 1 from sys.indexes where name = 'ix_file_pair_tasks_job_status' and object_id = object_id(N'file_pair_tasks'))
         create index ix_file_pair_tasks_job_status on file_pair_tasks (job_id, status);
+
+        if object_id(N'comparison_schedules', N'U') is null
+        create table comparison_schedules (
+            id uniqueidentifier not null primary key,
+            branch_id uniqueidentifier not null references branches(id),
+            instance_id uniqueidentifier not null references instances(id),
+            branch_key nvarchar(256) not null,
+            instance_key nvarchar(256) not null,
+            [key] nvarchar(256) not null,
+            name nvarchar(max) not null,
+            cron nvarchar(256) not null,
+            options_json nvarchar(max) not null,
+            gate_json nvarchar(max) null,
+            search_pattern nvarchar(256) not null constraint df_comparison_schedules_search_pattern default '*.pdf',
+            recursive bit not null constraint df_comparison_schedules_recursive default 1,
+            max_degree_of_parallelism int not null constraint df_comparison_schedules_mdop default 0,
+            enabled bit not null constraint df_comparison_schedules_enabled default 1,
+            created_at datetimeoffset not null constraint df_comparison_schedules_created_at default sysdatetimeoffset(),
+            updated_at datetimeoffset null,
+            last_run_at datetimeoffset null,
+            version bigint not null constraint df_comparison_schedules_version default 1,
+            constraint uq_comparison_schedules_instance_key unique (instance_id, [key])
+        );
+
+        if not exists (select 1 from sys.indexes where name = 'ix_comparison_schedules_enabled' and object_id = object_id(N'comparison_schedules'))
+        create index ix_comparison_schedules_enabled on comparison_schedules (enabled);
+
+        if object_id(N'notification_subscriptions', N'U') is null
+        create table notification_subscriptions (
+            id uniqueidentifier not null primary key,
+            channel nvarchar(256) not null,
+            target nvarchar(max) not null,
+            events_json nvarchar(max) not null,
+            branch_key nvarchar(256) null,
+            instance_key nvarchar(256) null,
+            enabled bit not null constraint df_notification_subscriptions_enabled default 1,
+            created_at datetimeoffset not null constraint df_notification_subscriptions_created_at default sysdatetimeoffset(),
+            updated_at datetimeoffset null,
+            version bigint not null constraint df_notification_subscriptions_version default 1
+        );
+
+        if not exists (select 1 from sys.indexes where name = 'ix_notification_subscriptions_enabled' and object_id = object_id(N'notification_subscriptions'))
+        create index ix_notification_subscriptions_enabled on notification_subscriptions (enabled);
         """;
 
     public static async Task MigrateAsync(string connectionString, CancellationToken ct = default)

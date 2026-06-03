@@ -1,6 +1,5 @@
 using DiffPdf.Core.Abstractions;
 using DiffPdf.Core.Models;
-using DiffPdf.Core.Network;
 using DiffPdf.Messaging.Messages;
 using DiffPdf.Persistence;
 using Wolverine;
@@ -71,45 +70,6 @@ public static class JobEndpoints
             };
             return report.Passed ? Results.Ok(payload) : Results.Json(payload, statusCode: StatusCodes.Status422UnprocessableEntity);
         }).WithSummary("CI gate verdict (200 pass / 422 fail)").ProducesProblem(StatusCodes.Status404NotFound);
-
-        group.MapPost("/{id:guid}/start", async (
-            Guid id, IJobStore jobStore, IBranchStore branches, IInstanceStore instances,
-            IInstanceStructureService structure, IJobProgressPublisher progress, IMessageBus bus, CancellationToken ct) =>
-        {
-            var job = await jobStore.GetAsync(id, ct);
-            if (job is null) return Results.NotFound();
-            if (job.Status != JobStatus.Draft)
-                return Results.Problem($"Only a Draft job can be started (it is {job.Status}).", statusCode: StatusCodes.Status409Conflict);
-
-            // "Is there anything to compare?" check at start time — PDFs may have been added
-            // to old/new between creating the Draft and starting it.
-            var branch = await branches.GetByKeyAsync(job.BranchKey, ct);
-            var instance = branch is null ? null : await instances.GetByKeyAsync(branch.Id, job.InstanceKey, ct);
-            if (instance is null)
-                return Results.Problem("The job's branch/instance no longer exists.", statusCode: StatusCodes.Status409Conflict);
-
-            var report = await structure.InspectAsync(instance.BasePath, instance.CredentialProfile, ct: ct);
-            if (!report.Reachable)
-                return Results.Problem($"Instance base path is not reachable: {report.Error}", statusCode: StatusCodes.Status400BadRequest);
-
-            // Same "OK to submit a batch" gate the readiness endpoint reports.
-            if (!report.HasComparableInputs)
-                return Results.Problem(
-                    $"Nothing to compare: 'old' has {report.OldPdfCount} PDF(s), 'new' has {report.NewPdfCount}. Both folders must contain at least one PDF.",
-                    statusCode: StatusCodes.Status422UnprocessableEntity);
-
-            var queued = await jobStore.EnqueueAsync(id, ct);
-            if (queued is null)
-                return Results.Problem("Job could not be started (no longer Draft).", statusCode: StatusCodes.Status409Conflict);
-
-            await bus.PublishAsync(new RunBatchComparison(queued.Id, queued.BranchKey, queued.InstanceKey));
-            await progress.PublishAsync(JobProgressChanged.From(queued), ct);
-
-            return Results.Ok(JobSummary.From(queued));
-        }).WithSummary("Start a Draft job (verifies there is something to compare, then runs it)")
-          .Produces<JobSummary>().ProducesProblem(StatusCodes.Status400BadRequest)
-          .ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict)
-          .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
         group.MapPost("/{id:guid}/cancel", async (Guid id, IJobStore jobStore, CancellationToken ct) =>
         {

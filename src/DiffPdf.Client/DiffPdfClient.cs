@@ -63,11 +63,7 @@ public sealed class DiffPdfClient(HttpClient http)
         return JsonAsync<InstanceReadiness>(HttpMethod.Get, url, null, ct);
     }
 
-    // ---------------- Batch + jobs ----------------
-
-    /// <summary>Creates a job in <see cref="JobStatus.Draft"/>. Start it with <see cref="StartJobAsync"/>.</summary>
-    public Task<JobSummary> CreateBatchAsync(SubmitBatchRequest request, CancellationToken ct = default) =>
-        JsonAsync<JobSummary>(HttpMethod.Post, "/api/v1/batch", request, ct);
+    // ---------------- Jobs (observation + control) ----------------
 
     public Task<IReadOnlyList<JobSummary>> ListJobsAsync(
         string? branchKey = null, string? instanceKey = null, JobStatus? status = null, CancellationToken ct = default)
@@ -82,9 +78,6 @@ public sealed class DiffPdfClient(HttpClient http)
 
     public Task<JobSummary?> GetJobAsync(Guid id, CancellationToken ct = default) =>
         GetOrNullAsync<JobSummary>($"/api/v1/jobs/{id}", ct);
-
-    public Task<JobSummary> StartJobAsync(Guid id, CancellationToken ct = default) =>
-        JsonAsync<JobSummary>(HttpMethod.Post, $"/api/v1/jobs/{id}/start", null, ct);
 
     public Task<JobSummary> PauseJobAsync(Guid id, CancellationToken ct = default) =>
         JsonAsync<JobSummary>(HttpMethod.Post, $"/api/v1/jobs/{id}/pause", null, ct);
@@ -122,28 +115,69 @@ public sealed class DiffPdfClient(HttpClient http)
         return await resp.Content.ReadAsByteArrayAsync(ct);
     }
 
-    /// <summary>Create → start → poll to completion → return the report. Throws if the job ends Failed/Cancelled.</summary>
-    public async Task<BatchComparisonReport> RunBatchAsync(
-        JobScope scope, ComparisonOptions? options = null, TimeSpan? pollInterval = null, CancellationToken ct = default)
+    /// <summary>Polls a job to a terminal state and returns its report. Throws if it ends Failed/Cancelled.</summary>
+    public async Task<BatchComparisonReport> WaitForReportAsync(Guid jobId, TimeSpan? pollInterval = null, CancellationToken ct = default)
     {
-        var created = await CreateBatchAsync(new SubmitBatchRequest { Scope = scope, Options = options ?? new() }, ct);
-        await StartJobAsync(created.Id, ct);
-
         var delay = pollInterval ?? TimeSpan.FromSeconds(1);
         while (true)
         {
-            var job = await GetJobAsync(created.Id, ct) ?? throw new InvalidOperationException($"Job {created.Id} disappeared.");
+            var job = await GetJobAsync(jobId, ct) ?? throw new InvalidOperationException($"Job {jobId} disappeared.");
             switch (job.Status)
             {
                 case JobStatus.Completed:
-                    return await GetReportAsync(created.Id, ct);
+                    return await GetReportAsync(jobId, ct);
                 case JobStatus.Failed:
                 case JobStatus.Cancelled:
-                    throw new DiffPdfApiException(HttpStatusCode.Conflict, job.Error, $"Job {created.Id} ended {job.Status}: {job.Error}");
+                    throw new DiffPdfApiException(HttpStatusCode.Conflict, job.Error, $"Job {jobId} ended {job.Status}: {job.Error}");
             }
             await Task.Delay(delay, ct);
         }
     }
+
+    // ---------------- Schedules ----------------
+
+    public Task<ScheduleResponse> CreateScheduleAsync(string branchKey, string instanceKey, CreateScheduleRequest request, CancellationToken ct = default) =>
+        JsonAsync<ScheduleResponse>(HttpMethod.Post, SchedulesUrl(branchKey, instanceKey), request, ct);
+
+    public Task<IReadOnlyList<ScheduleResponse>> ListSchedulesAsync(string branchKey, string instanceKey, CancellationToken ct = default) =>
+        JsonAsync<IReadOnlyList<ScheduleResponse>>(HttpMethod.Get, SchedulesUrl(branchKey, instanceKey), null, ct);
+
+    public Task<ScheduleResponse?> GetScheduleAsync(string branchKey, string instanceKey, string scheduleKey, CancellationToken ct = default) =>
+        GetOrNullAsync<ScheduleResponse>($"{SchedulesUrl(branchKey, instanceKey)}/{Esc(scheduleKey)}", ct);
+
+    public Task<ScheduleResponse> UpdateScheduleAsync(string branchKey, string instanceKey, string scheduleKey, UpdateScheduleRequest request, CancellationToken ct = default) =>
+        JsonAsync<ScheduleResponse>(HttpMethod.Put, $"{SchedulesUrl(branchKey, instanceKey)}/{Esc(scheduleKey)}", request, ct);
+
+    public async Task DeleteScheduleAsync(string branchKey, string instanceKey, string scheduleKey, CancellationToken ct = default)
+    {
+        using var resp = await SendRawAsync(HttpMethod.Delete, $"{SchedulesUrl(branchKey, instanceKey)}/{Esc(scheduleKey)}", null, ct);
+    }
+
+    /// <summary>Runs a schedule now; returns the queued job id. Throws DiffPdfApiException (422) when there is nothing to compare.</summary>
+    public async Task<Guid> RunScheduleNowAsync(string branchKey, string instanceKey, string scheduleKey, CancellationToken ct = default) =>
+        (await JsonAsync<RunScheduleResult>(HttpMethod.Post, $"{SchedulesUrl(branchKey, instanceKey)}/{Esc(scheduleKey)}/run", null, ct)).JobId;
+
+    // ---------------- Notification subscriptions ----------------
+
+    public Task<SubscriptionResponse> CreateSubscriptionAsync(CreateSubscriptionRequest request, CancellationToken ct = default) =>
+        JsonAsync<SubscriptionResponse>(HttpMethod.Post, "/api/v1/subscriptions", request, ct);
+
+    public Task<IReadOnlyList<SubscriptionResponse>> ListSubscriptionsAsync(CancellationToken ct = default) =>
+        JsonAsync<IReadOnlyList<SubscriptionResponse>>(HttpMethod.Get, "/api/v1/subscriptions", null, ct);
+
+    public Task<SubscriptionResponse?> GetSubscriptionAsync(Guid id, CancellationToken ct = default) =>
+        GetOrNullAsync<SubscriptionResponse>($"/api/v1/subscriptions/{id}", ct);
+
+    public Task<SubscriptionResponse> UpdateSubscriptionAsync(Guid id, UpdateSubscriptionRequest request, CancellationToken ct = default) =>
+        JsonAsync<SubscriptionResponse>(HttpMethod.Put, $"/api/v1/subscriptions/{id}", request, ct);
+
+    public async Task DeleteSubscriptionAsync(Guid id, CancellationToken ct = default)
+    {
+        using var resp = await SendRawAsync(HttpMethod.Delete, $"/api/v1/subscriptions/{id}", null, ct);
+    }
+
+    private static string SchedulesUrl(string branchKey, string instanceKey) =>
+        $"/api/v1/branches/{Esc(branchKey)}/instances/{Esc(instanceKey)}/schedules";
 
     // ---------------- Discovery / single comparison / health ----------------
 
@@ -164,6 +198,8 @@ public sealed class DiffPdfClient(HttpClient http)
     // ---------------- plumbing ----------------
 
     private sealed record JobActionResult(int Resumed, int Retried, JobSummary Job);
+
+    private sealed record RunScheduleResult(Guid JobId);
 
     private async Task<T> JsonAsync<T>(HttpMethod method, string url, object? body, CancellationToken ct)
     {

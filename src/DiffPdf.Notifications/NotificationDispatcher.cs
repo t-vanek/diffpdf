@@ -1,5 +1,6 @@
+using DiffPdf.Core.Models;
+using DiffPdf.Persistence;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace DiffPdf.Notifications;
 
@@ -10,22 +11,22 @@ public interface INotificationDispatcher
 }
 
 /// <summary>
-/// Best-effort dispatcher: matches the notification against configured subscriptions
-/// (event + optional branch/instance filter) and sends via the channel's <see cref="INotifier"/>.
-/// A failure on one subscription is logged and never blocks the others.
+/// Best-effort dispatcher: reads the enabled subscriptions from the store, matches each
+/// against the notification (event + optional branch/instance filter) and sends via the
+/// channel's <see cref="INotifier"/>. A failure on one subscription is logged and never
+/// blocks the others. Registered Scoped so its scoped <see cref="ISubscriptionStore"/>
+/// resolves in the same per-message DI scope as the Wolverine handler that invokes it.
 /// </summary>
 public sealed class NotificationDispatcher(
     IEnumerable<INotifier> notifiers,
-    IOptions<NotificationOptions> options,
+    ISubscriptionStore subscriptions,
     ILogger<NotificationDispatcher> logger) : INotificationDispatcher
 {
     public async Task DispatchAsync(BatchNotification notification, CancellationToken ct = default)
     {
-        var opts = options.Value;
-        if (!opts.Enabled)
-            return;
+        var subs = await subscriptions.ListEnabledAsync(ct);
 
-        foreach (var subscription in opts.Subscriptions)
+        foreach (var subscription in subs)
         {
             if (!subscription.Events.Contains(notification.Event))
                 continue;

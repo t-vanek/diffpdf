@@ -1,3 +1,4 @@
+using DiffPdf.Core.Models;
 using DiffPdf.Messaging.Messages;
 using DiffPdf.Notifications;
 
