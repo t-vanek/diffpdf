@@ -43,9 +43,9 @@ a chybové hlášky vyrenderované přímo do PDF.
   `OnlyInOld` / `OnlyInNew` / `Error`.
 - **Větve, instance a struktura složek** — scope je hierarchie **větev →
   instance**, kde instance nese `basePath` se třemi podsložkami `old` / `new` /
-  `reports`. Server strukturu **zjistí, založí a opraví** (při startu serveru,
-  při zakládání instance i přes explicitní endpoint) a umí vrátit počet PDF
-  i kompletní seznam souborů v `old`/`new`.
+  `reports`. Server strukturu **založí a opraví** (při startu serveru, při
+  zakládání instance i přes `POST …/structure`); její stav i počet PDF / seznam
+  souborů v `old`/`new` pak vrací pre-flight `GET …/readiness`.
 - **Readiness (pre-flight)** — `GET …/readiness` nad instancí v jednom volání
   vrátí stav složek `old`/`new`/`reports` (dostupnost, počty PDF, volitelně
   seznam souborů) **i** spárování `old`/`new` a verdikt `ready`, takže prázdná
@@ -293,7 +293,7 @@ curl http://localhost:8080/api/v1/jobs/<id>/report
 | `highlightStyle` | `Raster` | `Raster` (stránky jako obrázek) nebo `VectorOverlay` (overlay nad originálem — text zůstává vybíratelný). |
 | `renderer` | `Ghostscript` | `Ghostscript` nebo `Pdfium`. |
 
-Výsledek jedné dvojice (`POST /api/comparisons`) vrací `outcome`
+Výsledek jedné dvojice (`POST /api/v1/comparisons`) vrací `outcome`
 (`Compared`/`Failed`), stav per dokument, typovaný rozpis po stránkách
 (`changes`, `differenceScore`, příznaky prázdnoty, regiony) a případné
 `contentErrors`. Batch report agreguje počty (`identical`, `differing`,
@@ -325,7 +325,7 @@ oblast na konkrétní čísla stránek.
 #### CI brána (pass/fail dávky)
 
 Přidej do batch požadavku `gate` a běh se stane pass/fail kontrolou. Endpoint
-`GET /api/jobs/{id}/result` pak vrátí `200` při úspěchu a `422` při selhání —
+`GET /api/v1/jobs/{id}/result` pak vrátí `200` při úspěchu a `422` při selhání —
 ideální pro `curl --fail` v pipeline.
 
 ```jsonc
