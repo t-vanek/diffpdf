@@ -3,6 +3,7 @@ using DiffPdf.Api;
 using DiffPdf.Api.Auth;
 using DiffPdf.Api.Endpoints;
 using DiffPdf.Api.Hubs;
+using DiffPdf.Api.Operational;
 using DiffPdf.Core.Abstractions;
 using DiffPdf.Core.Network;
 using DiffPdf.Core.Storage;
@@ -54,6 +55,10 @@ builder.Services.AddSingleton<IJobProgressPublisher, SignalRJobProgressPublisher
 builder.Services.AddDiffPdf();
 builder.Services.AddDiffPdfWorker();
 
+// Per-replica heartbeat registry: each automation background service records its ticks here,
+// and the operational status endpoint reads the snapshot.
+builder.Services.AddSingleton<IAutomationHeartbeat, AutomationHeartbeat>();
+
 string? postgres = builder.Configuration.GetConnectionString("Postgres");
 string? sqlServer = builder.Configuration.GetConnectionString("SqlServer");
 
@@ -95,6 +100,12 @@ else
         opts.Discovery.IncludeAssembly(typeof(DiffPdfWolverineConfiguration).Assembly);
     });
 }
+
+// Operational visibility: persistence backend name + the status/readiness composer (singleton;
+// resolves scoped stores per request and caches the renderer probe).
+string persistenceProvider = string.IsNullOrWhiteSpace(relational) ? "In-memory" : useSqlServer ? "SQL Server" : "PostgreSQL";
+builder.Services.AddSingleton(new PersistenceInfo(persistenceProvider));
+builder.Services.AddSingleton<OperationalStatusService>();
 
 // Recovers file-pair tasks abandoned by a crashed worker (works with either store).
 builder.Services.AddHostedService<StaleTaskRecoveryService>();
@@ -149,6 +160,7 @@ api.MapJobEndpoints();
 api.MapDiscoveryEndpoints();
 api.MapTriggerEndpoints();
 api.MapWatchEndpoints();
+api.MapStatusEndpoints();
 
 app.MapHub<JobsHub>("/hubs/jobs");
 

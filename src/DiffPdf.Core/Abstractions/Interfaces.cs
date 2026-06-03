@@ -17,7 +17,18 @@ public interface IPdfPageRenderer
     RendererBackend Backend { get; }
     int GetPageCount(string path);
     Task<RenderedPage> RenderAsync(string path, int pageNumber, int dpi, CancellationToken ct = default);
+
+    /// <summary>
+    /// Probes whether this rendering backend is actually usable (operational readiness). The default
+    /// reports available with no version — correct for in-process backends with no external binary
+    /// (e.g. PDFium); backends that shell out (Ghostscript) override this to check the executable.
+    /// </summary>
+    Task<RendererHealth> CheckAsync(CancellationToken ct = default) =>
+        Task.FromResult(new RendererHealth(Backend, Available: true, Version: null));
 }
+
+/// <summary>Result of an <see cref="IPdfPageRenderer"/> availability probe.</summary>
+public sealed record RendererHealth(RendererBackend Backend, bool Available, string? Version);
 
 /// <summary>Resolves a renderer for a requested backend.</summary>
 public interface IPdfPageRendererFactory

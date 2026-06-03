@@ -114,6 +114,9 @@ public sealed class SqlServerFilePairTaskStore(DiffPdfDbContext db, EntityMapper
         return rows.Select(mapper.ToDomain).ToList();
     }
 
+    public async Task<int> CountActiveAsync(CancellationToken ct = default) =>
+        await db.FilePairTasks.AsNoTracking().CountAsync(t => t.Status == "Queued" || t.Status == "Running", ct);
+
     private static FilePairTaskEntity ToEntity(FilePairTask t) => new()
     {
         Id = t.Id,

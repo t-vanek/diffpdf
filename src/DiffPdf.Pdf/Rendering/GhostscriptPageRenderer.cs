@@ -85,4 +85,40 @@ public sealed class GhostscriptPageRenderer(
             }
         }
     }
+
+    /// <summary>Runs <c>{gs} --version</c> (short timeout) to confirm the Ghostscript binary is reachable.</summary>
+    public async Task<RendererHealth> CheckAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = _options.ExecutablePath,
+                RedirectStandardError = true,
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+            };
+            psi.ArgumentList.Add("--version");
+
+            using var process = Process.Start(psi);
+            if (process is null)
+                return new RendererHealth(Backend, Available: false, Version: null);
+
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(5));
+
+            string stdout = await process.StandardOutput.ReadToEndAsync(timeoutCts.Token);
+            await process.WaitForExitAsync(timeoutCts.Token);
+
+            string version = stdout.Trim();
+            return process.ExitCode == 0
+                ? new RendererHealth(Backend, Available: true, Version: string.IsNullOrEmpty(version) ? null : version)
+                : new RendererHealth(Backend, Available: false, Version: null);
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Ghostscript availability probe failed.");
+            return new RendererHealth(Backend, Available: false, Version: null);
+        }
+    }
 }

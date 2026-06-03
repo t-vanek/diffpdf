@@ -294,4 +294,30 @@ public class DiffPdfClientIntegrationTests(WebApplicationFactory<Program> factor
             try { Directory.Delete(basePath, recursive: true); } catch (IOException) { }
         }
     }
+
+    [Fact]
+    public async Task OperationalVisibility_Health_Readiness_Status()
+    {
+        var diff = NewClient();
+
+        // Liveness — always up while serving HTTP.
+        Assert.True(await diff.HealthAsync());
+
+        // Readiness returns the per-check breakdown for both 200 (ready) and 503 (degraded — e.g. when
+        // Ghostscript isn't installed on this box). The database check is always OK on the in-memory store.
+        var ready = await diff.GetReadinessAsync();
+        Assert.Contains(ready.Status, new[] { "ready", "degraded" });
+        var dbCheck = Assert.Single(ready.Checks, c => c.Name == "database");
+        Assert.True(dbCheck.Ok);
+
+        // Full status — the single in-process replica leads itself; the known services are listed.
+        var status = await diff.GetStatusAsync();
+        Assert.False(string.IsNullOrEmpty(status.Replica.WorkerInstanceId));
+        Assert.False(string.IsNullOrEmpty(status.Replica.Version));
+        Assert.True(status.Leader.IsThisReplica);
+        Assert.Equal(status.Replica.WorkerInstanceId, status.Leader.Owner);
+        Assert.True(status.Dependencies.Database.Ok);
+        Assert.Contains(status.Services, s => s.Service == "scheduler");
+        Assert.Contains(status.Services, s => s.Service == "retention");
+    }
 }

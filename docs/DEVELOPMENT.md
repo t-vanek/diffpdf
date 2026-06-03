@@ -120,7 +120,8 @@ Všechny aplikační cesty jsou pod prefixem **`/api/v1`**. OpenAPI dokument je 
 
 | Metoda | Cesta | Účel |
 |---|---|---|
-| `GET`  | `/health` | Liveness probe (anonymní). |
+| `GET`  | `/health` | Liveness (anonymní) — `status` + `version` + `uptimeSeconds`; vždy `200`, bez závislostí. |
+| `GET`  | `/health/ready` | Readiness (anonymní) — kontrola DB / rendereru / storage; `200` ready / `503` degraded + checky. |
 | `POST` | `/connect/token` | OAuth2 token endpoint (client-credentials). |
 | `*`    | `/connect/revocation` | Zneplatnění access tokenu (RFC 7009). |
 | `POST` `GET` | `/api/v1/branches` | Vytvoří / vypíše větve. |
@@ -151,6 +152,7 @@ Všechny aplikační cesty jsou pod prefixem **`/api/v1`**. OpenAPI dokument je 
 | `PUT` `GET` `DELETE` | `…/instances/{instanceKey}/watch` | Folder-watch instance: nastav (upsert) / detail (`404` když není) / smaž (`204`). |
 | `GET`  | `/api/v1/watches` | Výpis všech folder-watchů (přehled). |
 | `GET`  | `/api/v1/discovery/shares` | Výpis nakonfigurovaných sdílení a jmen credential profilů. |
+| `GET`  | `/api/v1/status` | Provozní status (**auth**) — leader + lease, ticky služeb, backlog fronty, počty rozvrhů/watchů, závislosti, verze. |
 
 ### Příklad — jedna dvojice
 
@@ -443,6 +445,35 @@ curl -X PUT http://localhost:8080/api/v1/branches/Alfa/instances/LamaEnergy/watc
   (`IJobStore.ListPrunableArtifactsAsync` + `MarkArtifactsPrunedAsync` přes značku
   `jobs.artifacts_pruned_at`, aby se staré joby neskenovaly donekonečna). DB řádky a historie
   běhů zůstávají; konfigurace `Retention`, ve výchozím stavu vypnuto.
+
+### Provozní viditelnost (Fáze 5)
+
+Health povrch je rozdělen na tři vrstvy, aby liveness probe zůstala korektní (nezávislá na DB):
+
+- **`/health`** — levná **liveness** (anonymní): `status` + `version` + `uptimeSeconds`, vždy `200`,
+  bez závislostí. Nepoužívat jako readiness — krátký výpadek DB nesmí zabít zdravý proces.
+- **`/health/ready`** — **readiness** (anonymní): `OperationalStatusService.BuildReadinessAsync`
+  zkontroluje **DB** (`IJobStore.CountByStatusAsync` jako levný ping), **renderer**
+  (`IPdfPageRenderer.CheckAsync` — Ghostscript spustí `gs --version`; default metoda hlásí PDFium
+  jako dostupný), a **storage** (zápisová zkouška do `Storage.RootPath`). `200` ready / `503` degraded.
+- **`/api/v1/status`** — bohatý **autentizovaný** dashboard (`BuildStatusAsync`); auth je vynucený
+  přes `SetFallbackPolicy` (endpoint není `AllowAnonymous`).
+
+Status kombinuje **per-replika** data (heartbeat služeb + verze/uptime té repliky) se **sdílenými**
+daty z DB (leader lease + backlog fronty):
+
+- **Heartbeat** — `IAutomationHeartbeat` (singleton, in-memory, `DiffPdf.Core.Abstractions`). Každá
+  automatizační hosted-service zapíše `Record(name, leaderActive[, error])` na začátku ticku (i ve
+  standby, takže je vidět i živá ne-vedoucí replika); status čte `Snapshot()`. Per-proces → status
+  ukazuje služby **této** repliky.
+- **Leader** — `ILeaderElection.GetAsync(role)` přečte řádek `automation_leader` **bez** acquire
+  (in-memory hlásí sebe s „never-expiring" lease). `isThisReplica` = vlastník == tato replika.
+- **Backlog** — `IJobStore.CountByStatusAsync` (Queued/Running/Paused) + `IFilePairTaskStore.CountActiveAsync`.
+- Renderer-check je **cachovaný ~60 s** (drahé shellnutí `gs` se nevolá na každý request).
+
+`OperationalStatusService` je singleton; scoped stores resolvuje přes `IServiceScopeFactory` per
+volání (jako hosted services). SDK: `GetStatusAsync()`, `GetReadinessAsync()` (čte tělo i pro `503`),
+`HealthAsync()` (liveness). **Bez změny DB schématu** — vše jsou čtecí dotazy nad stávajícími tabulkami.
 
 ## Build, testy a CI
 

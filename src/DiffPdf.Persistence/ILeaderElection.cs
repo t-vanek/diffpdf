@@ -1,3 +1,5 @@
+using DiffPdf.Core.Abstractions;
+
 namespace DiffPdf.Persistence;
 
 /// <summary>
@@ -13,7 +15,16 @@ public interface ILeaderElection
     /// already held by <paramref name="owner"/>. Returns true when this owner holds the lease.
     /// </summary>
     Task<bool> TryAcquireAsync(string role, string owner, TimeSpan lease, CancellationToken ct = default);
+
+    /// <summary>
+    /// Reads the current lease for <paramref name="role"/> <b>without acquiring or modifying it</b>
+    /// (for operational status reporting). Returns null when no row exists for the role yet.
+    /// </summary>
+    Task<LeaderLease?> GetAsync(string role, CancellationToken ct = default);
 }
+
+/// <summary>Read-only snapshot of the lease row for a role — who leads and until when.</summary>
+public sealed record LeaderLease(string Owner, DateTimeOffset AcquiredAt, DateTimeOffset RenewedAt, DateTimeOffset ExpiresAt);
 
 /// <summary>Shared role + lease for the single automation leader (recurring scheduler + folder-watch).</summary>
 public static class AutomationLeader
@@ -28,8 +39,14 @@ public static class AutomationLeader
 }
 
 /// <summary>Single-process election: this is the only process, so it always leads (dev / in-memory fallback).</summary>
-public sealed class InMemoryLeaderElection : ILeaderElection
+public sealed class InMemoryLeaderElection(IWorkerInstanceIdProvider worker) : ILeaderElection
 {
+    private static readonly DateTimeOffset Started = DateTimeOffset.UtcNow;
+
     public Task<bool> TryAcquireAsync(string role, string owner, TimeSpan lease, CancellationToken ct = default) =>
         Task.FromResult(true);
+
+    // Single process always holds the lease; report self as owner with a never-expiring lease.
+    public Task<LeaderLease?> GetAsync(string role, CancellationToken ct = default) =>
+        Task.FromResult<LeaderLease?>(new LeaderLease(worker.WorkerInstanceId, Started, DateTimeOffset.UtcNow, DateTimeOffset.MaxValue));
 }

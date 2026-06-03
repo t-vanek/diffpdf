@@ -17,9 +17,11 @@ public sealed class RetentionService(
     IServiceScopeFactory scopeFactory,
     ILeaderElection leader,
     IWorkerInstanceIdProvider workerInstance,
+    IAutomationHeartbeat heartbeat,
     IOptions<RetentionOptions> options,
     ILogger<RetentionService> logger) : BackgroundService
 {
+    private const string ServiceName = "retention";
     private bool _wasLeader;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -47,6 +49,7 @@ public sealed class RetentionService(
             }
             catch (Exception ex)
             {
+                heartbeat.Record(ServiceName, false, ex.Message);
                 logger.LogError(ex, "Retention pass failed.");
             }
         }
@@ -64,6 +67,7 @@ public sealed class RetentionService(
                 : "This replica no longer runs artifact retention.");
             _wasLeader = isLeader;
         }
+        heartbeat.Record(ServiceName, isLeader);
         if (!isLeader)
             return;
 

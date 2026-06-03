@@ -23,8 +23,10 @@ public sealed class ScheduledBatchService(
     IServiceScopeFactory scopeFactory,
     ILeaderElection leader,
     IWorkerInstanceIdProvider workerInstance,
+    IAutomationHeartbeat heartbeat,
     ILogger<ScheduledBatchService> logger) : BackgroundService
 {
+    private const string ServiceName = "scheduler";
     private static readonly TimeSpan TickInterval = TimeSpan.FromSeconds(20);
 
     private readonly ScheduleReconciler _reconciler = new();
@@ -47,6 +49,7 @@ public sealed class ScheduledBatchService(
             }
             catch (Exception ex)
             {
+                heartbeat.Record(ServiceName, false, ex.Message);
                 logger.LogError(ex, "Scheduler tick failed.");
             }
         }
@@ -63,6 +66,7 @@ public sealed class ScheduledBatchService(
                 : "This replica is no longer the automation leader (scheduler idle).");
             _wasLeader = isLeader;
         }
+        heartbeat.Record(ServiceName, isLeader);
         if (!isLeader)
             return;
 

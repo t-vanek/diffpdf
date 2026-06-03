@@ -230,6 +230,20 @@ public sealed class PostgresJobStore(DiffPdfDbContext db, EntityMapper mapper) :
             .ExecuteUpdateAsync(s => s.SetProperty(j => j.ArtifactsPrunedAt, at), ct);
     }
 
+    public async Task<IReadOnlyDictionary<JobStatus, int>> CountByStatusAsync(CancellationToken ct = default)
+    {
+        var rows = await db.Jobs.AsNoTracking()
+            .GroupBy(j => j.Status)
+            .Select(g => new { Status = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+
+        var result = new Dictionary<JobStatus, int>();
+        foreach (var r in rows)
+            if (Enum.TryParse<JobStatus>(r.Status, out var s))
+                result[s] = r.Count;
+        return result;
+    }
+
     internal static JobEntity ToEntity(ComparisonJob job) => new()
     {
         Id = job.Id,

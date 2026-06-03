@@ -134,4 +134,20 @@ public class InMemoryJobStoreTests
         var cancelled = await store.CancelAsync(job.Id);
         Assert.Equal(JobStatus.Cancelled, cancelled!.Status);
     }
+
+    [Fact]
+    public async Task CountByStatus_GroupsJobs()
+    {
+        var store = new InMemoryJobStore();
+        await store.CreateAsync(NewJob());                                   // Queued
+        await store.CreateAsync(NewJob());                                   // Queued
+        var running = await store.CreateAsync(NewJob());
+        await store.TryStartAsync(running.Id, "w", TimeSpan.FromMinutes(5)); // -> Running
+
+        var counts = await store.CountByStatusAsync();
+
+        Assert.Equal(2, counts[JobStatus.Queued]);
+        Assert.Equal(1, counts[JobStatus.Running]);
+        Assert.False(counts.ContainsKey(JobStatus.Failed));
+    }
 }

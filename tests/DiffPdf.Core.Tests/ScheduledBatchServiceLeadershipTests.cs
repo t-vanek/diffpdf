@@ -12,6 +12,11 @@ public class ScheduledBatchServiceLeadershipTests
     {
         public Task<bool> TryAcquireAsync(string role, string owner, TimeSpan lease, CancellationToken ct = default) =>
             Task.FromResult(isLeader);
+
+        public Task<LeaderLease?> GetAsync(string role, CancellationToken ct = default) =>
+            Task.FromResult<LeaderLease?>(isLeader
+                ? new LeaderLease("test", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, DateTimeOffset.MaxValue)
+                : null);
     }
 
     private sealed class StubWorkerId(string id) : IWorkerInstanceIdProvider
@@ -33,6 +38,7 @@ public class ScheduledBatchServiceLeadershipTests
             new ThrowingScopeFactory(),
             new FakeLeaderElection(isLeader: false),
             new StubWorkerId("replica-2"),
+            new AutomationHeartbeat(),
             NullLogger<ScheduledBatchService>.Instance);
 
         // No leadership → returns before resolving the store/launcher (ThrowingScopeFactory not hit).

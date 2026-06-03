@@ -1,3 +1,4 @@
+using DiffPdf.Core.Abstractions;
 using DiffPdf.Messaging.Messages;
 using DiffPdf.Persistence;
 using DiffPdf.Worker;
@@ -17,9 +18,12 @@ namespace DiffPdf.Messaging;
 /// </summary>
 public sealed class StaleTaskRecoveryService(
     IServiceScopeFactory scopeFactory,
+    IAutomationHeartbeat heartbeat,
     IOptions<WorkerOptions> options,
     ILogger<StaleTaskRecoveryService> logger) : BackgroundService
 {
+    private const string ServiceName = "stale-recovery";
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         using var timer = new PeriodicTimer(options.Value.StaleRecoveryInterval);
@@ -37,6 +41,9 @@ public sealed class StaleTaskRecoveryService(
 
                 if (recovered.Count > 0)
                     logger.LogInformation("Recovered {Count} stale file-pair task(s)", recovered.Count);
+
+                // Not leader-gated — runs on every replica — so each tick is "active work".
+                heartbeat.Record(ServiceName, leaderActive: true);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -44,6 +51,7 @@ public sealed class StaleTaskRecoveryService(
             }
             catch (Exception ex)
             {
+                heartbeat.Record(ServiceName, false, ex.Message);
                 logger.LogError(ex, "Stale task recovery pass failed");
             }
         }

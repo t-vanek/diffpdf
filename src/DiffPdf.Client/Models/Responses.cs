@@ -273,3 +273,83 @@ public sealed record BranchRunResult
     public int Skipped { get; init; }
     public IReadOnlyList<InstanceRunResult> Instances { get; init; } = [];
 }
+
+// ---------------- Operational visibility ----------------
+
+/// <summary>Identity, build version and uptime of the responding API replica.</summary>
+public sealed record ReplicaInfo
+{
+    public string WorkerInstanceId { get; init; } = "";
+    public string Version { get; init; } = "";
+    public string Environment { get; init; } = "";
+    public DateTimeOffset StartedAt { get; init; }
+    public double UptimeSeconds { get; init; }
+}
+
+/// <summary>Who currently holds the automation leader lease (from the shared database).</summary>
+public sealed record LeaderInfo
+{
+    public string Role { get; init; } = "";
+    public bool IsThisReplica { get; init; }
+    public string? Owner { get; init; }
+    public DateTimeOffset? AcquiredAt { get; init; }
+    public DateTimeOffset? RenewedAt { get; init; }
+    public DateTimeOffset? ExpiresAt { get; init; }
+    public bool LeaseHealthy { get; init; }
+}
+
+/// <summary>Last activity of one automation background service on the responding replica.</summary>
+public sealed record ServiceHealthInfo
+{
+    public string Service { get; init; } = "";
+    public DateTimeOffset? LastTickAt { get; init; }
+    public DateTimeOffset? LastLeaderActiveAt { get; init; }
+    public long TickCount { get; init; }
+    public string? LastError { get; init; }
+    public DateTimeOffset? LastErrorAt { get; init; }
+}
+
+/// <summary>Queue depth from the shared database.</summary>
+public sealed record BacklogInfo
+{
+    public int QueuedJobs { get; init; }
+    public int RunningJobs { get; init; }
+    public int PausedJobs { get; init; }
+    public int ActiveTasks { get; init; }
+}
+
+/// <summary>A single dependency check result.</summary>
+public sealed record DependencyCheck
+{
+    public string Name { get; init; } = "";
+    public bool Ok { get; init; }
+    public string? Detail { get; init; }
+}
+
+/// <summary>Health of the external dependencies the server relies on.</summary>
+public sealed record DependenciesInfo
+{
+    public DependencyCheck Database { get; init; } = new();
+    public DependencyCheck Renderer { get; init; } = new();
+    public DependencyCheck Storage { get; init; } = new();
+}
+
+/// <summary>Full operational status (from <c>GET /api/v1/status</c>).</summary>
+public sealed record OperationalStatusResponse
+{
+    public ReplicaInfo Replica { get; init; } = new();
+    public LeaderInfo Leader { get; init; } = new();
+    public IReadOnlyList<ServiceHealthInfo> Services { get; init; } = [];
+    public BacklogInfo Backlog { get; init; } = new();
+    public int EnabledSchedules { get; init; }
+    public int EnabledWatches { get; init; }
+    public bool RetentionEnabled { get; init; }
+    public DependenciesInfo Dependencies { get; init; } = new();
+}
+
+/// <summary>Readiness summary (from <c>GET /health/ready</c>; 200 ready / 503 degraded).</summary>
+public sealed record ReadinessResponse
+{
+    public string Status { get; init; } = "";
+    public IReadOnlyList<DependencyCheck> Checks { get; init; } = [];
+}

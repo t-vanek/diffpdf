@@ -19,6 +19,10 @@ public sealed class PostgresLeaderElection(string connectionString) : ILeaderEle
         returning (owner = @owner);
         """;
 
+    private const string ReadSql = """
+        select owner, acquired_at, renewed_at, expires_at from automation_leader where role = @role;
+        """;
+
     public async Task<bool> TryAcquireAsync(string role, string owner, TimeSpan lease, CancellationToken ct = default)
     {
         await using var conn = new NpgsqlConnection(connectionString);
@@ -32,5 +36,21 @@ public sealed class PostgresLeaderElection(string connectionString) : ILeaderEle
         // upserts nothing and RETURNING yields no row (null) — i.e. not the leader.
         var result = await cmd.ExecuteScalarAsync(ct);
         return result is bool b && b;
+    }
+
+    public async Task<LeaderLease?> GetAsync(string role, CancellationToken ct = default)
+    {
+        await using var conn = new NpgsqlConnection(connectionString);
+        await conn.OpenAsync(ct);
+        await using var cmd = new NpgsqlCommand(ReadSql, conn);
+        cmd.Parameters.AddWithValue("role", role);
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct))
+            return null;
+        return new LeaderLease(
+            reader.GetString(0),
+            reader.GetFieldValue<DateTimeOffset>(1),
+            reader.GetFieldValue<DateTimeOffset>(2),
+            reader.GetFieldValue<DateTimeOffset>(3));
     }
 }
