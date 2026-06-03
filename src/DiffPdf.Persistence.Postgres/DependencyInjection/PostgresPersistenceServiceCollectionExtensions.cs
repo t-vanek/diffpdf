@@ -27,22 +27,78 @@ public static class PostgresPersistenceServiceCollectionExtensions
         services.AddScoped<IJobSubmissionService, PostgresJobSubmissionService>();
         services.AddSingleton<ILeaderElection>(new PostgresLeaderElection(connectionString));
 
-        services.AddHostedService(sp => new PostgresMigrationHostedService(
-            connectionString, sp.GetRequiredService<ILogger<PostgresMigrationHostedService>>()));
+        services.AddHostedService<EfCoreMigrationBackgroundService>();
 
         return services;
     }
 }
 
-/// <summary>Runs the schema migration once on startup, before message processing begins.</summary>
-internal sealed class PostgresMigrationHostedService(string connectionString, ILogger<PostgresMigrationHostedService> logger)
-    : IHostedService
+/// <summary>
+/// Applies EF Core migrations once the database is reachable. Runs as a background service so a missing
+/// or not-yet-ready database never blocks (or crashes) host startup: it retries the connection with
+/// exponential backoff and, once connected, applies only the pending migrations
+/// (<see cref="RelationalDatabaseFacadeExtensions.GetPendingMigrationsAsync"/> /
+/// <c>__EFMigrationsHistory</c> — a fresh database gets everything, an up-to-date one is a no-op).
+/// </summary>
+internal sealed class EfCoreMigrationBackgroundService(
+    IServiceScopeFactory scopeFactory,
+    ILogger<EfCoreMigrationBackgroundService> logger)
+    : BackgroundService
 {
-    public async Task StartAsync(CancellationToken cancellationToken)
+    private static readonly TimeSpan InitialDelay = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan MaxDelay = TimeSpan.FromSeconds(30);
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        logger.LogInformation("Running PostgreSQL schema migration");
-        await PostgresMigrator.MigrateAsync(connectionString, cancellationToken);
+        var delay = InitialDelay;
+        bool waitingLogged = false;
+
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                await using var scope = scopeFactory.CreateAsyncScope();
+                var db = scope.ServiceProvider.GetRequiredService<DiffPdfDbContext>();
+
+                if (!await db.Database.CanConnectAsync(stoppingToken))
+                {
+                    if (!waitingLogged)
+                    {
+                        logger.LogWarning("Database not reachable yet; retrying until it is available before migrating.");
+                        waitingLogged = true;
+                    }
+                    await Task.Delay(delay, stoppingToken);
+                    delay = NextDelay(delay);
+                    continue;
+                }
+
+                var pending = (await db.Database.GetPendingMigrationsAsync(stoppingToken)).ToList();
+                if (pending.Count == 0)
+                {
+                    logger.LogInformation("Database schema is up to date; no migrations to apply.");
+                    return;
+                }
+
+                logger.LogInformation("Applying {Count} pending database migration(s): {Migrations}",
+                    pending.Count, string.Join(", ", pending));
+                await db.Database.MigrateAsync(stoppingToken);
+                logger.LogInformation("Database migration complete.");
+                return;
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Database migration attempt failed; retrying in {Delay}s.", delay.TotalSeconds);
+                try { await Task.Delay(delay, stoppingToken); }
+                catch (OperationCanceledException) { return; }
+                delay = NextDelay(delay);
+            }
+        }
     }
 
-    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    private static TimeSpan NextDelay(TimeSpan current) =>
+        TimeSpan.FromSeconds(Math.Min(MaxDelay.TotalSeconds, current.TotalSeconds * 2));
 }
