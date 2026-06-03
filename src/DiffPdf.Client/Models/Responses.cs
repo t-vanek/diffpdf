@@ -394,3 +394,16 @@ public sealed record ScopeSyncReport
     public IReadOnlyList<InstanceSyncResult> OutOfRoot { get; init; } = [];
     public string? Error { get; init; }
 }
+
+/// <summary>Live job progress pushed over SignalR (from <c>SubscribeToJobProgressAsync</c>).</summary>
+public sealed record JobProgress
+{
+    public Guid JobId { get; init; }
+    public string BranchKey { get; init; } = "";
+    public string InstanceKey { get; init; } = "";
+    public string Status { get; init; } = "";
+    public int ProcessedCount { get; init; }
+    public int TotalCount { get; init; }
+    public double Progress { get; init; }
+    public string? Error { get; init; }
+}

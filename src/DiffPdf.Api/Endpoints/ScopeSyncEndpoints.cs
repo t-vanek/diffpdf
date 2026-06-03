@@ -11,6 +11,7 @@ public static class ScopeSyncEndpoints
             Results.Ok(await sync.SynchronizeAsync(apply ?? false, ct)))
             .WithTags("Scope")
             .WithSummary("Detect the on-disk <root>/<branch>/<instance> structure and reconcile it with the database. Dry-run by default; ?apply=true registers branches/instances and creates missing folders.")
-            .Produces<ScopeSyncReport>();
+            .Produces<ScopeSyncReport>()
+            .RequireRateLimiting("expensive");
     }
 }

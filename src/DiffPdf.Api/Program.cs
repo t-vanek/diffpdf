@@ -1,4 +1,6 @@
 using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.RateLimiting;
 using DiffPdf.Api;
 using DiffPdf.Api.Auth;
 using DiffPdf.Api.Endpoints;
@@ -8,6 +10,7 @@ using DiffPdf.Core.Abstractions;
 using DiffPdf.Core.Network;
 using DiffPdf.Core.Storage;
 using DiffPdf.Messaging;
+using DiffPdf.Messaging.Automation;
 using DiffPdf.Messaging.Retention;
 using DiffPdf.Messaging.Scheduling;
 using DiffPdf.Messaging.ScopeSync;
@@ -18,6 +21,10 @@ using DiffPdf.Persistence;
 using DiffPdf.Persistence.Postgres.DependencyInjection;
 using DiffPdf.Persistence.SqlServer.DependencyInjection;
 using DiffPdf.Worker.DependencyInjection;
+using OpenTelemetry;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 using Serilog;
 using Wolverine;
 
@@ -60,7 +67,37 @@ builder.Services.ConfigureHttpJsonOptions(o =>
 });
 
 builder.Services.AddOpenApi();
+
+// OpenTelemetry: traces + metrics for ASP.NET Core, outbound HTTP and the .NET runtime. Exported via OTLP
+// only when OTEL_EXPORTER_OTLP_ENDPOINT is set; otherwise collected with negligible overhead and ready to
+// export once a collector is configured.
+bool otlpConfigured = !string.IsNullOrWhiteSpace(builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"]);
+builder.Services.AddOpenTelemetry()
+    .ConfigureResource(r => r.AddService("DiffPdf.Api", serviceVersion: BuildInfo.Version))
+    .WithTracing(t =>
+    {
+        t.AddAspNetCoreInstrumentation().AddHttpClientInstrumentation();
+        if (otlpConfigured) t.AddOtlpExporter();
+    })
+    .WithMetrics(m =>
+    {
+        m.AddAspNetCoreInstrumentation().AddHttpClientInstrumentation().AddRuntimeInstrumentation();
+        if (otlpConfigured) m.AddOtlpExporter();
+    });
 builder.Services.AddProblemDetails();
+
+// Rate limiting: throttle the expensive write endpoints (scope sync, triggers, branch fan-out). Returns 429
+// when the per-minute window is exceeded; read/health endpoints are unthrottled.
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddFixedWindowLimiter("expensive", o =>
+    {
+        o.PermitLimit = 60;
+        o.Window = TimeSpan.FromMinutes(1);
+        o.QueueLimit = 0;
+    });
+});
 builder.Services.Configure<StorageOptions>(builder.Configuration.GetSection("Storage"));
 builder.Services.Configure<PdfWorkLimiterOptions>(builder.Configuration.GetSection("Pdf"));
 builder.Services.Configure<NetworkOptions>(builder.Configuration.GetSection(NetworkOptions.SectionName));
@@ -137,6 +174,7 @@ builder.Services.AddHostedService<InstanceStructureHostedService>();
 builder.Services.AddDiffPdfNotifications(builder.Configuration);
 builder.Services.AddDiffPdfScheduling();
 builder.Services.AddDiffPdfFolderWatch();
+builder.Services.AddDiffPdfDefaultAutomation(builder.Configuration);
 builder.Services.AddDiffPdfScopeSync(builder.Configuration);
 builder.Services.AddDiffPdfRetention(builder.Configuration);
 
@@ -151,6 +189,7 @@ if (authEnabled)
 var app = builder.Build();
 
 app.UseSerilogRequestLogging();
+app.UseRateLimiter();
 
 if (authEnabled)
 {

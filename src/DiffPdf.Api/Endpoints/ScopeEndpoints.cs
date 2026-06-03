@@ -2,6 +2,7 @@ using DiffPdf.Core.Comparison;
 using DiffPdf.Core.Models;
 using DiffPdf.Core.Network;
 using DiffPdf.Core.Storage;
+using DiffPdf.Messaging.Automation;
 using DiffPdf.Persistence;
 
 namespace DiffPdf.Api.Endpoints;
@@ -69,7 +70,7 @@ public static class ScopeEndpoints
         group.MapPost("/{branchKey}/instances", async (
             string branchKey, CreateInstanceRequest request,
             IBranchStore branches, IInstanceStore instances, IInstanceStructureService structure,
-            bool? ensureStructure, CancellationToken ct) =>
+            IDefaultAutomationProvisioner automation, bool? ensureStructure, CancellationToken ct) =>
         {
             if (!StorageKeyValidator.IsValidKey(request.Key))
                 return Results.Problem($"Invalid instance key '{request.Key}'.", statusCode: StatusCodes.Status400BadRequest);
@@ -96,6 +97,10 @@ public static class ScopeEndpoints
             InstanceStructureReport? report = null;
             if (ensureStructure != false)
                 report = await structure.EnsureAsync(created.BasePath, created.CredentialProfile, ct: ct);
+
+            // Provision the configured default automation (disabled schedule + watch, optional initial
+            // trigger) after the skeleton exists; best-effort and a no-op unless DefaultAutomation is enabled.
+            await automation.ProvisionAsync(branch, created, ct);
 
             return Results.Created(
                 $"/api/v1/branches/{branchKey}/instances/{created.Key}",

@@ -14,18 +14,24 @@ public static class JobEndpoints
         var group = app.MapGroup("/jobs").WithTags("Jobs");
 
         group.MapGet("/", async (
-            string? branchKey, string? instanceKey, string? status,
-            IJobStore jobStore, CancellationToken ct) =>
+            string? branchKey, string? instanceKey, string? status, int? limit, int? offset,
+            IJobStore jobStore, HttpResponse response, CancellationToken ct) =>
         {
             JobStatus? parsed = Enum.TryParse<JobStatus>(status, true, out var s) ? s : null;
-            var jobs = await jobStore.ListAsync(new JobListQuery
+            var query = new JobListQuery
             {
                 BranchKey = branchKey,
                 InstanceKey = instanceKey,
                 Status = parsed,
-            }, ct);
+                Limit = Math.Clamp(limit ?? 100, 1, 500),
+                Offset = Math.Max(0, offset ?? 0),
+            };
+            var jobs = await jobStore.ListAsync(query, ct);
+            // Non-breaking pagination: the body stays a plain array; the matching total is in a header.
+            response.Headers["X-Total-Count"] = (await jobStore.CountAsync(query, ct)).ToString();
             return Results.Ok(jobs.Select(JobSummary.From));
-        }).WithSummary("List jobs (filter by scope/status)").Produces<IEnumerable<JobSummary>>();
+        }).WithSummary("List jobs (filter by scope/status; page with limit<=500 + offset; total count in the X-Total-Count header)")
+          .Produces<IEnumerable<JobSummary>>();
 
         group.MapGet("/{id:guid}", async (Guid id, IJobStore jobStore, CancellationToken ct) =>
         {

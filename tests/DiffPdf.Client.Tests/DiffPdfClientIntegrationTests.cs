@@ -10,8 +10,8 @@ namespace DiffPdf.Client.Tests;
 /// automation flow end-to-end so the SDK's models, routes and (de)serialization stay in sync
 /// with the API.
 /// </summary>
-public class DiffPdfClientIntegrationTests(WebApplicationFactory<Program> factory)
-    : IClassFixture<WebApplicationFactory<Program>>
+public class DiffPdfClientIntegrationTests(InMemoryApiFactory factory)
+    : IClassFixture<InMemoryApiFactory>
 {
     private DiffPdfClient NewClient() => new(factory.CreateClient());
 

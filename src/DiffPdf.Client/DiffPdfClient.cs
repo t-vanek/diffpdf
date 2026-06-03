@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.SignalR.Client;
 
 namespace DiffPdf.Client;
 
@@ -86,12 +87,15 @@ public sealed class DiffPdfClient(HttpClient http)
     // ---------------- Jobs (observation + control) ----------------
 
     public Task<IReadOnlyList<JobSummary>> ListJobsAsync(
-        string? branchKey = null, string? instanceKey = null, JobStatus? status = null, CancellationToken ct = default)
+        string? branchKey = null, string? instanceKey = null, JobStatus? status = null,
+        int? limit = null, int? offset = null, CancellationToken ct = default)
     {
         var q = new List<string>();
         if (branchKey is not null) q.Add($"branchKey={Esc(branchKey)}");
         if (instanceKey is not null) q.Add($"instanceKey={Esc(instanceKey)}");
         if (status is { } st) q.Add($"status={st}");
+        if (limit is { } l) q.Add($"limit={l}");
+        if (offset is { } o) q.Add($"offset={o}");
         string url = "/api/v1/jobs" + (q.Count > 0 ? "?" + string.Join("&", q) : "");
         return JsonAsync<IReadOnlyList<JobSummary>>(HttpMethod.Get, url, null, ct);
     }
@@ -152,6 +156,34 @@ public sealed class DiffPdfClient(HttpClient http)
             }
             await Task.Delay(delay, ct);
         }
+    }
+
+    // ---------------- Realtime job progress (SignalR) ----------------
+
+    /// <summary>
+    /// Opens a SignalR connection to the server's job-progress hub, joins the given job's group and invokes
+    /// <paramref name="onProgress"/> for each push. Dispose the returned <see cref="HubConnection"/> to stop.
+    /// For an authenticated server supply <paramref name="accessTokenProvider"/>. Live progress is a
+    /// notification channel only — REST (<see cref="GetJobAsync"/>) stays the source of truth, so a missed
+    /// event can be recovered by reloading the job.
+    /// </summary>
+    public async Task<HubConnection> SubscribeToJobProgressAsync(
+        Guid jobId, Action<JobProgress> onProgress,
+        Func<Task<string?>>? accessTokenProvider = null, CancellationToken ct = default)
+    {
+        if (http.BaseAddress is null)
+            throw new InvalidOperationException("The HttpClient has no BaseAddress to derive the hub URL from.");
+
+        var hubUrl = new Uri($"{http.BaseAddress.GetLeftPart(UriPartial.Authority)}/hubs/jobs");
+        var connection = new HubConnectionBuilder()
+            .WithUrl(hubUrl, o => { if (accessTokenProvider is not null) o.AccessTokenProvider = accessTokenProvider; })
+            .WithAutomaticReconnect()
+            .Build();
+
+        connection.On<JobProgress>("jobProgress", onProgress);
+        await connection.StartAsync(ct);
+        await connection.InvokeAsync("JoinJob", jobId, ct);
+        return connection;
     }
 
     // ---------------- Schedules ----------------

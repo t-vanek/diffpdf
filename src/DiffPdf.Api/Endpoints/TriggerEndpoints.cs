@@ -28,7 +28,8 @@ public static class TriggerEndpoints
         .WithSummary("Trigger a batch for one instance now (create + start; skips when nothing to compare)")
         .Produces<TriggerResult>(StatusCodes.Status202Accepted)
         .Produces<TriggerResult>(StatusCodes.Status200OK)
-        .ProducesProblem(StatusCodes.Status404NotFound);
+        .ProducesProblem(StatusCodes.Status404NotFound)
+        .RequireRateLimiting("expensive");
 
         app.MapPost("/branches/{branchKey}/run", async (
             string branchKey, IBranchStore branches, IInstanceStore instances, IBatchLauncher launcher, CancellationToken ct) =>
@@ -51,6 +52,7 @@ public static class TriggerEndpoints
         .WithTags("Triggers")
         .WithSummary("Trigger a batch for every enabled instance under a branch (fan-out)")
         .Produces<BranchRunResult>()
-        .ProducesProblem(StatusCodes.Status404NotFound);
+        .ProducesProblem(StatusCodes.Status404NotFound)
+        .RequireRateLimiting("expensive");
     }
 }
