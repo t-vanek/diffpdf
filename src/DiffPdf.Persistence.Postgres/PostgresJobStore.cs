@@ -45,6 +45,7 @@ public sealed class PostgresJobStore(DiffPdfDbContext db, EntityMapper mapper) :
             where (query.BranchKey == null || br.Key == query.BranchKey)
                && (query.InstanceKey == null || inst.Key == query.InstanceKey)
                && (status == null || j.Status == status)
+               && (query.TriggerId == null || j.TriggerId == query.TriggerId)
             select j;
     }
 
@@ -263,6 +264,8 @@ public sealed class PostgresJobStore(DiffPdfDbContext db, EntityMapper mapper) :
         ProcessedCount = job.ProcessedCount,
         TotalCount = job.TotalCount,
         RequestJson = DiffPdfJson.Serialize(job.Request),
+        TriggerId = job.TriggerId,
+        Source = job.Source.ToString(),
         Version = 1,
     };
 }

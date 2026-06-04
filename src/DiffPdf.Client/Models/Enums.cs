@@ -115,3 +115,30 @@ public enum CheckRunOutcome
     Warning,
     Failed,
 }
+
+/// <summary>The kind of action a trigger performs.</summary>
+public enum TriggerActionType
+{
+    RunComparison,
+}
+
+/// <summary>Lifecycle state of a trigger.</summary>
+public enum TriggerStatus
+{
+    Active,
+    Inactive,
+    Disabled,
+    Running,
+    Pending,
+    Error,
+    Deleted,
+}
+
+/// <summary>Where a run / batch job was launched from.</summary>
+public enum JobSource
+{
+    Manager,
+    RestApi,
+    System,
+    Scheduler,
+}

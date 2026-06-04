@@ -46,6 +46,8 @@ public sealed class InMemoryJobStore : IJobStore
             q = q.Where(j => j.InstanceKey == query.InstanceKey);
         if (query.Status is { } s)
             q = q.Where(j => j.Status == s);
+        if (query.TriggerId is { } tid)
+            q = q.Where(j => j.TriggerId == tid);
         return q;
     }
 

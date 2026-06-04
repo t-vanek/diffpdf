@@ -50,6 +50,9 @@ public sealed record JobListQuery
     public string? InstanceKey { get; init; }
     public JobStatus? Status { get; init; }
 
+    /// <summary>Filter to batches launched by a specific trigger.</summary>
+    public Guid? TriggerId { get; init; }
+
     /// <summary>Maximum rows to return (page size).</summary>
     public int Limit { get; init; } = 100;
 

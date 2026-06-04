@@ -7,13 +7,15 @@ using Microsoft.Extensions.Logging;
 
 namespace DiffPdf.Messaging.Scheduling;
 
-/// <summary>The comparison knobs a launched batch runs with (defaults for an on-demand trigger).</summary>
+/// <summary>The comparison knobs a launched batch runs with, plus its provenance (trigger + source).</summary>
 public sealed record LaunchSpec(
     ComparisonOptions Options,
     BatchGate? Gate,
     string SearchPattern,
     bool Recursive,
-    int MaxDegreeOfParallelism)
+    int MaxDegreeOfParallelism,
+    Guid? TriggerId = null,
+    JobSource Source = JobSource.System)
 {
     /// <summary>Default knobs (default options, no gate, all *.pdf recursively) — used by the on-demand triggers.</summary>
     public static LaunchSpec Default { get; } = new(new ComparisonOptions(), null, "*.pdf", true, 0);
@@ -130,6 +132,8 @@ public sealed class BatchLauncher(
             },
             BranchId = branch.Id,
             InstanceId = instance.Id,
+            TriggerId = spec.TriggerId,
+            Source = spec.Source,
         };
 
         await submission.SubmitAsync(job, new RunBatchComparison(job.Id, branchKey, instanceKey), ct);

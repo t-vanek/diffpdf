@@ -12,6 +12,9 @@ public sealed class DiffPdfDbContext(DbContextOptions<DiffPdfDbContext> options)
     public DbSet<SubscriptionEntity> Subscriptions => Set<SubscriptionEntity>();
     public DbSet<ControlCheckEntity> ControlChecks => Set<ControlCheckEntity>();
     public DbSet<ControlCheckRunEntity> ControlCheckRuns => Set<ControlCheckRunEntity>();
+    public DbSet<TriggerEntity> Triggers => Set<TriggerEntity>();
+    public DbSet<TriggerRunEntity> TriggerRuns => Set<TriggerRunEntity>();
+    public DbSet<AuditLogEntity> AuditLog => Set<AuditLogEntity>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -67,8 +70,11 @@ public sealed class DiffPdfDbContext(DbContextOptions<DiffPdfDbContext> options)
             e.Property(x => x.LockedBy).HasColumnName("locked_by").HasMaxLength(256);
             e.Property(x => x.LockedUntil).HasColumnName("locked_until");
             e.Property(x => x.ArtifactsPrunedAt).HasColumnName("artifacts_pruned_at");
+            e.Property(x => x.TriggerId).HasColumnName("trigger_id");
+            e.Property(x => x.Source).HasColumnName("source").HasMaxLength(32);
             e.HasIndex(x => new { x.BranchId, x.InstanceId, x.CreatedAt });
             e.HasIndex(x => new { x.Status, x.CreatedAt });
+            e.HasIndex(x => x.TriggerId);
         });
 
         b.Entity<FilePairTaskEntity>(e =>
@@ -146,6 +152,74 @@ public sealed class DiffPdfDbContext(DbContextOptions<DiffPdfDbContext> options)
             e.Property(x => x.Outcome).HasColumnName("outcome").HasMaxLength(32);
             e.Property(x => x.Detail).HasColumnName("detail");
             e.HasIndex(x => new { x.CheckId, x.StartedAt });
+        });
+
+        b.Entity<TriggerEntity>(e =>
+        {
+            e.ToTable("triggers");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.BranchId).HasColumnName("branch_id");
+            e.Property(x => x.InstanceId).HasColumnName("instance_id");
+            e.Property(x => x.BranchKey).HasColumnName("branch_key").HasMaxLength(256);
+            e.Property(x => x.InstanceKey).HasColumnName("instance_key").HasMaxLength(256);
+            e.Property(x => x.Name).HasColumnName("name");
+            e.Property(x => x.Description).HasColumnName("description");
+            e.Property(x => x.ActionType).HasColumnName("action_type").HasMaxLength(32);
+            e.Property(x => x.Status).HasColumnName("status").HasMaxLength(32);
+            e.Property(x => x.Enabled).HasColumnName("enabled");
+            e.Property(x => x.IsDefault).HasColumnName("is_default");
+            e.Property(x => x.SpecJson).HasColumnName("spec_json");
+            e.Property(x => x.RunCount).HasColumnName("run_count");
+            e.Property(x => x.LastRunAt).HasColumnName("last_run_at");
+            e.Property(x => x.LastOutcome).HasColumnName("last_outcome").HasMaxLength(64);
+            e.Property(x => x.CreatedBy).HasColumnName("created_by").HasMaxLength(256);
+            e.Property(x => x.UpdatedBy).HasColumnName("updated_by").HasMaxLength(256);
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
+            e.Property(x => x.IsDeleted).HasColumnName("is_deleted");
+            e.Property(x => x.DeletedAt).HasColumnName("deleted_at");
+            e.Property(x => x.Version).HasColumnName("version");
+            e.HasIndex(x => new { x.InstanceId, x.Status });
+            e.HasIndex(x => x.BranchId);
+            // At most one non-deleted default trigger per instance.
+            e.HasIndex(x => x.InstanceId).IsUnique().HasFilter("[is_default] = 1 AND [is_deleted] = 0");
+        });
+
+        b.Entity<TriggerRunEntity>(e =>
+        {
+            e.ToTable("trigger_runs");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.TriggerId).HasColumnName("trigger_id");
+            e.Property(x => x.BatchJobId).HasColumnName("batch_job_id");
+            e.Property(x => x.Source).HasColumnName("source").HasMaxLength(32);
+            e.Property(x => x.Status).HasColumnName("status").HasMaxLength(32);
+            e.Property(x => x.Result).HasColumnName("result");
+            e.Property(x => x.StartedAt).HasColumnName("started_at");
+            e.Property(x => x.FinishedAt).HasColumnName("finished_at");
+            e.Property(x => x.DurationMs).HasColumnName("duration_ms");
+            e.Property(x => x.Error).HasColumnName("error");
+            e.Property(x => x.RequestedBy).HasColumnName("requested_by").HasMaxLength(256);
+            e.Property(x => x.IdempotencyKey).HasColumnName("idempotency_key").HasMaxLength(256);
+            e.HasIndex(x => new { x.TriggerId, x.StartedAt });
+            e.HasIndex(x => new { x.TriggerId, x.IdempotencyKey }).IsUnique().HasFilter("[idempotency_key] IS NOT NULL");
+        });
+
+        b.Entity<AuditLogEntity>(e =>
+        {
+            e.ToTable("audit_log");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.At).HasColumnName("at");
+            e.Property(x => x.Actor).HasColumnName("actor").HasMaxLength(256);
+            e.Property(x => x.Source).HasColumnName("source").HasMaxLength(32);
+            e.Property(x => x.Action).HasColumnName("action").HasMaxLength(64);
+            e.Property(x => x.EntityType).HasColumnName("entity_type").HasMaxLength(64);
+            e.Property(x => x.EntityId).HasColumnName("entity_id").HasMaxLength(256);
+            e.Property(x => x.Detail).HasColumnName("detail");
+            e.HasIndex(x => new { x.EntityType, x.EntityId, x.At });
+            e.HasIndex(x => x.At);
         });
 
         // OpenIddict's applications/authorizations/scopes/tokens tables share this context, so the
