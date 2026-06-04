@@ -12,7 +12,7 @@ public partial class DiscoveryViewModel : PageViewModel
     private readonly ServerSession _session;
     private readonly DialogService _dialogs;
 
-    public override string Title => "Discovery";
+    public override string Title => "Sdílené složky";
     public override int NavOrder => 8;
 
     public ObservableCollection<ShareInfo> Shares { get; } = [];
@@ -62,7 +62,7 @@ public partial class DiscoveryViewModel : PageViewModel
         int branches = r.Branches.Count(b => b.State == BranchSyncState.Registered);
         int instances = r.Branches.Sum(b => b.Instances.Count(i => i.State == InstanceSyncState.Registered));
         string verb = r.Applied ? "zaregistrováno" : "k registraci";
-        return $"{r.Root}: {branches} branch(í), {instances} instancí {verb}; "
+        return $"{r.Root}: {branches} větv(í), {instances} instancí {verb}; "
              + $"{r.MissingFolders.Count} chybějících složek, {r.OutOfRoot.Count} mimo kořen.";
     }
 }

@@ -30,11 +30,19 @@ public sealed class DiffPdfClient(HttpClient http)
     public Task<Branch?> GetBranchAsync(string branchKey, CancellationToken ct = default) =>
         GetOrNullAsync<Branch>($"/api/v1/branches/{Esc(branchKey)}", ct);
 
+    /// <summary>Updates a branch's name/enabled. Throws DiffPdfApiException 404 if unknown, 409 on version conflict.</summary>
+    public Task<Branch> UpdateBranchAsync(string branchKey, UpdateBranchRequest request, CancellationToken ct = default) =>
+        JsonAsync<Branch>(HttpMethod.Put, $"/api/v1/branches/{Esc(branchKey)}", request, ct);
+
     /// <summary>Deletes a branch. Throws DiffPdfApiException 409 if it has instances or an active job; 404 if unknown.</summary>
     public async Task DeleteBranchAsync(string branchKey, CancellationToken ct = default)
     {
         using var resp = await SendRawAsync(HttpMethod.Delete, $"/api/v1/branches/{Esc(branchKey)}", null, ct);
     }
+
+    /// <summary>Aggregated statistics for a branch (jobs, checks, automations, comparisons).</summary>
+    public Task<ScopeStatsResponse> GetBranchStatsAsync(string branchKey, CancellationToken ct = default) =>
+        JsonAsync<ScopeStatsResponse>(HttpMethod.Get, $"/api/v1/branches/{Esc(branchKey)}/stats", null, ct);
 
     // ---------------- Instances ----------------
 
@@ -49,11 +57,19 @@ public sealed class DiffPdfClient(HttpClient http)
     public Task<Instance?> GetInstanceAsync(string branchKey, string instanceKey, CancellationToken ct = default) =>
         GetOrNullAsync<Instance>($"/api/v1/branches/{Esc(branchKey)}/instances/{Esc(instanceKey)}", ct);
 
+    /// <summary>Updates an instance's name/basePath/credentialProfile/enabled. Throws 404 if unknown, 409 on version conflict.</summary>
+    public Task<Instance> UpdateInstanceAsync(string branchKey, string instanceKey, UpdateInstanceRequest request, CancellationToken ct = default) =>
+        JsonAsync<Instance>(HttpMethod.Put, $"/api/v1/branches/{Esc(branchKey)}/instances/{Esc(instanceKey)}", request, ct);
+
     /// <summary>Deletes an instance. Throws DiffPdfApiException 409 if it has any jobs; 404 if unknown.</summary>
     public async Task DeleteInstanceAsync(string branchKey, string instanceKey, CancellationToken ct = default)
     {
         using var resp = await SendRawAsync(HttpMethod.Delete, $"/api/v1/branches/{Esc(branchKey)}/instances/{Esc(instanceKey)}", null, ct);
     }
+
+    /// <summary>Aggregated statistics for an instance (jobs, checks, automations, comparisons).</summary>
+    public Task<ScopeStatsResponse> GetInstanceStatsAsync(string branchKey, string instanceKey, CancellationToken ct = default) =>
+        JsonAsync<ScopeStatsResponse>(HttpMethod.Get, $"/api/v1/branches/{Esc(branchKey)}/instances/{Esc(instanceKey)}/stats", null, ct);
 
     /// <summary>Create/repair the old/new/reports structure.</summary>
     public Task<InstanceStructureReport> EnsureStructureAsync(string branchKey, string instanceKey, bool includeFiles = false, CancellationToken ct = default) =>
@@ -83,6 +99,10 @@ public sealed class DiffPdfClient(HttpClient http)
     /// </summary>
     public Task<ScopeSyncReport> SyncScopeAsync(bool apply = false, CancellationToken ct = default) =>
         JsonAsync<ScopeSyncReport>(HttpMethod.Post, $"/api/v1/scope/sync?apply={(apply ? "true" : "false")}", null, ct);
+
+    /// <summary>The server's configured structure root (branches/instances are created under it as &lt;root&gt;/&lt;branch&gt;/&lt;instance&gt;); Configured=false when unset.</summary>
+    public Task<ScopeRootInfo> GetScopeRootAsync(CancellationToken ct = default) =>
+        JsonAsync<ScopeRootInfo>(HttpMethod.Get, "/api/v1/scope/root", null, ct);
 
     // ---------------- Jobs (observation + control) ----------------
 

@@ -1,0 +1,31 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:DiffPdf.DesktopUI.ViewModels"
+             x:Class="DiffPdf.DesktopUI.Views.AutomationsView"
+             x:DataType="vm:AutomationsViewModel">
+
+  <DockPanel>
+    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="10" Margin="0,0,0,8">
+      <TextBlock Text="Automatizace" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
+      <TextBlock Text="Centrální místo pro automatizované akce. Vyber typ automatizace vlevo."
+                 Foreground="#888" VerticalAlignment="Center"/>
+    </StackPanel>
+
+    <Grid ColumnDefinitions="230,*">
+      <!-- Levý seznam typů automatizací (rozšiřitelné) -->
+      <ListBox Grid.Column="0" ItemsSource="{Binding Types}" SelectedItem="{Binding SelectedType}">
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="vm:AutomationType">
+            <StackPanel Margin="2" Spacing="2">
+              <TextBlock Text="{Binding Title}" FontWeight="Bold" TextWrapping="Wrap"/>
+              <TextBlock Text="{Binding Description}" Foreground="#888" FontSize="11" TextWrapping="Wrap"/>
+            </StackPanel>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+
+      <!-- Obsah vybraného typu (VM → View přes ViewLocator) -->
+      <ContentControl Grid.Column="1" Margin="10,0,0,0" Content="{Binding SelectedType.Content}"/>
+    </Grid>
+  </DockPanel>
+</UserControl>

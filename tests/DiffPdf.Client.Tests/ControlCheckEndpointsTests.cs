@@ -70,4 +70,32 @@ public sealed class ControlCheckEndpointsTests(InMemoryApiFactory factory) : ICl
         });
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
     }
+
+    [Fact]
+    public async Task CreatingBranch_AutoProvisionsReadinessCheck()
+    {
+        string branch = "AP" + Guid.NewGuid().ToString("N")[..8];
+
+        var resp = await _client.PostAsJsonAsync("/api/v1/branches", new { key = branch, name = branch });
+        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+
+        Assert.True(await CheckExistsAsync($"readiness-{branch}"));
+    }
+
+    [Fact]
+    public async Task CreatingBranch_WithAutoProvisionFalse_SkipsReadinessCheck()
+    {
+        string branch = "NP" + Guid.NewGuid().ToString("N")[..8];
+
+        var resp = await _client.PostAsJsonAsync($"/api/v1/branches?autoProvision=false", new { key = branch, name = branch });
+        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+
+        Assert.False(await CheckExistsAsync($"readiness-{branch}"));
+    }
+
+    private async Task<bool> CheckExistsAsync(string key)
+    {
+        var checks = await _client.GetFromJsonAsync<JsonElement>("/api/v1/checks");
+        return checks.EnumerateArray().Any(c => c.GetProperty("key").GetString() == key);
+    }
 }

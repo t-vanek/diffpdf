@@ -14,12 +14,15 @@ internal static class PageRegistration
         Add<DashboardViewModel>(services);
         Add<BranchesViewModel>(services);
         Add<InstancesViewModel>(services);
-        Add<ChecksViewModel>(services);
+        Add<AutomationsViewModel>(services);
         Add<SubscriptionsViewModel>(services);
         Add<DiscoveryViewModel>(services);
         Add<TriggersViewModel>(services);
         Add<SingleCompareViewModel>(services);
         Add<JobsViewModel>(services);
+
+        // Content view-models hosted inside a section (not nav pages themselves).
+        services.AddSingleton<ControlChecksViewModel>();
     }
 
     /// <summary>Registers <typeparamref name="T"/> as a singleton and exposes it as a nav <see cref="PageViewModel"/>.</summary>

@@ -69,6 +69,13 @@ public interface IInstanceStructureService
 
     /// <summary>Creates any missing subfolder and replaces a file occupying a subfolder name (destructive).</summary>
     Task<InstanceStructureReport> EnsureAsync(string basePath, string? credentialProfile, bool includeFiles = false, CancellationToken ct = default);
+
+    /// <summary>
+    /// Creates a single folder (resolving a share alias / UNC / credential profile), <b>without</b> the
+    /// old/new/reports skeleton — used to provision a branch folder under the structure root. Best-effort:
+    /// returns false if the path could not be reached/created.
+    /// </summary>
+    Task<bool> EnsureFolderAsync(string path, string? credentialProfile, CancellationToken ct = default);
 }
 
 /// <inheritdoc />
@@ -85,6 +92,27 @@ public sealed class InstanceStructureService(
 
     public Task<InstanceStructureReport> EnsureAsync(string basePath, string? credentialProfile, bool includeFiles = false, CancellationToken ct = default) =>
         RunAsync(basePath, credentialProfile, ensure: true, includeFiles, ct);
+
+    public Task<bool> EnsureFolderAsync(string path, string? credentialProfile, CancellationToken ct = default) =>
+        Task.Run(() =>
+        {
+            try
+            {
+                var resolved = resolver.Resolve(path, inlineCredentials: null, credentialProfile);
+                using var connection = shareConnector.Connect(resolved.Path, resolved.Credentials);
+                Directory.CreateDirectory(connection.Path);
+                return true;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Ensure folder failed for {Path}", path);
+                return false;
+            }
+        }, ct);
 
     private Task<InstanceStructureReport> RunAsync(string basePath, string? credentialProfile, bool ensure, bool includeFiles, CancellationToken ct) =>
         Task.Run(() =>

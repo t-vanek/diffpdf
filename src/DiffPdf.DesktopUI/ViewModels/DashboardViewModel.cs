@@ -6,13 +6,13 @@ using DiffPdf.DesktopUI.Services;
 
 namespace DiffPdf.DesktopUI.ViewModels;
 
-/// <summary>Operational dashboard: liveness, readiness checks and the full server status.</summary>
+/// <summary>Přehled: obecný technický stav systému a prostředí (bez per-větev / per-instance statistik).</summary>
 public partial class DashboardViewModel : PageViewModel
 {
     private readonly ServerSession _session;
     private readonly DispatcherTimer _timer;
 
-    public override string Title => "Dashboard";
+    public override string Title => "Přehled";
     public override int NavOrder => 0;
 
     [ObservableProperty] private bool? _healthy;

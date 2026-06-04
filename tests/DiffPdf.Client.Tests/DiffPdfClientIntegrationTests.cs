@@ -92,6 +92,11 @@ public class DiffPdfClientIntegrationTests(InMemoryApiFactory factory)
             var report = await diff.WaitForReportAsync(trig.JobId!.Value, TimeSpan.FromMilliseconds(200), cts.Token);
 
             Assert.Equal(1, report.Total);   // the pipeline indexed and processed the single pair
+
+            // Per-instance stats reflect the finished job and its file-pair comparison.
+            var stats = await diff.GetInstanceStatsAsync(bk, ik);
+            Assert.True(stats.Jobs.Completed >= 1);
+            Assert.True(stats.Comparisons.Completed + stats.Comparisons.Failed + stats.Comparisons.Skipped >= 1);
         }
         finally
         {
@@ -260,6 +265,81 @@ public class DiffPdfClientIntegrationTests(InMemoryApiFactory factory)
             var ex = await Assert.ThrowsAsync<DiffPdfApiException>(() => diff.DeleteInstanceAsync(bk, ik));
             Assert.Equal(HttpStatusCode.Conflict, ex.StatusCode);
             Assert.NotNull(await diff.GetInstanceAsync(bk, ik));
+        }
+        finally
+        {
+            try { Directory.Delete(basePath, recursive: true); } catch (IOException) { }
+        }
+    }
+
+    [Fact]
+    public async Task Branch_Update_RoundTrip_AndVersionConflict()
+    {
+        var diff = NewClient();
+        var (bk, _) = FreshKeys();
+        var created = await diff.CreateBranchAsync(new(bk, "Orig"));
+
+        var updated = await diff.UpdateBranchAsync(bk, new UpdateBranchRequest("Renamed", Enabled: false, created.Version));
+        Assert.Equal("Renamed", updated.Name);
+        Assert.False(updated.Enabled);
+        Assert.Equal(created.Version + 1, updated.Version);
+        Assert.Equal("Renamed", (await diff.GetBranchAsync(bk))!.Name);
+
+        // Stale version -> 409.
+        var ex = await Assert.ThrowsAsync<DiffPdfApiException>(
+            () => diff.UpdateBranchAsync(bk, new UpdateBranchRequest("X", Enabled: true, created.Version)));
+        Assert.Equal(HttpStatusCode.Conflict, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task Instance_Update_RoundTrip()
+    {
+        var diff = NewClient();
+        var (bk, ik) = FreshKeys();
+        await diff.CreateBranchAsync(new(bk, "B"));
+        string basePath = Path.Combine(Path.GetTempPath(), "diffpdf-iu-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var created = (await diff.CreateInstanceAsync(bk, new(ik, "Inst", basePath))).Instance;
+
+            var updated = await diff.UpdateInstanceAsync(bk, ik,
+                new UpdateInstanceRequest("Renamed", basePath, CredentialProfile: "corp", Enabled: false, created.Version));
+
+            Assert.Equal("Renamed", updated.Name);
+            Assert.Equal("corp", updated.CredentialProfile);
+            Assert.False(updated.Enabled);
+            Assert.Equal(created.Version + 1, updated.Version);
+        }
+        finally
+        {
+            try { Directory.Delete(basePath, recursive: true); } catch (IOException) { }
+        }
+    }
+
+    [Fact]
+    public async Task InstanceStats_ReflectScopedChecks()
+    {
+        var diff = NewClient();
+        var (bk, ik) = FreshKeys();
+        await diff.CreateBranchAsync(new(bk, "B"));
+        string basePath = Path.Combine(Path.GetTempPath(), "diffpdf-st-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            await diff.CreateInstanceAsync(bk, new(ik, "Inst", basePath));
+            await diff.CreateCheckAsync(new CreateCheckRequest
+            {
+                Key = "chk_" + Guid.NewGuid().ToString("N")[..8],
+                Type = CheckType.Readiness,
+                ScopeKind = CheckScopeKind.Instance,
+                BranchKey = bk,
+                InstanceKey = ik,
+                IntervalSeconds = 60,
+            });
+
+            var stats = await diff.GetInstanceStatsAsync(bk, ik);
+            Assert.True(stats.Checks.Active >= 1);
+            Assert.True(stats.Automations.Active >= 1);
+            Assert.Equal(0, stats.Jobs.Running); // no job triggered for this instance
         }
         finally
         {

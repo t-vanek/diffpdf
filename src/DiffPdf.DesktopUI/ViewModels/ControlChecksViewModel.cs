@@ -6,13 +6,13 @@ using DiffPdf.DesktopUI.Services;
 
 namespace DiffPdf.DesktopUI.ViewModels;
 
-/// <summary>Control checks: the unified control/monitoring mechanism — list + CRUD, run-now and run history.</summary>
-public partial class ChecksViewModel : PageViewModel
+/// <summary>
+/// Automatizované kontroly — jeden typ automatizace. Obsah sekce Automatizace: seznam + CRUD, spustit teď
+/// a historie běhů. Není to samostatná navigační stránka; hostuje ji <see cref="AutomationsViewModel"/>.
+/// </summary>
+public partial class ControlChecksViewModel : ViewModelBase, IAutomationContent
 {
     private readonly ServerSession _session;
-
-    public override string Title => "Checks";
-    public override int NavOrder => 3;
 
     public CheckType[] Types { get; } = Enum.GetValues<CheckType>();
     public CheckScopeKind[] Scopes { get; } = Enum.GetValues<CheckScopeKind>();
@@ -40,9 +40,9 @@ public partial class ChecksViewModel : PageViewModel
 
     public bool IsEditing => EditingVersion is not null;
 
-    public ChecksViewModel(ServerSession session) => _session = session;
+    public ControlChecksViewModel(ServerSession session) => _session = session;
 
-    public override Task ActivateAsync() => RunAsync(LoadAsync);
+    public Task ActivateAsync() => RunAsync(LoadAsync);
 
     private async Task LoadAsync()
     {
@@ -120,7 +120,7 @@ public partial class ChecksViewModel : PageViewModel
                 Cron = cron, IntervalSeconds = interval,
                 Parameters = ParseParameters(), Events = Events(), Enabled = Enabled,
             });
-            Info = "Uloženo (update).";
+            Info = "Uloženo (úprava).";
         }
         else
         {

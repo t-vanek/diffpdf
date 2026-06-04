@@ -7,6 +7,7 @@ namespace DiffPdf.Persistence;
 public sealed class InMemoryBranchStore : IBranchStore
 {
     private readonly ConcurrentDictionary<string, Branch> _byKey = new(StringComparer.Ordinal);
+    private readonly object _gate = new();
 
     public Task<Branch> CreateAsync(string key, string name, CancellationToken ct = default)
     {
@@ -14,6 +15,27 @@ public sealed class InMemoryBranchStore : IBranchStore
         if (!_byKey.TryAdd(key, branch))
             throw new DuplicateKeyException($"Branch '{key}' already exists.");
         return Task.FromResult(branch);
+    }
+
+    public Task<Branch> UpdateAsync(Branch branch, long expectedVersion, CancellationToken ct = default)
+    {
+        lock (_gate)
+        {
+            if (!_byKey.TryGetValue(branch.Key, out var existing))
+                throw new ConcurrencyConflictException($"Branch '{branch.Key}' not found.");
+            if (existing.Version != expectedVersion)
+                throw new ConcurrencyConflictException($"Branch '{branch.Key}' version {existing.Version} != expected {expectedVersion}.");
+
+            var updated = existing with
+            {
+                Name = branch.Name,
+                Enabled = branch.Enabled,
+                UpdatedAt = DateTimeOffset.UtcNow,
+                Version = existing.Version + 1,
+            };
+            _byKey[branch.Key] = updated;
+            return Task.FromResult(updated);
+        }
     }
 
     public Task<Branch?> GetByKeyAsync(string key, CancellationToken ct = default) =>
@@ -30,6 +52,7 @@ public sealed class InMemoryInstanceStore : IInstanceStore
 {
     // key: (branchId, instanceKey)
     private readonly ConcurrentDictionary<(Guid, string), ComparisonInstance> _byKey = new();
+    private readonly object _gate = new();
 
     public Task<ComparisonInstance> CreateAsync(
         Guid branchId, string key, string name, string basePath, string? credentialProfile, CancellationToken ct = default)
@@ -46,6 +69,30 @@ public sealed class InMemoryInstanceStore : IInstanceStore
         if (!_byKey.TryAdd((branchId, key), instance))
             throw new DuplicateKeyException($"Instance '{key}' already exists in this branch.");
         return Task.FromResult(instance);
+    }
+
+    public Task<ComparisonInstance> UpdateAsync(ComparisonInstance instance, long expectedVersion, CancellationToken ct = default)
+    {
+        var compositeKey = (instance.BranchId, instance.Key);
+        lock (_gate)
+        {
+            if (!_byKey.TryGetValue(compositeKey, out var existing))
+                throw new ConcurrencyConflictException($"Instance '{instance.Key}' not found in this branch.");
+            if (existing.Version != expectedVersion)
+                throw new ConcurrencyConflictException($"Instance '{instance.Key}' version {existing.Version} != expected {expectedVersion}.");
+
+            var updated = existing with
+            {
+                Name = instance.Name,
+                BasePath = instance.BasePath,
+                CredentialProfile = instance.CredentialProfile,
+                Enabled = instance.Enabled,
+                UpdatedAt = DateTimeOffset.UtcNow,
+                Version = existing.Version + 1,
+            };
+            _byKey[compositeKey] = updated;
+            return Task.FromResult(updated);
+        }
     }
 
     public Task<ComparisonInstance?> GetByKeyAsync(Guid branchId, string key, CancellationToken ct = default) =>

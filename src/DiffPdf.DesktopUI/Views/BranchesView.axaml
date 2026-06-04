@@ -5,41 +5,88 @@
              x:DataType="vm:BranchesViewModel">
 
   <DockPanel>
-    <!-- Toolbar: all actions side by side, with icons -->
+    <!-- Toolbar -->
     <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
-      <TextBlock Text="Branches" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
+      <TextBlock Text="Větve" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
       <Button Content="🔄 Obnovit" Command="{Binding RefreshCommand}"/>
-      <Button Content="➕ Vytvořit branch" Command="{Binding ShowCreateCommand}"/>
-      <Button Content="🗑 Smazat branch" Command="{Binding DeleteCommand}"
+      <Button Content="➕ Vytvořit větev" Command="{Binding ShowCreateCommand}"/>
+      <Button Content="🗑 Smazat větev" Command="{Binding DeleteCommand}"
               IsEnabled="{Binding SelectedBranch, Converter={x:Static ObjectConverters.IsNotNull}}"/>
       <TextBlock Text="{Binding Info}" Foreground="#9CDCFE" VerticalAlignment="Center"/>
       <TextBlock Text="{Binding Error}" Foreground="#C0392B" VerticalAlignment="Center"/>
     </StackPanel>
 
-    <!-- Reveal form (appears on Vytvořit branch) -->
+    <!-- Reveal form (vytvoření) -->
     <Border DockPanel.Dock="Top" IsVisible="{Binding ShowCreateForm}"
             BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,0,8">
       <StackPanel Spacing="8">
-        <TextBlock Text="Nový branch" FontWeight="Bold"/>
+        <TextBlock Text="Nová větev" FontWeight="Bold"/>
         <StackPanel Orientation="Horizontal" Spacing="8">
-          <TextBox Width="200" Text="{Binding NewKey}" PlaceholderText="Key (např. Alfa)"/>
-          <TextBox Width="260" Text="{Binding NewName}" PlaceholderText="Name"/>
+          <TextBox Width="200" Text="{Binding NewKey}" PlaceholderText="Klíč (např. Alfa)"/>
+          <TextBox Width="260" Text="{Binding NewName}" PlaceholderText="Název"/>
           <Button Content="Uložit" Command="{Binding SaveCreateCommand}"/>
           <Button Content="Zrušit" Command="{Binding CancelCreateCommand}"/>
         </StackPanel>
+        <TextBlock Foreground="#9CDCFE" TextWrapping="Wrap"
+                   Text="{Binding BranchFolderPreview, StringFormat='Složka větve vznikne v: {0}'}"
+                   IsVisible="{Binding BranchFolderPreview, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
         <TextBlock Text="{Binding ValidationError}" Foreground="#C0392B" TextWrapping="Wrap"
                    IsVisible="{Binding ValidationError, Converter={x:Static ObjectConverters.IsNotNull}}"/>
       </StackPanel>
     </Border>
 
-    <DataGrid x:CompileBindings="False" ItemsSource="{Binding Branches}" SelectedItem="{Binding SelectedBranch}"
-              IsReadOnly="True" AutoGenerateColumns="False" CanUserResizeColumns="True">
-      <DataGrid.Columns>
-        <DataGridTextColumn Header="Key" Binding="{Binding Key}" Width="180"/>
-        <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*"/>
-        <DataGridTextColumn Header="Enabled" Binding="{Binding Enabled}" Width="90"/>
-        <DataGridTextColumn Header="Created" Binding="{Binding CreatedAt}" Width="200"/>
-      </DataGrid.Columns>
-    </DataGrid>
+    <!-- Master (seznam) + detail (stav, úprava, statistiky této větve) -->
+    <Grid ColumnDefinitions="*,400">
+      <DataGrid Grid.Column="0" x:CompileBindings="False"
+                ItemsSource="{Binding Branches}" SelectedItem="{Binding SelectedBranch}"
+                IsReadOnly="True" AutoGenerateColumns="False" CanUserResizeColumns="True">
+        <DataGrid.Columns>
+          <DataGridTextColumn Header="Klíč" Binding="{Binding Key}" Width="180"/>
+          <DataGridTextColumn Header="Název" Binding="{Binding Name}" Width="*"/>
+          <DataGridTextColumn Header="Povoleno" Binding="{Binding Enabled}" Width="90"/>
+          <DataGridTextColumn Header="Vytvořeno" Binding="{Binding CreatedAt}" Width="200"/>
+        </DataGrid.Columns>
+      </DataGrid>
+
+      <ScrollViewer Grid.Column="1" Margin="10,0,0,0"
+                    IsVisible="{Binding SelectedBranch, Converter={x:Static ObjectConverters.IsNotNull}}">
+        <StackPanel Spacing="10">
+          <TextBlock Text="{Binding SelectedBranch.Key, StringFormat='Detail větve: {0}'}" FontWeight="Bold" FontSize="16"/>
+
+          <!-- Úprava větve -->
+          <Border BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="4" Padding="10">
+            <StackPanel Spacing="8">
+              <TextBlock Text="Úprava větve" FontWeight="Bold"/>
+              <TextBox Text="{Binding EditName}" Watermark="Název"/>
+              <CheckBox Content="Povoleno" IsChecked="{Binding EditEnabled}"/>
+              <Button Content="💾 Uložit změny" Command="{Binding SaveEditCommand}"/>
+            </StackPanel>
+          </Border>
+
+          <!-- Statistiky této větve -->
+          <ItemsControl ItemsSource="{Binding Stats}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:StatGroup">
+                <Border BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,0,8">
+                  <StackPanel Spacing="4">
+                    <TextBlock Text="{Binding Title}" FontWeight="Bold"/>
+                    <ItemsControl ItemsSource="{Binding Lines}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:StatLine">
+                          <Grid ColumnDefinitions="*,Auto" Margin="0,1">
+                            <TextBlock Grid.Column="0" Text="{Binding Label}" Foreground="#CCC"/>
+                            <TextBlock Grid.Column="1" Text="{Binding Count}" FontWeight="Bold"/>
+                          </Grid>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </ScrollViewer>
+    </Grid>
   </DockPanel>
 </UserControl>

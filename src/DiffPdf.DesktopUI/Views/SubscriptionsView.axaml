@@ -6,10 +6,10 @@
 
   <DockPanel>
     <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
-      <TextBlock Text="Subscriptions" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
+      <TextBlock Text="Notifikace" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
       <Button Content="Obnovit" Command="{Binding RefreshCommand}"/>
-      <Button Content="Nový" Command="{Binding NewCommand}"/>
-      <Button Content="Editovat" Command="{Binding EditSelectedCommand}"/>
+      <Button Content="Nová" Command="{Binding NewCommand}"/>
+      <Button Content="Upravit" Command="{Binding EditSelectedCommand}"/>
       <Button Content="Smazat" Command="{Binding DeleteCommand}"/>
       <TextBlock Text="{Binding Info}" Foreground="#9CDCFE" VerticalAlignment="Center"/>
       <TextBlock Text="{Binding Error}" Foreground="#C0392B" VerticalAlignment="Center"/>
@@ -19,27 +19,27 @@
       <DataGrid Grid.Column="0" Margin="0,0,8,0" x:CompileBindings="False" ItemsSource="{Binding Subscriptions}"
                 SelectedItem="{Binding Selected}" IsReadOnly="True" AutoGenerateColumns="False" CanUserResizeColumns="True">
         <DataGrid.Columns>
-          <DataGridTextColumn Header="Channel" Binding="{Binding Channel}" Width="90"/>
-          <DataGridTextColumn Header="Target" Binding="{Binding Target}" Width="*"/>
-          <DataGridTextColumn Header="Scope" Binding="{Binding BranchKey}" Width="100"/>
-          <DataGridTextColumn Header="Enabled" Binding="{Binding Enabled}" Width="80"/>
+          <DataGridTextColumn Header="Kanál" Binding="{Binding Channel}" Width="90"/>
+          <DataGridTextColumn Header="Cíl" Binding="{Binding Target}" Width="*"/>
+          <DataGridTextColumn Header="Větev" Binding="{Binding BranchKey}" Width="100"/>
+          <DataGridTextColumn Header="Povoleno" Binding="{Binding Enabled}" Width="80"/>
           <DataGridTextColumn Header="v" Binding="{Binding Version}" Width="50"/>
         </DataGrid.Columns>
       </DataGrid>
 
       <ScrollViewer Grid.Column="1">
         <StackPanel Spacing="6">
-          <TextBlock Text="Odběr" FontWeight="Bold"/>
-          <TextBlock Text="Channel"/>
+          <TextBlock Text="Odběr notifikací" FontWeight="Bold"/>
+          <TextBlock Text="Kanál"/>
           <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Channels}" SelectedItem="{Binding Channel}"/>
-          <TextBox Text="{Binding Target}" PlaceholderText="Target (URL nebo e-mail)"/>
+          <TextBox Text="{Binding Target}" PlaceholderText="Cíl (URL nebo e-mail)"/>
           <TextBlock Text="Události"/>
-          <CheckBox Content="Completed" IsChecked="{Binding EventCompleted}"/>
-          <CheckBox Content="GateViolated" IsChecked="{Binding EventGateViolated}"/>
-          <CheckBox Content="Failed" IsChecked="{Binding EventFailed}"/>
-          <TextBox Text="{Binding BranchKey}" PlaceholderText="BranchKey (volitelné)"/>
-          <TextBox Text="{Binding InstanceKey}" PlaceholderText="InstanceKey (volitelné)"/>
-          <CheckBox Content="Enabled" IsChecked="{Binding Enabled}"/>
+          <CheckBox Content="Dokončeno" IsChecked="{Binding EventCompleted}"/>
+          <CheckBox Content="Porušena CI brána" IsChecked="{Binding EventGateViolated}"/>
+          <CheckBox Content="Selhání" IsChecked="{Binding EventFailed}"/>
+          <TextBox Text="{Binding BranchKey}" PlaceholderText="Klíč větve (volitelné)"/>
+          <TextBox Text="{Binding InstanceKey}" PlaceholderText="Klíč instance (volitelné)"/>
+          <CheckBox Content="Povoleno" IsChecked="{Binding Enabled}"/>
           <Button Content="Uložit odběr" Command="{Binding SaveCommand}" HorizontalAlignment="Left"/>
         </StackPanel>
       </ScrollViewer>

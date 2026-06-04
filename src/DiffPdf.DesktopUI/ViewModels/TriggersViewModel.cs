@@ -12,8 +12,8 @@ public partial class TriggersViewModel : PageViewModel
     private readonly ServerSession _session;
     private readonly NavigationService _navigation;
 
-    public override string Title => "Triggers / Run";
-    public override int NavOrder => 6;
+    public override string Title => "Spustit porovnání";
+    public override int NavOrder => 5;
 
     public ObservableCollection<Branch> Branches { get; } = [];
     public ObservableCollection<Instance> Instances { get; } = [];
@@ -51,9 +51,9 @@ public partial class TriggersViewModel : PageViewModel
     private Task TriggerInstanceAsync() => RunAsync(async () =>
     {
         if (SelectedBranch is null || SelectedInstance is null)
-            throw new InvalidOperationException("Vyber branch i instanci.");
+            throw new InvalidOperationException("Vyber větev i instanci.");
         var result = await _session.Require().TriggerBatchAsync(SelectedBranch.Key, SelectedInstance.Key);
-        Info = $"Outcome: {result.Outcome}{(result.JobId is { } id ? $" (job {id})" : "")} {result.Detail}";
+        Info = $"Výsledek: {result.Outcome}{(result.JobId is { } id ? $" (úloha {id})" : "")} {result.Detail}";
         if (result.JobId is { } jobId)
             _navigation.GoTo<JobsViewModel>(j => j.OpenJob(jobId));
     });
@@ -61,9 +61,9 @@ public partial class TriggersViewModel : PageViewModel
     [RelayCommand]
     private Task RunBranchAsync() => RunAsync(async () =>
     {
-        if (SelectedBranch is null) throw new InvalidOperationException("Vyber branch.");
+        if (SelectedBranch is null) throw new InvalidOperationException("Vyber větev.");
         var result = await _session.Require().RunBranchAsync(SelectedBranch.Key);
-        Info = $"Fan-out '{result.BranchKey}': launched {result.Launched}, skipped {result.Skipped}.";
+        Info = $"Větev '{result.BranchKey}': spuštěno {result.Launched}, přeskočeno {result.Skipped}.";
         RunResults.Clear();
         foreach (var r in result.Instances) RunResults.Add(r);
     });

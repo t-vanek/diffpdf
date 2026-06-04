@@ -160,6 +160,9 @@ string persistenceProvider = string.IsNullOrWhiteSpace(relational) ? "In-memory"
 builder.Services.AddSingleton(new PersistenceInfo(persistenceProvider));
 builder.Services.AddSingleton<OperationalStatusService>();
 
+// Per-branch / per-instance statistics for the detail views (scoped: depends on the per-request stores).
+builder.Services.AddScoped<ScopeStatsService>();
+
 // Recovers file-pair tasks abandoned by a crashed worker (works with either store).
 builder.Services.AddHostedService<StaleTaskRecoveryService>();
 

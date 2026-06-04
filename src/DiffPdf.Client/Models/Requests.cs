@@ -6,11 +6,17 @@ public sealed record JobScope(string BranchKey, string InstanceKey);
 /// <summary>Create a branch (top-level scope, e.g. "Alfa").</summary>
 public sealed record CreateBranchRequest(string Key, string Name);
 
+/// <summary>Update a branch's name/enabled (Key is the immutable identity). <see cref="Version"/> guards concurrent edits.</summary>
+public sealed record UpdateBranchRequest(string Name, bool Enabled, long Version);
+
 /// <summary>
 /// Create an instance under a branch. <paramref name="BasePath"/> (local / UNC /
 /// <c>share:</c> alias) holds the old/new/reports subfolders.
 /// </summary>
 public sealed record CreateInstanceRequest(string Key, string Name, string BasePath, string? CredentialProfile = null);
+
+/// <summary>Update an instance's name/basePath/credentialProfile/enabled (Key is the immutable identity). <see cref="Version"/> guards concurrent edits.</summary>
+public sealed record UpdateInstanceRequest(string Name, string BasePath, string? CredentialProfile, bool Enabled, long Version);
 
 /// <summary>Compare a single old/new PDF pair synchronously.</summary>
 public sealed record SingleComparisonRequest

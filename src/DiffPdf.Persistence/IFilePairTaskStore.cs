@@ -30,4 +30,11 @@ public interface IFilePairTaskStore
 
     /// <summary>Counts active (Queued or Running) file-pair tasks across all jobs (operational backlog depth).</summary>
     Task<int> CountActiveAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Counts file-pair tasks grouped by status across the given jobs (the per-scope comparison breakdown for
+    /// the branch/instance detail views). Empty <paramref name="jobIds"/> yields an empty result.
+    /// </summary>
+    Task<IReadOnlyDictionary<FilePairTaskStatus, int>> CountByStatusForJobsAsync(
+        IReadOnlyCollection<Guid> jobIds, CancellationToken ct = default);
 }

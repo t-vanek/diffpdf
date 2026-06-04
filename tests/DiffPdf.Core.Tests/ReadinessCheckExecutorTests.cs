@@ -14,6 +14,8 @@ public class ReadinessCheckExecutorTests
             Task.FromResult(inspect(basePath));
         public Task<InstanceStructureReport> EnsureAsync(string basePath, string? credentialProfile, bool includeFiles = false, CancellationToken ct = default) =>
             throw new NotSupportedException();
+        public Task<bool> EnsureFolderAsync(string path, string? credentialProfile, CancellationToken ct = default) =>
+            Task.FromResult(true);
     }
 
     private static InstanceStructureReport Report(bool reachable, int oldPdfs, int newPdfs) => new(
