@@ -183,7 +183,7 @@ builder.Services.AddSingleton(new ServerAuthInfo(authEnabled));
 if (auth.Enabled && string.IsNullOrWhiteSpace(relational))
     Log.Warning("Auth:Enabled is set but no PostgreSQL/SQL Server connection is configured — authentication is disabled.");
 if (authEnabled)
-    builder.Services.AddDiffPdfAuth(relational!, useSqlServer, auth);
+    builder.Services.AddDiffPdfAuth(useSqlServer, auth);
 
 // LAN server discovery: answer UDP broadcast probes so the desktop client can auto-find this server.
 builder.Services.Configure<DiscoveryOptions>(builder.Configuration.GetSection(DiscoveryOptions.SectionName));

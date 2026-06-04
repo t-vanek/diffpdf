@@ -9,18 +9,23 @@ namespace DiffPdf.Api.Auth;
 internal sealed class OpenIddictClientSeeder(
     IServiceScopeFactory scopeFactory,
     IOptions<AuthOptions> options,
-    ILogger<OpenIddictClientSeeder> logger) : IHostedService
+    ILogger<OpenIddictClientSeeder> logger,
+    bool useSqlServer) : IHostedService
 {
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         var auth = options.Value;
         await using var scope = scopeFactory.CreateAsyncScope();
 
-        var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
-        await db.Database.EnsureCreatedAsync(cancellationToken);
+        // Ensure the schema (incl. the OpenIddict tables) exists before seeding. MigrateAsync is idempotent
+        // and serialized by EF's migration lock, so it's safe alongside the persistence migration runner and
+        // removes the hosted-service start-order race.
+        DbContext db = useSqlServer
+            ? scope.ServiceProvider.GetRequiredService<DiffPdf.Persistence.SqlServer.DiffPdfDbContext>()
+            : scope.ServiceProvider.GetRequiredService<DiffPdf.Persistence.Postgres.DiffPdfDbContext>();
+        await db.Database.MigrateAsync(cancellationToken);
 
         var manager = scope.ServiceProvider.GetRequiredService<IOpenIddictApplicationManager>();
-
         await SeedMachineClientAsync(manager, auth, cancellationToken);
     }
 

@@ -1,18 +1,4 @@
-using Microsoft.EntityFrameworkCore;
-
 namespace DiffPdf.Api.Auth;
-
-/// <summary>
-/// Dedicated EF Core context holding only OpenIddict's tables, kept separate
-/// from the application schema so it can be created independently.
-/// </summary>
-public sealed class AuthDbContext(DbContextOptions<AuthDbContext> options) : DbContext(options)
-{
-    protected override void OnModelCreating(ModelBuilder builder)
-    {
-        builder.UseOpenIddict();
-    }
-}
 
 /// <summary>OAuth2 / OpenID Connect configuration.</summary>
 public sealed class AuthOptions
