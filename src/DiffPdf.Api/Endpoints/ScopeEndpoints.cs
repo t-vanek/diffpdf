@@ -2,7 +2,10 @@ using DiffPdf.Core.Comparison;
 using DiffPdf.Core.Models;
 using DiffPdf.Core.Network;
 using DiffPdf.Core.Storage;
+using DiffPdf.Messaging.ControlPlane;
+using DiffPdf.Messaging.ScopeSync;
 using DiffPdf.Persistence;
+using Microsoft.Extensions.Options;
 
 namespace DiffPdf.Api.Endpoints;
 
@@ -14,20 +17,36 @@ public static class ScopeEndpoints
         var group = app.MapGroup("/branches").WithTags("Scope");
 
         group.MapPost("/", async (
-            CreateBranchRequest request, IBranchStore store, CancellationToken ct) =>
+            CreateBranchRequest request, IBranchStore store, IControlCheckProvisioner provisioner,
+            IInstanceStructureService structure, IOptions<ScopeSyncOptions> scopeSync,
+            bool? autoProvision, CancellationToken ct) =>
         {
             if (!StorageKeyValidator.IsValidKey(request.Key))
                 return Results.Problem($"Invalid branch key '{request.Key}'.", statusCode: StatusCodes.Status400BadRequest);
+            Branch created;
             try
             {
-                var created = await store.CreateAsync(request.Key, request.Name, ct);
-                return Results.Created($"/api/v1/branches/{created.Key}", created);
+                created = await store.CreateAsync(request.Key, request.Name, ct);
             }
             catch (DuplicateKeyException ex)
             {
                 return Results.Problem(ex.Message, statusCode: StatusCodes.Status409Conflict);
             }
-        }).WithSummary("Create a branch").Produces<Branch>(StatusCodes.Status201Created)
+
+            // When a structure root is configured, create the branch folder <root>/<branch> on disk so the
+            // tree is laid out top-down. Best-effort: an unreachable root does not undo the branch record.
+            string root = (scopeSync.Value.RootPath ?? "").Trim();
+            if (root.Length > 0)
+                await structure.EnsureFolderAsync(InstanceFolders.Combine(root, created.Key), scopeSync.Value.CredentialProfile, ct);
+
+            // Provision the branch's readiness check (covers every instance under it). Idempotent and
+            // best-effort so it never fails the create; suppressed with ?autoProvision=false.
+            if (autoProvision != false)
+                await provisioner.EnsureBranchChecksAsync(created.Key, ct);
+
+            return Results.Created($"/api/v1/branches/{created.Key}", created);
+        }).WithSummary("Create a branch (also creates <root>/<branch> when a structure root is configured, and its readiness check unless ?autoProvision=false)")
+          .Produces<Branch>(StatusCodes.Status201Created)
           .ProducesProblem(StatusCodes.Status400BadRequest).ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapGet("/", async (IBranchStore store, CancellationToken ct) =>
@@ -41,8 +60,39 @@ public static class ScopeEndpoints
             return branch is null ? Results.NotFound() : Results.Ok(branch);
         }).WithSummary("Get a branch").Produces<Branch>().ProducesProblem(StatusCodes.Status404NotFound);
 
+        group.MapPut("/{branchKey}", async (
+            string branchKey, UpdateBranchRequest request, IBranchStore store, CancellationToken ct) =>
+        {
+            var existing = await store.GetByKeyAsync(branchKey, ct);
+            if (existing is null) return Results.NotFound();
+
+            var updated = existing with
+            {
+                Name = string.IsNullOrWhiteSpace(request.Name) ? existing.Name : request.Name,
+                Enabled = request.Enabled,
+            };
+            try
+            {
+                return Results.Ok(await store.UpdateAsync(updated, request.Version, ct));
+            }
+            catch (ConcurrencyConflictException ex)
+            {
+                return Results.Problem(ex.Message, statusCode: StatusCodes.Status409Conflict);
+            }
+        }).WithSummary("Update a branch's name/enabled (optimistic concurrency via Version)")
+          .Produces<Branch>().ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
+
+        group.MapGet("/{branchKey}/stats", async (
+            string branchKey, IBranchStore branches, ScopeStatsService stats, CancellationToken ct) =>
+        {
+            if (await branches.GetByKeyAsync(branchKey, ct) is null) return Results.NotFound();
+            return Results.Ok(await stats.ForBranchAsync(branchKey, ct));
+        }).WithSummary("Aggregated statistics for a branch (jobs, checks, automations, comparisons)")
+          .Produces<ScopeStatsResponse>().ProducesProblem(StatusCodes.Status404NotFound);
+
         group.MapDelete("/{branchKey}", async (
-            string branchKey, IBranchStore branches, IInstanceStore instances, IJobStore jobs, CancellationToken ct) =>
+            string branchKey, IBranchStore branches, IInstanceStore instances, IJobStore jobs,
+            IControlCheckProvisioner provisioner, CancellationToken ct) =>
         {
             var branch = await branches.GetByKeyAsync(branchKey, ct);
             if (branch is null) return Results.NotFound();
@@ -61,6 +111,8 @@ public static class ScopeEndpoints
                     statusCode: StatusCodes.Status409Conflict);
 
             await branches.DeleteByKeyAsync(branchKey, ct);
+            // Remove the auto-provisioned readiness check so it does not outlive the branch.
+            await provisioner.RemoveBranchChecksAsync(branchKey, ct);
             return Results.NoContent();
         }).WithSummary("Delete a branch (409 if it has instances or an active job)")
           .Produces(StatusCodes.Status204NoContent)
@@ -69,22 +121,36 @@ public static class ScopeEndpoints
         group.MapPost("/{branchKey}/instances", async (
             string branchKey, CreateInstanceRequest request,
             IBranchStore branches, IInstanceStore instances, IInstanceStructureService structure,
-            bool? ensureStructure, CancellationToken ct) =>
+            IControlCheckProvisioner provisioner, IOptions<ScopeSyncOptions> scopeSync,
+            bool? ensureStructure, bool? autoProvision, CancellationToken ct) =>
         {
             if (!StorageKeyValidator.IsValidKey(request.Key))
                 return Results.Problem($"Invalid instance key '{request.Key}'.", statusCode: StatusCodes.Status400BadRequest);
-            if (string.IsNullOrWhiteSpace(request.BasePath))
-                return Results.Problem("Instance basePath must not be empty.", statusCode: StatusCodes.Status400BadRequest);
 
             var branch = await branches.GetByKeyAsync(branchKey, ct);
             if (branch is null)
                 return Results.Problem($"Branch '{branchKey}' not found.", statusCode: StatusCodes.Status404NotFound);
 
+            // When a structure root is configured, the base path is derived as <root>/<branch>/<instance>
+            // (the caller's basePath is ignored). Otherwise the caller must supply an explicit base path.
+            string root = (scopeSync.Value.RootPath ?? "").Trim();
+            bool useRoot = root.Length > 0;
+            if (!useRoot && string.IsNullOrWhiteSpace(request.BasePath))
+                return Results.Problem("Instance basePath must not be empty (no ScopeSync root is configured).", statusCode: StatusCodes.Status400BadRequest);
+
+            string basePath = useRoot
+                ? InstanceFolders.Combine(InstanceFolders.Combine(root, branchKey), request.Key)
+                : request.BasePath;
+            // Under a shared root the instance inherits the root's credential profile unless one is supplied.
+            string? credentialProfile = useRoot && string.IsNullOrWhiteSpace(request.CredentialProfile)
+                ? scopeSync.Value.CredentialProfile
+                : request.CredentialProfile;
+
             ComparisonInstance created;
             try
             {
                 created = await instances.CreateAsync(
-                    branch.Id, request.Key, request.Name, request.BasePath, request.CredentialProfile, ct);
+                    branch.Id, request.Key, request.Name, basePath, credentialProfile, ct);
             }
             catch (DuplicateKeyException ex)
             {
@@ -97,10 +163,15 @@ public static class ScopeEndpoints
             if (ensureStructure != false)
                 report = await structure.EnsureAsync(created.BasePath, created.CredentialProfile, ct: ct);
 
+            // Ensure the branch's readiness check exists (it already covers this new instance). Idempotent
+            // safety net for branches that predate the branch-create hook; suppressed with ?autoProvision=false.
+            if (autoProvision != false)
+                await provisioner.EnsureBranchChecksAsync(branchKey, ct);
+
             return Results.Created(
                 $"/api/v1/branches/{branchKey}/instances/{created.Key}",
                 new CreatedInstanceResponse(created, report));
-        }).WithSummary("Create an instance under a branch (provisions old/new/reports unless ?ensureStructure=false)")
+        }).WithSummary("Create an instance under a branch (provisions old/new/reports unless ?ensureStructure=false; ensures the branch readiness check unless ?autoProvision=false)")
           .Produces<CreatedInstanceResponse>(StatusCodes.Status201Created)
           .ProducesProblem(StatusCodes.Status400BadRequest).ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
 
@@ -121,6 +192,37 @@ public static class ScopeEndpoints
             var instance = await instances.GetByKeyAsync(branch.Id, instanceKey, ct);
             return instance is null ? Results.NotFound() : Results.Ok(instance);
         }).WithSummary("Get an instance").Produces<ComparisonInstance>().ProducesProblem(StatusCodes.Status404NotFound);
+
+        group.MapPut("/{branchKey}/instances/{instanceKey}", async (
+            string branchKey, string instanceKey, UpdateInstanceRequest request,
+            IBranchStore branches, IInstanceStore instances, CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.BasePath))
+                return Results.Problem("Instance basePath must not be empty.", statusCode: StatusCodes.Status400BadRequest);
+
+            var branch = await branches.GetByKeyAsync(branchKey, ct);
+            if (branch is null) return Results.NotFound();
+            var existing = await instances.GetByKeyAsync(branch.Id, instanceKey, ct);
+            if (existing is null) return Results.NotFound();
+
+            var updated = existing with
+            {
+                Name = string.IsNullOrWhiteSpace(request.Name) ? existing.Name : request.Name,
+                BasePath = request.BasePath,
+                CredentialProfile = string.IsNullOrWhiteSpace(request.CredentialProfile) ? null : request.CredentialProfile,
+                Enabled = request.Enabled,
+            };
+            try
+            {
+                return Results.Ok(await instances.UpdateAsync(updated, request.Version, ct));
+            }
+            catch (ConcurrencyConflictException ex)
+            {
+                return Results.Problem(ex.Message, statusCode: StatusCodes.Status409Conflict);
+            }
+        }).WithSummary("Update an instance's name/basePath/credentialProfile/enabled (optimistic concurrency via Version)")
+          .Produces<ComparisonInstance>().ProducesProblem(StatusCodes.Status400BadRequest)
+          .ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapDelete("/{branchKey}/instances/{instanceKey}", async (
             string branchKey, string instanceKey,
@@ -196,6 +298,16 @@ public static class ScopeEndpoints
                 report.HasComparableInputs, pairing.Error));
         }).WithSummary("Batch readiness: folder-skeleton state + old/new PDF counts, how they pair up, and whether a job may be submitted (?includeFiles=true returns the full file list)")
           .Produces<InstanceReadiness>().ProducesProblem(StatusCodes.Status404NotFound);
+
+        group.MapGet("/{branchKey}/instances/{instanceKey}/stats", async (
+            string branchKey, string instanceKey,
+            IBranchStore branches, IInstanceStore instances, ScopeStatsService stats, CancellationToken ct) =>
+        {
+            var instance = await ResolveInstanceAsync(branchKey, instanceKey, branches, instances, ct);
+            if (instance is null) return Results.NotFound();
+            return Results.Ok(await stats.ForInstanceAsync(branchKey, instanceKey, ct));
+        }).WithSummary("Aggregated statistics for an instance (jobs, checks, automations, comparisons)")
+          .Produces<ScopeStatsResponse>().ProducesProblem(StatusCodes.Status404NotFound);
     }
 
     private static async Task<ComparisonInstance?> ResolveInstanceAsync(

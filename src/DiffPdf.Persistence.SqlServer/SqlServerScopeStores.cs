@@ -23,6 +23,22 @@ public sealed class SqlServerBranchStore(DiffPdfDbContext db, EntityMapper mappe
         return (await GetByKeyAsync(key, ct))!;
     }
 
+    public async Task<Branch> UpdateAsync(Branch branch, long expectedVersion, CancellationToken ct = default)
+    {
+        var now = DateTimeOffset.UtcNow;
+        int rows = await db.Branches
+            .Where(x => x.Key == branch.Key && x.Version == expectedVersion)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(x => x.Name, branch.Name)
+                .SetProperty(x => x.Enabled, branch.Enabled)
+                .SetProperty(x => x.UpdatedAt, now)
+                .SetProperty(x => x.Version, x => x.Version + 1), ct);
+
+        return rows == 0
+            ? throw new ConcurrencyConflictException($"Branch update conflict for '{branch.Key}' (expected version {expectedVersion}).")
+            : (await GetByKeyAsync(branch.Key, ct))!;
+    }
+
     public async Task<Branch?> GetByKeyAsync(string key, CancellationToken ct = default)
     {
         var e = await db.Branches.AsNoTracking().FirstOrDefaultAsync(x => x.Key == key, ct);
@@ -65,6 +81,24 @@ public sealed class SqlServerInstanceStore(DiffPdfDbContext db, EntityMapper map
             throw new DuplicateKeyException($"Instance '{key}' already exists in this branch.");
         }
         return (await GetByKeyAsync(branchId, key, ct))!;
+    }
+
+    public async Task<ComparisonInstance> UpdateAsync(ComparisonInstance instance, long expectedVersion, CancellationToken ct = default)
+    {
+        var now = DateTimeOffset.UtcNow;
+        int rows = await db.Instances
+            .Where(x => x.BranchId == instance.BranchId && x.Key == instance.Key && x.Version == expectedVersion)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(x => x.Name, instance.Name)
+                .SetProperty(x => x.BasePath, instance.BasePath)
+                .SetProperty(x => x.CredentialProfile, instance.CredentialProfile)
+                .SetProperty(x => x.Enabled, instance.Enabled)
+                .SetProperty(x => x.UpdatedAt, now)
+                .SetProperty(x => x.Version, x => x.Version + 1), ct);
+
+        return rows == 0
+            ? throw new ConcurrencyConflictException($"Instance update conflict for '{instance.Key}' (expected version {expectedVersion}).")
+            : (await GetByKeyAsync(instance.BranchId, instance.Key, ct))!;
     }
 
     public async Task<ComparisonInstance?> GetByKeyAsync(Guid branchId, string key, CancellationToken ct = default)

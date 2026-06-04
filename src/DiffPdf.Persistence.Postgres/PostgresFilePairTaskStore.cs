@@ -117,6 +117,26 @@ public sealed class PostgresFilePairTaskStore(DiffPdfDbContext db, EntityMapper 
     public async Task<int> CountActiveAsync(CancellationToken ct = default) =>
         await db.FilePairTasks.AsNoTracking().CountAsync(t => t.Status == "Queued" || t.Status == "Running", ct);
 
+    public async Task<IReadOnlyDictionary<FilePairTaskStatus, int>> CountByStatusForJobsAsync(
+        IReadOnlyCollection<Guid> jobIds, CancellationToken ct = default)
+    {
+        var result = new Dictionary<FilePairTaskStatus, int>();
+        if (jobIds.Count == 0) return result;
+
+        foreach (var chunk in jobIds.Chunk(1000))
+        {
+            var rows = await db.FilePairTasks.AsNoTracking()
+                .Where(t => chunk.Contains(t.JobId))
+                .GroupBy(t => t.Status)
+                .Select(g => new { Status = g.Key, Count = g.Count() })
+                .ToListAsync(ct);
+            foreach (var r in rows)
+                if (Enum.TryParse<FilePairTaskStatus>(r.Status, out var s))
+                    result[s] = result.GetValueOrDefault(s) + r.Count;
+        }
+        return result;
+    }
+
     private static FilePairTaskEntity ToEntity(FilePairTask t) => new()
     {
         Id = t.Id,

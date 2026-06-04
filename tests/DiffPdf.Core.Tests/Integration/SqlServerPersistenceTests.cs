@@ -92,7 +92,7 @@ public class SqlServerPersistenceTests(LocalDbFixture db)
             var structure = new InstanceStructureService(resolver, connector, NullLogger<InstanceStructureService>.Instance);
 
             var sync = new ScopeSyncService(resolver, connector, branches, instances, structure,
-                Options.Create(new ScopeSyncOptions { RootPath = root }), NullLogger<ScopeSyncService>.Instance);
+                new NoopControlCheckProvisioner(), Options.Create(new ScopeSyncOptions { RootPath = root }), NullLogger<ScopeSyncService>.Instance);
 
             var report = await sync.SynchronizeAsync(apply: true);
 

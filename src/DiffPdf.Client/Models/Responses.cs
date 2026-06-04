@@ -36,6 +36,63 @@ public sealed record CreatedInstanceResponse
     public InstanceStructureReport? Structure { get; init; }
 }
 
+// ---------------- Per-scope statistics (branch / instance detail) ----------------
+
+/// <summary>Job counts by status for one scope.</summary>
+public sealed record JobStats
+{
+    public int Queued { get; init; }
+    public int Running { get; init; }
+    public int Paused { get; init; }
+    public int Completed { get; init; }
+    public int Failed { get; init; }
+}
+
+/// <summary>Control-check counts for one scope.</summary>
+public sealed record CheckStats
+{
+    public int Active { get; init; }
+    public int Running { get; init; }
+    public int Completed { get; init; }
+    public int Failed { get; init; }
+}
+
+/// <summary>Automation counts for one scope (umbrella over every automation type; control checks are the only type today).</summary>
+public sealed record AutomationStats
+{
+    public int Active { get; init; }
+    public int Running { get; init; }
+    public int Paused { get; init; }
+    public int Completed { get; init; }
+    public int Failed { get; init; }
+}
+
+/// <summary>Comparison (file-pair) counts by status for one scope.</summary>
+public sealed record ComparisonStats
+{
+    public int Waiting { get; init; }
+    public int Running { get; init; }
+    public int Completed { get; init; }
+    public int Failed { get; init; }
+    public int Skipped { get; init; }
+}
+
+/// <summary>Aggregated statistics for a single branch or instance scope.</summary>
+public sealed record ScopeStatsResponse
+{
+    public JobStats Jobs { get; init; } = new();
+    public CheckStats Checks { get; init; } = new();
+    public AutomationStats Automations { get; init; } = new();
+    public ComparisonStats Comparisons { get; init; } = new();
+}
+
+/// <summary>The configured structure root under which branches/instances are created server-side (from <c>GET /scope/root</c>).</summary>
+public sealed record ScopeRootInfo
+{
+    public string? Root { get; init; }
+    public bool Configured { get; init; }
+}
+
 /// <summary>State of one required subfolder after inspecting / ensuring it.</summary>
 public sealed record StructureItem
 {

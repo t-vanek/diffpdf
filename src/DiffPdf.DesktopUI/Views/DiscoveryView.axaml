@@ -7,13 +7,13 @@
   <DockPanel>
     <StackPanel DockPanel.Dock="Top" Spacing="6" Margin="0,0,0,8">
       <StackPanel Orientation="Horizontal" Spacing="8">
-        <TextBlock Text="Discovery" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
+        <TextBlock Text="Sdílené složky" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
         <Button Content="Obnovit" Command="{Binding RefreshCommand}"/>
         <TextBlock Text="{Binding Error}" Foreground="#C0392B" VerticalAlignment="Center"/>
         <ProgressBar IsIndeterminate="True" Width="100" Height="4" VerticalAlignment="Center" IsVisible="{Binding IsBusy}"/>
       </StackPanel>
       <StackPanel Orientation="Horizontal" Spacing="8">
-        <TextBlock Text="Scope sync" FontWeight="Bold" VerticalAlignment="Center"/>
+        <TextBlock Text="Synchronizace struktury" FontWeight="Bold" VerticalAlignment="Center"/>
         <Button Content="Náhled" Command="{Binding PreviewSyncCommand}"/>
         <Button Content="Synchronizovat" Command="{Binding ApplySyncCommand}"/>
         <TextBlock Text="{Binding SyncInfo}" Foreground="#2C7A2C" VerticalAlignment="Center" TextWrapping="Wrap"/>
@@ -21,7 +21,7 @@
     </StackPanel>
 
     <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
-      <TextBlock Text="Credential profily" FontWeight="Bold"/>
+      <TextBlock Text="Profily přihlášení" FontWeight="Bold"/>
       <ItemsControl ItemsSource="{Binding CredentialProfiles}">
         <ItemsControl.ItemTemplate>
           <DataTemplate><TextBlock Text="{Binding}"/></DataTemplate>
@@ -32,10 +32,10 @@
     <DataGrid x:CompileBindings="False" ItemsSource="{Binding Shares}" IsReadOnly="True"
               AutoGenerateColumns="False" CanUserResizeColumns="True">
       <DataGrid.Columns>
-        <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="140"/>
-        <DataGridTextColumn Header="Root" Binding="{Binding Root}" Width="*"/>
-        <DataGridTextColumn Header="LocalMount" Binding="{Binding LocalMountPath}" Width="200"/>
-        <DataGridTextColumn Header="Creds" Binding="{Binding RequiresCredentials}" Width="80"/>
+        <DataGridTextColumn Header="Název" Binding="{Binding Name}" Width="140"/>
+        <DataGridTextColumn Header="Kořen" Binding="{Binding Root}" Width="*"/>
+        <DataGridTextColumn Header="Lokální připojení" Binding="{Binding LocalMountPath}" Width="200"/>
+        <DataGridTextColumn Header="Přihlášení" Binding="{Binding RequiresCredentials}" Width="80"/>
         <DataGridTextColumn Header="Popis" Binding="{Binding Description}" Width="200"/>
       </DataGrid.Columns>
     </DataGrid>

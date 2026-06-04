@@ -6,24 +6,47 @@ using DiffPdf.DesktopUI.Services;
 
 namespace DiffPdf.DesktopUI.ViewModels;
 
-/// <summary>Instances under a branch: list + create (reveal form + uniqueness validation) + delete (confirmed); inspect structure / readiness.</summary>
+/// <summary>
+/// Instance pod větví: seznam + vytvoření + úprava + smazání + detail se stavem (připravenost / struktura,
+/// jen pro čtení) a statistikami dané instance. Akce „oprava struktury" sem nepatří — řeší ji sekce Automatizace.
+/// </summary>
 public partial class InstancesViewModel : PageViewModel
 {
     private readonly ServerSession _session;
     private readonly DialogService _dialogs;
 
-    public override string Title => "Instances";
+    public override string Title => "Instance";
     public override int NavOrder => 2;
 
     public ObservableCollection<Branch> Branches { get; } = [];
     public ObservableCollection<Instance> Instances { get; } = [];
 
+    /// <summary>Statistiky vztažené pouze k vybrané instanci.</summary>
+    public ObservableCollection<StatGroup> Stats { get; } = [];
+
     [ObservableProperty] private Branch? _selectedBranch;
     [ObservableProperty] private Instance? _selectedInstance;
     [ObservableProperty] private bool _showCreateForm;
-    [ObservableProperty] private string _newKey = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(NewBasePathPreview))]
+    private string _newKey = string.Empty;
+
     [ObservableProperty] private string _newName = string.Empty;
-    [ObservableProperty] private string _newBasePath = string.Empty;
+
+    // Záloha pro případ, že server nemá nastavený kořen struktury: uživatel zadá kořen ručně a aplikace
+    // k němu připojí \<větev>\<instanci> (konvence kořen/větev/instance/{old,new,reports}).
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(NewBasePathPreview))]
+    private string _newRoot = string.Empty;
+
+    // Kořen struktury nastavený na serveru (ScopeSync:RootPath). Je-li nastaven, cesty se odvozují z něj
+    // a uživatel kořen vůbec nezadává.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(NewBasePathPreview))]
+    [NotifyPropertyChangedFor(nameof(RootInputVisible))]
+    private string? _scopeRoot;
+
     [ObservableProperty] private string _newCredentialProfile = string.Empty;
     [ObservableProperty] private bool _ensureStructure = true;
     [ObservableProperty] private string? _validationError;
@@ -31,13 +54,48 @@ public partial class InstancesViewModel : PageViewModel
     [ObservableProperty] private InstanceStructureReport? _structure;
     [ObservableProperty] private InstanceReadiness? _readiness;
 
+    // Editace vybrané instance (klíč je neměnná identita).
+    [ObservableProperty] private string _editName = string.Empty;
+    [ObservableProperty] private string _editBasePath = string.Empty;
+    [ObservableProperty] private string _editCredentialProfile = string.Empty;
+    [ObservableProperty] private bool _editEnabled = true;
+
+    /// <summary>Pole pro ruční kořen se zobrazí jen tehdy, když server kořen struktury nemá nastavený.</summary>
+    public bool RootInputVisible => string.IsNullOrWhiteSpace(ScopeRoot);
+
+    private string EffectiveRoot => string.IsNullOrWhiteSpace(ScopeRoot) ? NewRoot.Trim() : ScopeRoot!.Trim();
+
+    /// <summary>Výsledná základní cesta instance: kořen + větev + klíč instance (živý náhled pro zakládací formulář).</summary>
+    public string NewBasePathPreview
+    {
+        get
+        {
+            string root = EffectiveRoot;
+            string key = NewKey.Trim();
+            if (root.Length == 0 || SelectedBranch is null || key.Length == 0)
+                return string.Empty;
+            return Combine(Combine(root, SelectedBranch.Key), key);
+        }
+    }
+
+    /// <summary>Spojí cestu se složkou; pro UNC kořen zachová zpětná lomítka (stejně jako server).</summary>
+    private static string Combine(string root, string sub)
+    {
+        string trimmed = root.TrimEnd('\\', '/');
+        return trimmed.StartsWith(@"\\", StringComparison.Ordinal) ? $@"{trimmed}\{sub}" : System.IO.Path.Combine(trimmed, sub);
+    }
+
     public InstancesViewModel(ServerSession session, DialogService dialogs)
     {
         _session = session;
         _dialogs = dialogs;
     }
 
-    public override Task ActivateAsync() => RunAsync(LoadBranchesAsync);
+    public override Task ActivateAsync() => RunAsync(async () =>
+    {
+        await LoadBranchesAsync();
+        ScopeRoot = (await _session.Require().GetScopeRootAsync()).Root;
+    });
 
     private async Task LoadBranchesAsync()
     {
@@ -53,7 +111,11 @@ public partial class InstancesViewModel : PageViewModel
         foreach (var i in await _session.Require().ListInstancesAsync(SelectedBranch.Key)) Instances.Add(i);
     }
 
-    partial void OnSelectedBranchChanged(Branch? value) => _ = RunAsync(LoadInstancesAsync);
+    partial void OnSelectedBranchChanged(Branch? value)
+    {
+        OnPropertyChanged(nameof(NewBasePathPreview));
+        _ = RunAsync(LoadInstancesAsync);
+    }
 
     [RelayCommand]
     private Task RefreshAsync() => RunAsync(async () =>
@@ -65,7 +127,7 @@ public partial class InstancesViewModel : PageViewModel
     [RelayCommand]
     private void ShowCreate()
     {
-        NewKey = NewName = NewBasePath = NewCredentialProfile = string.Empty;
+        NewKey = NewName = NewRoot = NewCredentialProfile = string.Empty;
         EnsureStructure = true;
         ValidationError = null;
         Info = null;
@@ -87,24 +149,23 @@ public partial class InstancesViewModel : PageViewModel
 
         await _session.Require().CreateInstanceAsync(
             SelectedBranch!.Key,
-            new CreateInstanceRequest(NewKey.Trim(), NewName.Trim(), NewBasePath.Trim(),
+            new CreateInstanceRequest(NewKey.Trim(), NewName.Trim(), NewBasePathPreview,
                 string.IsNullOrWhiteSpace(NewCredentialProfile) ? null : NewCredentialProfile.Trim()),
             EnsureStructure);
-        Info = $"Instance '{NewKey.Trim()}' vytvořena.";
+        Info = $"Instance '{NewKey.Trim()}' vytvořena v {NewBasePathPreview}.";
         ShowCreateForm = false;
         await LoadInstancesAsync();
     });
 
-    /// <summary>Client-side guard: key + name + basePath required, key/name unique within the branch.</summary>
+    /// <summary>Klientská kontrola: klíč + název + cesta povinné, klíč/název unikátní v rámci větve.</summary>
     private string? Validate()
     {
-        if (SelectedBranch is null) return "Vyber branch.";
+        if (SelectedBranch is null) return "Vyber větev.";
         var key = NewKey.Trim();
         var name = NewName.Trim();
-        var basePath = NewBasePath.Trim();
         if (key.Length == 0) return "Zadej klíč.";
         if (name.Length == 0) return "Zadej název.";
-        if (basePath.Length == 0) return "Zadej BasePath.";
+        if (RootInputVisible && NewRoot.Trim().Length == 0) return "Zadej kořenovou složku.";
         if (Instances.Any(i => string.Equals(i.Key, key, StringComparison.Ordinal)))
             return $"Instance s klíčem '{key}' už v této větvi existuje.";
         if (Instances.Any(i => string.Equals(i.Name, name, StringComparison.OrdinalIgnoreCase)))
@@ -113,10 +174,28 @@ public partial class InstancesViewModel : PageViewModel
     }
 
     [RelayCommand]
+    private Task SaveEditAsync() => RunAsync(async () =>
+    {
+        if (SelectedBranch is null || SelectedInstance is not { } inst)
+            throw new InvalidOperationException("Vyber instanci v seznamu.");
+        if (string.IsNullOrWhiteSpace(EditBasePath))
+        {
+            ValidationError = "Zadej základní cestu.";
+            return;
+        }
+        await _session.Require().UpdateInstanceAsync(SelectedBranch.Key, inst.Key, new UpdateInstanceRequest(
+            EditName.Trim(), EditBasePath.Trim(),
+            string.IsNullOrWhiteSpace(EditCredentialProfile) ? null : EditCredentialProfile.Trim(),
+            EditEnabled, inst.Version));
+        Info = $"Instance '{inst.Key}' uložena.";
+        await LoadInstancesAsync();
+    });
+
+    [RelayCommand]
     private Task DeleteAsync() => RunAsync(async () =>
     {
         if (SelectedBranch is null || SelectedInstance is null)
-            throw new InvalidOperationException("Vyber branch i instanci.");
+            throw new InvalidOperationException("Vyber větev i instanci.");
         var key = SelectedInstance.Key;
         if (!await _dialogs.ConfirmAsync("Smazat instanci", $"Opravdu smazat instanci '{key}'?"))
             return;
@@ -125,17 +204,21 @@ public partial class InstancesViewModel : PageViewModel
         await LoadInstancesAsync();
     });
 
-    // Selecting an instance in the list loads its readiness (read-only) and, from the same response,
-    // the inspected old/new/reports structure — no button and no disk writes (unlike the create/repair
-    // "ensure", which stays out of a plain selection).
+    // Výběr instance načte (jen pro čtení) její připravenost a inspekci struktury old/new/reports a statistiky.
+    // Žádný zápis na disk — oprava struktury se řeší přes sekci Automatizace, ne odsud.
     partial void OnSelectedInstanceChanged(Instance? value)
     {
+        Stats.Clear();
         if (value is null || SelectedBranch is null)
         {
             Readiness = null;
             Structure = null;
             return;
         }
+        EditName = value.Name;
+        EditBasePath = value.BasePath;
+        EditCredentialProfile = value.CredentialProfile ?? string.Empty;
+        EditEnabled = value.Enabled;
         _ = RunAsync(LoadInstanceDetailsAsync);
     }
 
@@ -143,22 +226,13 @@ public partial class InstancesViewModel : PageViewModel
     {
         if (SelectedBranch is null || SelectedInstance is null)
             return;
-        var readiness = await _session.Require().GetReadinessAsync(SelectedBranch.Key, SelectedInstance.Key, sampleSize: 10);
+        var client = _session.Require();
+        var readiness = await client.GetReadinessAsync(SelectedBranch.Key, SelectedInstance.Key, sampleSize: 10);
         Readiness = readiness;
         Structure = readiness.Structure; // read-only inspection (Present / Missing / WrongType)
-    }
 
-    /// <summary>Explicit create/repair of the selected instance's old/new/reports structure (writes to
-    /// disk: creates missing folders, replaces a file occupying a folder name), then refreshes the view.</summary>
-    [RelayCommand]
-    private Task RepairStructureAsync() => RunAsync(async () =>
-    {
-        if (SelectedBranch is null || SelectedInstance is null)
-            throw new InvalidOperationException("Vyber instanci v seznamu.");
-        if (!await _dialogs.ConfirmAsync("Opravit strukturu",
-                $"Vytvoří chybějící old/new/reports pro '{SelectedInstance.Key}' a nahradí soubor kolidující s názvem složky. Pokračovat?"))
-            return;
-        Structure = await _session.Require().EnsureStructureAsync(SelectedBranch.Key, SelectedInstance.Key);
-        Readiness = await _session.Require().GetReadinessAsync(SelectedBranch.Key, SelectedInstance.Key, sampleSize: 10);
-    });
+        var stats = await client.GetInstanceStatsAsync(SelectedBranch.Key, SelectedInstance.Key);
+        Stats.Clear();
+        foreach (var g in ScopeStatGroups.From(stats)) Stats.Add(g);
+    }
 }

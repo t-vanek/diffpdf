@@ -1,4 +1,6 @@
+using DiffPdf.Api;
 using DiffPdf.Messaging.ScopeSync;
+using Microsoft.Extensions.Options;
 
 namespace DiffPdf.Api.Endpoints;
 
@@ -13,5 +15,13 @@ public static class ScopeSyncEndpoints
             .WithSummary("Detect the on-disk <root>/<branch>/<instance> structure and reconcile it with the database. Dry-run by default; ?apply=true registers branches/instances and creates missing folders.")
             .Produces<ScopeSyncReport>()
             .RequireRateLimiting("expensive");
+
+        app.MapGet("/scope/root", (IOptions<ScopeSyncOptions> options) =>
+        {
+            string? root = string.IsNullOrWhiteSpace(options.Value.RootPath) ? null : options.Value.RootPath!.Trim();
+            return Results.Ok(new ScopeRootInfo(root, root is not null));
+        }).WithTags("Scope")
+          .WithSummary("The configured structure root (ScopeSync:RootPath) under which branches/instances are created (null when not configured). Branch/instance paths are derived from it server-side.")
+          .Produces<ScopeRootInfo>();
     }
 }

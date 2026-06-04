@@ -11,8 +11,8 @@ public partial class SubscriptionsViewModel : PageViewModel
 {
     private readonly ServerSession _session;
 
-    public override string Title => "Subscriptions";
-    public override int NavOrder => 5;
+    public override string Title => "Notifikace";
+    public override int NavOrder => 7;
 
     public string[] Channels { get; } = ["webhook", "email"];
     public ObservableCollection<SubscriptionResponse> Subscriptions { get; } = [];
@@ -89,7 +89,7 @@ public partial class SubscriptionsViewModel : PageViewModel
                 Channel = Channel, Target = Target, Events = Events(),
                 BranchKey = bk, InstanceKey = ik, Enabled = Enabled, Version = version,
             });
-            Info = "Uloženo (update).";
+            Info = "Uloženo (úprava).";
         }
         else
         {

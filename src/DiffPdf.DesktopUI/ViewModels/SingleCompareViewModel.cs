@@ -13,8 +13,8 @@ public partial class SingleCompareViewModel : PageViewModel
 
     private readonly ServerSession _session;
 
-    public override string Title => "Single compare";
-    public override int NavOrder => 7;
+    public override string Title => "Jednorázové porovnání";
+    public override int NavOrder => 6;
 
     public ComparisonOptionsViewModel Options { get; } = new();
 

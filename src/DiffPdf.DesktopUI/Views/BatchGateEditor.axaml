@@ -5,20 +5,20 @@
              x:DataType="vm:BatchGateViewModel">
 
   <StackPanel Spacing="6">
-    <CheckBox Content="CI brána (BatchGate)" IsChecked="{Binding Enabled}" FontWeight="Bold"/>
+    <CheckBox Content="CI brána" IsChecked="{Binding Enabled}" FontWeight="Bold"/>
     <StackPanel Spacing="6" IsEnabled="{Binding Enabled}">
-      <CheckBox Content="FailOnAnyDifference" IsChecked="{Binding FailOnAnyDifference}"/>
+      <CheckBox Content="Selhat při jakémkoli rozdílu" IsChecked="{Binding FailOnAnyDifference}"/>
       <WrapPanel>
-        <StackPanel Width="150" Margin="0,0,8,6">
-          <TextBlock Text="MaxDifferingFiles"/>
+        <StackPanel Width="170" Margin="0,0,8,6">
+          <TextBlock Text="Max. odlišných souborů"/>
           <NumericUpDown Value="{Binding MaxDifferingFiles}" Minimum="0" FormatString="0"/>
         </StackPanel>
         <StackPanel Width="150" Margin="0,0,8,6">
-          <TextBlock Text="MaxErrors"/>
+          <TextBlock Text="Max. chyb"/>
           <NumericUpDown Value="{Binding MaxErrors}" Minimum="0" FormatString="0"/>
         </StackPanel>
-        <StackPanel Width="190" Margin="0,0,8,6">
-          <TextBlock Text="MaxFilesWithContentErrors"/>
+        <StackPanel Width="210" Margin="0,0,8,6">
+          <TextBlock Text="Max. souborů s chybami obsahu"/>
           <NumericUpDown Value="{Binding MaxFilesWithContentErrors}" Minimum="0" FormatString="0"/>
         </StackPanel>
       </WrapPanel>

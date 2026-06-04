@@ -128,4 +128,18 @@ public sealed class InMemoryFilePairTaskStore : IFilePairTaskStore
 
     public Task<int> CountActiveAsync(CancellationToken ct = default) =>
         Task.FromResult(_tasks.Values.Count(t => t.Status is FilePairTaskStatus.Queued or FilePairTaskStatus.Running));
+
+    public Task<IReadOnlyDictionary<FilePairTaskStatus, int>> CountByStatusForJobsAsync(
+        IReadOnlyCollection<Guid> jobIds, CancellationToken ct = default)
+    {
+        if (jobIds.Count == 0)
+            return Task.FromResult<IReadOnlyDictionary<FilePairTaskStatus, int>>(new Dictionary<FilePairTaskStatus, int>());
+
+        var set = jobIds as HashSet<Guid> ?? [.. jobIds];
+        var counts = _tasks.Values
+            .Where(t => set.Contains(t.JobId))
+            .GroupBy(t => t.Status)
+            .ToDictionary(g => g.Key, g => g.Count());
+        return Task.FromResult<IReadOnlyDictionary<FilePairTaskStatus, int>>(counts);
+    }
 }

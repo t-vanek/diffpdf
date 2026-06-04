@@ -15,8 +15,8 @@ public partial class JobsViewModel : PageViewModel
     private readonly DialogService _dialogs;
     private Guid? _pendingJobId;
 
-    public override string Title => "Jobs";
-    public override int NavOrder => 9;
+    public override string Title => "Úlohy";
+    public override int NavOrder => 4;
 
     public ObservableCollection<JobSummary> Jobs { get; } = [];
     public ObservableCollection<FilePairTaskSummary> Tasks { get; } = [];
@@ -119,10 +119,10 @@ public partial class JobsViewModel : PageViewModel
 
     private Task ActAsync(Func<DiffPdfClient, Task<JobSummary>> action) => RunAsync(async () =>
     {
-        if (SelectedJob is null) throw new InvalidOperationException("Vyber job.");
+        if (SelectedJob is null) throw new InvalidOperationException("Vyber úlohu.");
         var updated = await action(_session.Require());
         ReplaceJob(updated);
-        Info = $"Job {updated.Id}: {updated.Status}.";
+        Info = $"Úloha {updated.Id}: {updated.Status}.";
     });
 
     private void ReplaceJob(JobSummary updated)

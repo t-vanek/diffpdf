@@ -4,7 +4,7 @@
         x:Class="DiffPdf.DesktopUI.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Width="1280" Height="820"
-        Title="diffpdf — tester">
+        Title="DiffPDF Remote Manager">
 
   <DockPanel>
     <!-- Connection bar -->
@@ -14,8 +14,8 @@
         <TextBox Width="280" Text="{Binding ServerUrl}" PlaceholderText="http://localhost:5275"/>
         <TextBox Width="150" Text="{Binding ClientId}" PlaceholderText="ClientId" IsVisible="{Binding AuthEnabled}"/>
         <TextBox Width="130" Text="{Binding ClientSecret}" PlaceholderText="Secret" PasswordChar="•" IsVisible="{Binding AuthEnabled}"/>
-        <Button Content="Connect" Command="{Binding ConnectCommand}" IsVisible="{Binding !IsConnected}"/>
-        <Button Content="Disconnect" Command="{Binding DisconnectCommand}" IsVisible="{Binding IsConnected}"/>
+        <Button Content="Připojit" Command="{Binding ConnectCommand}" IsVisible="{Binding !IsConnected}"/>
+        <Button Content="Odpojit" Command="{Binding DisconnectCommand}" IsVisible="{Binding IsConnected}"/>
         <TextBlock Text="{Binding ConnectionStatus}" VerticalAlignment="Center" Foreground="#9CDCFE"/>
         <TextBlock Text="{Binding Error}" VerticalAlignment="Center" Foreground="#FF6B6B"/>
       </StackPanel>

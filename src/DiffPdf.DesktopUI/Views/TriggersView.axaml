@@ -6,15 +6,15 @@
 
   <DockPanel>
     <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
-      <TextBlock Text="Triggers / Run" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
+      <TextBlock Text="Spustit porovnání" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
       <ComboBox Width="160" ItemsSource="{Binding Branches}" SelectedItem="{Binding SelectedBranch}">
         <ComboBox.ItemTemplate><DataTemplate x:CompileBindings="False"><TextBlock Text="{Binding Key}"/></DataTemplate></ComboBox.ItemTemplate>
       </ComboBox>
       <ComboBox Width="160" ItemsSource="{Binding Instances}" SelectedItem="{Binding SelectedInstance}">
         <ComboBox.ItemTemplate><DataTemplate x:CompileBindings="False"><TextBlock Text="{Binding Key}"/></DataTemplate></ComboBox.ItemTemplate>
       </ComboBox>
-      <Button Content="Trigger instanci" Command="{Binding TriggerInstanceCommand}"/>
-      <Button Content="Run branch (fan-out)" Command="{Binding RunBranchCommand}"/>
+      <Button Content="Spustit instanci" Command="{Binding TriggerInstanceCommand}"/>
+      <Button Content="Spustit celou větev" Command="{Binding RunBranchCommand}"/>
     </StackPanel>
 
     <TextBlock DockPanel.Dock="Top" Margin="0,0,0,8">
@@ -26,8 +26,8 @@
               AutoGenerateColumns="False" CanUserResizeColumns="True">
       <DataGrid.Columns>
         <DataGridTextColumn Header="Instance" Binding="{Binding InstanceKey}" Width="180"/>
-        <DataGridTextColumn Header="Outcome" Binding="{Binding Outcome}" Width="140"/>
-        <DataGridTextColumn Header="JobId" Binding="{Binding JobId}" Width="280"/>
+        <DataGridTextColumn Header="Výsledek" Binding="{Binding Outcome}" Width="140"/>
+        <DataGridTextColumn Header="ID úlohy" Binding="{Binding JobId}" Width="280"/>
         <DataGridTextColumn Header="Detail" Binding="{Binding Detail}" Width="*"/>
       </DataGrid.Columns>
     </DataGrid>

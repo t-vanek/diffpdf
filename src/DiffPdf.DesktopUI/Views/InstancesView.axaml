@@ -5,10 +5,10 @@
              x:DataType="vm:InstancesViewModel">
 
   <DockPanel>
-    <!-- Toolbar: branch selector + actions with icons -->
+    <!-- Toolbar: výběr větve + akce -->
     <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
-      <TextBlock Text="Instances" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
-      <TextBlock Text="Branch:" VerticalAlignment="Center"/>
+      <TextBlock Text="Instance" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
+      <TextBlock Text="Větev:" VerticalAlignment="Center"/>
       <ComboBox Width="180" ItemsSource="{Binding Branches}" SelectedItem="{Binding SelectedBranch}">
         <ComboBox.ItemTemplate><DataTemplate x:CompileBindings="False"><TextBlock Text="{Binding Key}"/></DataTemplate></ComboBox.ItemTemplate>
       </ComboBox>
@@ -27,13 +27,19 @@
       <StackPanel Spacing="8">
         <TextBlock Text="Nová instance" FontWeight="Bold"/>
         <WrapPanel>
-          <TextBox Width="180" Margin="0,0,8,6" Text="{Binding NewKey}" PlaceholderText="Key"/>
-          <TextBox Width="200" Margin="0,0,8,6" Text="{Binding NewName}" PlaceholderText="Name"/>
-          <TextBox Width="320" Margin="0,0,8,6" Text="{Binding NewBasePath}" PlaceholderText="BasePath (lokál / UNC / share:alias)"/>
-          <TextBox Width="220" Margin="0,0,8,6" Text="{Binding NewCredentialProfile}" PlaceholderText="CredentialProfile (volitelné)"/>
+          <TextBox Width="180" Margin="0,0,8,6" Text="{Binding NewKey}" PlaceholderText="Klíč (např. LamaEnergy)"/>
+          <TextBox Width="200" Margin="0,0,8,6" Text="{Binding NewName}" PlaceholderText="Název"/>
+          <TextBox Width="320" Margin="0,0,8,6" Text="{Binding NewRoot}" PlaceholderText="Kořenová složka (např. D:\diffpdf)"
+                   IsVisible="{Binding RootInputVisible}"/>
+          <TextBox Width="220" Margin="0,0,8,6" Text="{Binding NewCredentialProfile}" PlaceholderText="Profil přihlášení (volitelné)"/>
         </WrapPanel>
+        <TextBlock Foreground="#808080" TextWrapping="Wrap" IsVisible="{Binding RootInputVisible}"
+                   Text="Server nemá nastavený kořen struktury (ScopeSync:RootPath) — zadej kořenovou složku ručně."/>
+        <TextBlock Foreground="#9CDCFE" TextWrapping="Wrap"
+                   Text="{Binding NewBasePathPreview, StringFormat='Instance vznikne v: {0} (a v ní složky old/new/reports)'}"
+                   IsVisible="{Binding NewBasePathPreview, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
         <StackPanel Orientation="Horizontal" Spacing="8">
-          <CheckBox Content="Založit složky (ensureStructure)" IsChecked="{Binding EnsureStructure}" VerticalAlignment="Center"/>
+          <CheckBox Content="Založit složky old/new/reports" IsChecked="{Binding EnsureStructure}" VerticalAlignment="Center"/>
           <Button Content="Uložit" Command="{Binding SaveCreateCommand}"/>
           <Button Content="Zrušit" Command="{Binding CancelCreateCommand}"/>
         </StackPanel>
@@ -46,58 +52,96 @@
       <DataGrid Grid.Column="0" Margin="0,0,8,0" x:CompileBindings="False" ItemsSource="{Binding Instances}"
                 SelectedItem="{Binding SelectedInstance}" IsReadOnly="True" AutoGenerateColumns="False" CanUserResizeColumns="True">
         <DataGrid.Columns>
-          <DataGridTextColumn Header="Key" Binding="{Binding Key}" Width="150"/>
-          <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="150"/>
-          <DataGridTextColumn Header="BasePath" Binding="{Binding BasePath}" Width="*"/>
-          <DataGridTextColumn Header="Cred" Binding="{Binding CredentialProfile}" Width="100"/>
+          <DataGridTextColumn Header="Klíč" Binding="{Binding Key}" Width="150"/>
+          <DataGridTextColumn Header="Název" Binding="{Binding Name}" Width="150"/>
+          <DataGridTextColumn Header="Základní cesta" Binding="{Binding BasePath}" Width="*"/>
+          <DataGridTextColumn Header="Povoleno" Binding="{Binding Enabled}" Width="90"/>
         </DataGrid.Columns>
       </DataGrid>
 
       <ScrollViewer Grid.Column="1">
         <StackPanel Spacing="10">
-          <Button Content="🔧 Opravit strukturu" HorizontalAlignment="Left"
-                  Command="{Binding RepairStructureCommand}"
-                  IsEnabled="{Binding SelectedInstance, Converter={x:Static ObjectConverters.IsNotNull}}"/>
-          <TextBlock Text="Vyber instanci v seznamu pro zobrazení readiness a struktury."
+          <TextBlock Text="Vyber instanci v seznamu pro zobrazení stavu a statistik."
                      Foreground="#808080" TextWrapping="Wrap"
-                     IsVisible="{Binding Readiness, Converter={x:Static ObjectConverters.IsNull}}"/>
+                     IsVisible="{Binding SelectedInstance, Converter={x:Static ObjectConverters.IsNull}}"/>
 
-          <Border BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="4" Padding="10"
-                  IsVisible="{Binding Readiness, Converter={x:Static ObjectConverters.IsNotNull}}">
-            <StackPanel Spacing="4">
-              <TextBlock Text="Readiness" FontWeight="Bold"/>
-              <TextBlock Text="{Binding Readiness.Ready, StringFormat='Ready: {0}'}"/>
-              <TextBlock Text="{Binding Readiness.Reachable, StringFormat='Reachable: {0}'}"/>
-              <TextBlock Text="{Binding Readiness.OldPdfCount, StringFormat='old PDF: {0}'}"/>
-              <TextBlock Text="{Binding Readiness.NewPdfCount, StringFormat='new PDF: {0}'}"/>
-              <TextBlock Text="{Binding Readiness.Matched, StringFormat='Matched: {0}'}"/>
-              <TextBlock Text="{Binding Readiness.OnlyInOld, StringFormat='Only old: {0}'}"/>
-              <TextBlock Text="{Binding Readiness.OnlyInNew, StringFormat='Only new: {0}'}"/>
-              <TextBlock Text="{Binding Readiness.Error}" Foreground="#C0392B" TextWrapping="Wrap"/>
-            </StackPanel>
-          </Border>
+          <StackPanel Spacing="10" IsVisible="{Binding SelectedInstance, Converter={x:Static ObjectConverters.IsNotNull}}">
+            <TextBlock Text="{Binding SelectedInstance.Key, StringFormat='Detail instance: {0}'}" FontWeight="Bold" FontSize="16"/>
 
-          <Border BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="4" Padding="10"
-                  IsVisible="{Binding Structure, Converter={x:Static ObjectConverters.IsNotNull}}">
-            <StackPanel Spacing="4">
-              <TextBlock Text="Structure" FontWeight="Bold"/>
-              <TextBlock Text="{Binding Structure.Ok, StringFormat='Ok: {0}'}"/>
-              <TextBlock Text="{Binding Structure.BasePath}" TextWrapping="Wrap"/>
-              <ItemsControl x:CompileBindings="False" ItemsSource="{Binding Structure.Items}">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate>
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                      <TextBlock Text="{Binding Name}" Width="64" FontWeight="SemiBold"/>
-                      <TextBlock Text="{Binding State}"/>
-                      <TextBlock Text="{Binding PdfCount, StringFormat='({0} pdf)'}"
-                                 Foreground="#808080"
-                                 IsVisible="{Binding PdfCount, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+            <!-- Úprava instance -->
+            <Border BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="4" Padding="10">
+              <StackPanel Spacing="8">
+                <TextBlock Text="Úprava instance" FontWeight="Bold"/>
+                <TextBox Text="{Binding EditName}" Watermark="Název"/>
+                <TextBox Text="{Binding EditBasePath}" Watermark="Základní cesta"/>
+                <TextBox Text="{Binding EditCredentialProfile}" Watermark="Profil přihlášení (volitelné)"/>
+                <CheckBox Content="Povoleno" IsChecked="{Binding EditEnabled}"/>
+                <Button Content="💾 Uložit změny" Command="{Binding SaveEditCommand}"/>
+              </StackPanel>
+            </Border>
+
+            <!-- Statistiky této instance -->
+            <ItemsControl ItemsSource="{Binding Stats}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:StatGroup">
+                  <Border BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,0,8">
+                    <StackPanel Spacing="4">
+                      <TextBlock Text="{Binding Title}" FontWeight="Bold"/>
+                      <ItemsControl ItemsSource="{Binding Lines}">
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate x:DataType="vm:StatLine">
+                            <Grid ColumnDefinitions="*,Auto" Margin="0,1">
+                              <TextBlock Grid.Column="0" Text="{Binding Label}" Foreground="#CCC"/>
+                              <TextBlock Grid.Column="1" Text="{Binding Count}" FontWeight="Bold"/>
+                            </Grid>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
                     </StackPanel>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-            </StackPanel>
-          </Border>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <!-- Připravenost (jen pro čtení) -->
+            <Border BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="4" Padding="10"
+                    IsVisible="{Binding Readiness, Converter={x:Static ObjectConverters.IsNotNull}}">
+              <StackPanel Spacing="4">
+                <TextBlock Text="Připravenost" FontWeight="Bold"/>
+                <TextBlock Text="{Binding Readiness.Ready, StringFormat='Připraveno: {0}'}"/>
+                <TextBlock Text="{Binding Readiness.Reachable, StringFormat='Dostupné: {0}'}"/>
+                <TextBlock Text="{Binding Readiness.OldPdfCount, StringFormat='PDF ve staré verzi: {0}'}"/>
+                <TextBlock Text="{Binding Readiness.NewPdfCount, StringFormat='PDF v nové verzi: {0}'}"/>
+                <TextBlock Text="{Binding Readiness.Matched, StringFormat='Spárováno: {0}'}"/>
+                <TextBlock Text="{Binding Readiness.OnlyInOld, StringFormat='Jen ve staré: {0}'}"/>
+                <TextBlock Text="{Binding Readiness.OnlyInNew, StringFormat='Jen v nové: {0}'}"/>
+                <TextBlock Text="{Binding Readiness.Error}" Foreground="#C0392B" TextWrapping="Wrap"/>
+              </StackPanel>
+            </Border>
+
+            <!-- Struktura složek (jen pro čtení) -->
+            <Border BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="4" Padding="10"
+                    IsVisible="{Binding Structure, Converter={x:Static ObjectConverters.IsNotNull}}">
+              <StackPanel Spacing="4">
+                <TextBlock Text="Struktura složek" FontWeight="Bold"/>
+                <TextBlock Text="{Binding Structure.Ok, StringFormat='V pořádku: {0}'}"/>
+                <TextBlock Text="{Binding Structure.BasePath}" TextWrapping="Wrap"/>
+                <ItemsControl x:CompileBindings="False" ItemsSource="{Binding Structure.Items}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="{Binding Name}" Width="64" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding State}"/>
+                        <TextBlock Text="{Binding PdfCount, StringFormat='({0} pdf)'}"
+                                   Foreground="#808080"
+                                   IsVisible="{Binding PdfCount, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+                      </StackPanel>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </Border>
+          </StackPanel>
         </StackPanel>
       </ScrollViewer>
     </Grid>

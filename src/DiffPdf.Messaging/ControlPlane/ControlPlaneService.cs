@@ -33,6 +33,7 @@ public sealed class ControlPlaneService(
 
     private readonly ControlCheckReconciler _reconciler = new();
     private bool _wasLeader;
+    private bool _provisioned;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -76,6 +77,17 @@ public sealed class ControlPlaneService(
         await using var scope = scopeFactory.CreateAsyncScope();
         var store = scope.ServiceProvider.GetRequiredService<IControlCheckStore>();
         var runner = scope.ServiceProvider.GetRequiredService<IControlCheckRunner>();
+
+        // Once per process, on the first tick we lead: create the baseline checks and a readiness check for
+        // every existing branch. Doing it here (not in a StartAsync hosted service) avoids racing the EF
+        // migrator and runs once across the cluster. Best-effort; the flag is set only on success so a
+        // transient failure is retried next tick.
+        if (!_provisioned)
+        {
+            await scope.ServiceProvider.GetRequiredService<IControlCheckProvisioner>()
+                .ProvisionBaselineAndExistingAsync(ct);
+            _provisioned = true;
+        }
 
         var checks = await store.ListEnabledAsync(ct);
         var due = _reconciler.Reconcile(
