@@ -21,4 +21,10 @@ public sealed class JobsHub : Hub
 
     public Task JoinBranch(string branchKey) =>
         Groups.AddToGroupAsync(Context.ConnectionId, $"branch:{branchKey}");
+
+    public Task JoinTrigger(Guid triggerId) =>
+        Groups.AddToGroupAsync(Context.ConnectionId, $"trigger:{triggerId}");
+
+    public Task LeaveTrigger(Guid triggerId) =>
+        Groups.RemoveFromGroupAsync(Context.ConnectionId, $"trigger:{triggerId}");
 }

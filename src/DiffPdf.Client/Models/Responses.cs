@@ -172,6 +172,28 @@ public sealed record AuditEntryResponse
     public string? Detail { get; init; }
 }
 
+/// <summary>A real-time trigger/batch/comparison event pushed over SignalR (<c>"triggerEvent"</c>).</summary>
+public sealed record TriggerEvent
+{
+    public string EventType { get; init; } = "";
+    public Guid TriggerId { get; init; }
+    public Guid? BatchJobId { get; init; }
+    public Guid? BranchId { get; init; }
+    public Guid? InstanceId { get; init; }
+    public string? BranchKey { get; init; }
+    public string? InstanceKey { get; init; }
+    public string? Status { get; init; }
+    public string? Result { get; init; }
+    public DateTimeOffset? StartedAt { get; init; }
+    public DateTimeOffset? FinishedAt { get; init; }
+    public long? DurationMs { get; init; }
+    public string? Source { get; init; }
+    public string? Message { get; init; }
+    public string? ErrorCode { get; init; }
+    public string? ErrorMessage { get; init; }
+    public string? ResultReference { get; init; }
+}
+
 /// <summary>State of one required subfolder after inspecting / ensuring it.</summary>
 public sealed record StructureItem
 {

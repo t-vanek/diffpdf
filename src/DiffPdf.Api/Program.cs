@@ -106,6 +106,7 @@ builder.Services.Configure<NetworkOptions>(builder.Configuration.GetSection(Netw
 // means the worker's no-op fallback is not used.
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<IJobProgressPublisher, SignalRJobProgressPublisher>();
+builder.Services.AddSingleton<ITriggerEventPublisher, SignalRTriggerEventPublisher>();
 
 builder.Services.AddDiffPdf();
 builder.Services.AddDiffPdfWorker();

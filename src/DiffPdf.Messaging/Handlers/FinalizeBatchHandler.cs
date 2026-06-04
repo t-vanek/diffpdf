@@ -19,6 +19,7 @@ public sealed class FinalizeBatchHandler
         IJobStore jobStore,
         IFilePairTaskStore taskStore,
         IJobProgressPublisher progressPublisher,
+        ITriggerEventPublisher triggerEvents,
         ILogger<FinalizeBatchHandler> logger,
         CancellationToken ct)
     {
@@ -50,6 +51,18 @@ public sealed class FinalizeBatchHandler
         {
             var completed = await jobStore.CompleteAsync(job.Id, report, job.Version, ct);
             await progressPublisher.PublishAsync(JobProgressChanged.From(completed), ct);
+
+            // Real-time comparison.completed for trigger-launched batches (after the completion is committed).
+            if (completed.TriggerId is { } triggerId)
+                await triggerEvents.PublishAsync(new TriggerEvent(
+                    "comparison.completed", triggerId, completed.Id, completed.BranchId, completed.InstanceId,
+                    completed.BranchKey, completed.InstanceKey,
+                    Status: "completed", Result: report.Passed ? "success" : "gate-violated",
+                    StartedAt: report.StartedAt, FinishedAt: report.CompletedAt,
+                    DurationMs: (long)(report.CompletedAt - report.StartedAt).TotalMilliseconds,
+                    Source: completed.Source.ToString(), Message: "Porovnání bylo dokončeno.",
+                    ResultReference: completed.Id.ToString()), ct);
+
             logger.LogInformation("Job {JobId} finalized: {Total} files, {Diff} differing.",
                 completed.Id, report.Total, report.Differing);
 

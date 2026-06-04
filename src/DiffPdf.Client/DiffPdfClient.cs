@@ -206,6 +206,29 @@ public sealed class DiffPdfClient(HttpClient http)
         return connection;
     }
 
+    /// <summary>
+    /// Opens a SignalR connection, joins a trigger's group and invokes <paramref name="onEvent"/> for each
+    /// <c>triggerEvent</c> push (trigger / batch / comparison lifecycle). Dispose the connection to stop.
+    /// </summary>
+    public async Task<HubConnection> SubscribeToTriggerEventsAsync(
+        Guid triggerId, Action<TriggerEvent> onEvent,
+        Func<Task<string?>>? accessTokenProvider = null, CancellationToken ct = default)
+    {
+        if (http.BaseAddress is null)
+            throw new InvalidOperationException("The HttpClient has no BaseAddress to derive the hub URL from.");
+
+        var hubUrl = new Uri($"{http.BaseAddress.GetLeftPart(UriPartial.Authority)}/hubs/jobs");
+        var connection = new HubConnectionBuilder()
+            .WithUrl(hubUrl, o => { if (accessTokenProvider is not null) o.AccessTokenProvider = accessTokenProvider; })
+            .WithAutomaticReconnect()
+            .Build();
+
+        connection.On<TriggerEvent>("triggerEvent", onEvent);
+        await connection.StartAsync(ct);
+        await connection.InvokeAsync("JoinTrigger", triggerId, ct);
+        return connection;
+    }
+
     // ---------------- Control checks ----------------
 
     public Task<CheckResponse> CreateCheckAsync(CreateCheckRequest request, CancellationToken ct = default) =>

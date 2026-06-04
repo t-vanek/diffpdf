@@ -20,6 +20,7 @@ public sealed class IndexBatchHandler
         IJobStore jobStore,
         IFilePairTaskStore taskStore,
         IStorageProvisioner provisioner,
+        ITriggerEventPublisher triggerEvents,
         IMessageBus bus,
         ILogger<IndexBatchHandler> logger,
         CancellationToken ct)
@@ -44,6 +45,14 @@ public sealed class IndexBatchHandler
             logger.LogError(ex, "Indexing failed for job {JobId}", job.Id);
             var now = DateTimeOffset.UtcNow;
             await jobStore.FailAsync(job.Id, ex.Message, job.Version, ct);
+
+            // Real-time comparison.failed for trigger-launched batches (after the failure is committed).
+            if (job.TriggerId is { } triggerId)
+                await triggerEvents.PublishAsync(new TriggerEvent(
+                    "comparison.failed", triggerId, job.Id, job.BranchId, job.InstanceId, job.BranchKey, job.InstanceKey,
+                    Status: "failed", Result: "error", StartedAt: job.StartedAt, FinishedAt: now,
+                    Source: job.Source.ToString(), Message: "Porovnání selhalo.", ErrorMessage: ex.Message), ct);
+
             return new BatchFailed(job.Id, job.BranchKey, job.InstanceKey, ex.Message, now);
         }
 
