@@ -147,6 +147,8 @@ else
     builder.Services.AddSingleton<ISubscriptionStore, InMemorySubscriptionStore>();
     builder.Services.AddSingleton<IScheduleRunStore, InMemoryScheduleRunStore>();
     builder.Services.AddSingleton<IWatchStore, InMemoryWatchStore>();
+    builder.Services.AddSingleton<IControlCheckStore, InMemoryControlCheckStore>();
+    builder.Services.AddSingleton<IControlCheckRunStore, InMemoryControlCheckRunStore>();
     builder.Services.AddSingleton<ILeaderElection, InMemoryLeaderElection>();
     builder.Services.AddScoped<IJobSubmissionService, SimpleJobSubmissionService>();
     builder.Host.UseWolverine(opts =>

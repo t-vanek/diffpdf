@@ -1,6 +1,6 @@
 namespace DiffPdf.Core.Models;
 
-/// <summary>The kind of batch outcome a notification announces.</summary>
+/// <summary>The kind of event a notification announces — a batch outcome or a control-check result.</summary>
 public enum NotificationEvent
 {
     /// <summary>Batch completed and (if a gate was configured) passed it.</summary>
@@ -11,6 +11,18 @@ public enum NotificationEvent
 
     /// <summary>Batch ended in a failed state.</summary>
     Failed,
+
+    /// <summary>A readiness control check failed (an instance's inputs are not ready to compare).</summary>
+    ReadinessFailed,
+
+    /// <summary>A health control check found a critical dependency degraded (database, renderer, storage).</summary>
+    HealthDegraded,
+
+    /// <summary>A structure-sync control check found the scope/filesystem out of sync.</summary>
+    StructureDrift,
+
+    /// <summary>A previously failing control check passed again.</summary>
+    CheckRecovered,
 }
 
 /// <summary>

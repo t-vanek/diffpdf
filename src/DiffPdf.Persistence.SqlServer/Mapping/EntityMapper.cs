@@ -31,6 +31,12 @@ public sealed partial class EntityMapper
 
     public partial FolderWatch ToDomain(WatchEntity entity);
 
+    [MapProperty(nameof(ControlCheckEntity.ParametersJson), nameof(ControlCheck.Parameters))]
+    [MapProperty(nameof(ControlCheckEntity.EventsJson), nameof(ControlCheck.Events))]
+    public partial ControlCheck ToDomain(ControlCheckEntity entity);
+
+    public partial ControlCheckRun ToDomain(ControlCheckRunEntity entity);
+
     // User-defined conversions Mapperly uses for the json columns.
     private static BatchComparisonRequest MapRequest(string json) =>
         DiffPdfJson.Deserialize<BatchComparisonRequest>(json);
@@ -52,4 +58,7 @@ public sealed partial class EntityMapper
 
     private static IReadOnlyList<string> MapGateViolations(string? json) =>
         string.IsNullOrEmpty(json) ? [] : DiffPdfJson.Deserialize<IReadOnlyList<string>>(json);
+
+    private static IReadOnlyDictionary<string, string> MapParameters(string json) =>
+        string.IsNullOrEmpty(json) ? new Dictionary<string, string>() : DiffPdfJson.Deserialize<IReadOnlyDictionary<string, string>>(json);
 }
