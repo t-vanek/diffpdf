@@ -14,7 +14,6 @@ using DiffPdf.Messaging;
 using DiffPdf.Messaging.ControlPlane;
 using DiffPdf.Messaging.Scheduling;
 using DiffPdf.Messaging.ScopeSync;
-using DiffPdf.Messaging.Security;
 using DiffPdf.Messaging.Triggers;
 using DiffPdf.Notifications.DependencyInjection;
 using DiffPdf.Pdf.DependencyInjection;
@@ -151,7 +150,6 @@ else
     builder.Services.AddSingleton<ITriggerStore, InMemoryTriggerStore>();
     builder.Services.AddSingleton<ITriggerRunStore, InMemoryTriggerRunStore>();
     builder.Services.AddSingleton<IAuditLogStore, InMemoryAuditLogStore>();
-    builder.Services.AddSingleton<IApiKeyStore, InMemoryApiKeyStore>();
     builder.Services.AddSingleton<ILeaderElection, InMemoryLeaderElection>();
     builder.Services.AddScoped<IJobSubmissionService, SimpleJobSubmissionService>();
     builder.Host.UseWolverine(opts =>
@@ -181,7 +179,6 @@ builder.Services.AddHostedService<InstanceStructureHostedService>();
 builder.Services.AddDiffPdfNotifications(builder.Configuration);
 builder.Services.AddScoped<IBatchLauncher, BatchLauncher>();
 builder.Services.AddScoped<ITriggerService, TriggerService>();
-builder.Services.AddScoped<IApiKeyService, ApiKeyService>();
 builder.Services.AddScoped<ITriggerProvisioner, TriggerProvisioner>();
 builder.Services.AddDiffPdfScopeSync(builder.Configuration);
 
@@ -197,9 +194,6 @@ if (auth.Enabled && string.IsNullOrWhiteSpace(relational))
     Log.Warning("Auth:Enabled is set but no PostgreSQL/SQL Server connection is configured — authentication is disabled.");
 if (authEnabled)
     builder.Services.AddDiffPdfAuth(useSqlServer, auth);
-// Authorization policies are always registered: enforced (role-based) when auth is on, permissive when off,
-// so endpoints marked RequireWrite/RequireAdmin behave correctly in both modes.
-builder.Services.AddDiffPdfAuthorization(authEnabled);
 
 // LAN server discovery: answer UDP broadcast probes so the desktop client can auto-find this server.
 builder.Services.Configure<DiscoveryOptions>(builder.Configuration.GetSection(DiscoveryOptions.SectionName));
@@ -212,12 +206,11 @@ app.UseSerilogRequestLogging();
 app.UseRateLimiter();
 
 if (authEnabled)
+{
     app.UseAuthentication();
-// Authorization runs in both modes (permissive policies when auth is off) so RequireWrite/RequireAdmin
-// metadata always has a middleware to evaluate it.
-app.UseAuthorization();
-if (authEnabled)
+    app.UseAuthorization();
     app.MapTokenEndpoint(auth);
+}
 
 app.MapOpenApi().AllowAnonymous();
 app.UseSwaggerUI(o =>
@@ -240,21 +233,8 @@ api.MapDiscoveryEndpoints();
 api.MapTriggerEndpoints();
 api.MapStatusEndpoints();
 api.MapControlCheckEndpoints();
-api.MapSecurityEndpoints();
 
-// RBAC: every mutating (non-GET) endpoint under /api/v1 requires the write policy (≥ Operator); GET
-// endpoints fall back to the read policy (≥ Viewer). Admin-only routes additionally declare RequireAdmin.
-// When auth is off all policies are permissive, so this stays open in dev. Applied as a group convention
-// to guarantee no mutation is left ungated.
-api.Add(b =>
-{
-    var methods = b.Metadata.OfType<Microsoft.AspNetCore.Routing.HttpMethodMetadata>().FirstOrDefault()?.HttpMethods;
-    if (methods is not null && methods.Any(m => !HttpMethods.IsGet(m) && !HttpMethods.IsHead(m) && !HttpMethods.IsOptions(m)))
-        b.Metadata.Add(new Microsoft.AspNetCore.Authorization.AuthorizeAttribute(RolePolicies.Write));
-});
-
-// Live updates hub — gated to ≥Viewer when auth is on (the read policy is permissive when auth is off).
-app.MapHub<JobsHub>("/hubs/jobs").RequireAuthorization(RolePolicies.Read);
+app.MapHub<JobsHub>("/hubs/jobs");
 
 // Wolverine and the EF stores require the relational database to exist and be reachable at startup
 // (Wolverine provisions its inbox/outbox in StartAsync and cannot tolerate a missing database). Rather

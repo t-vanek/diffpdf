@@ -35,8 +35,6 @@ public sealed partial class EntityMapper
 
     public partial AuditEntry ToDomain(AuditLogEntity entity);
 
-    public partial ApiKey ToDomain(ApiKeyEntity entity);
-
     // User-defined conversions Mapperly uses for the jsonb columns.
     private static TriggerSpec MapTriggerSpec(string json) =>
         string.IsNullOrEmpty(json) ? new TriggerSpec() : DiffPdfJson.Deserialize<TriggerSpec>(json);

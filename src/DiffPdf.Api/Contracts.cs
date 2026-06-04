@@ -74,34 +74,6 @@ public sealed record AuditEntryResponse(
     public static AuditEntryResponse From(AuditEntry a) => new(a.Id, a.At, a.Actor, a.Source, a.Action, a.EntityType, a.EntityId, a.Detail);
 }
 
-// ---------------- Security (RBAC, API keys) ----------------
-
-/// <summary>An API key as returned by the API. Never includes the secret (only its display prefix).</summary>
-public sealed record ApiKeyResponse(
-    Guid Id, string Name, string Prefix, Role Role, bool Enabled, DateTimeOffset? ExpiresAt,
-    string? CreatedBy, DateTimeOffset CreatedAt, DateTimeOffset? LastUsedAt, DateTimeOffset? RevokedAt,
-    bool IsDeleted, long Version)
-{
-    public static ApiKeyResponse From(ApiKey k) => new(
-        k.Id, k.Name, k.Prefix, k.Role, k.Enabled, k.ExpiresAt, k.CreatedBy, k.CreatedAt,
-        k.LastUsedAt, k.RevokedAt, k.IsDeleted, k.Version);
-}
-
-/// <summary>Response after creating a key: the key plus the one-time plaintext (shown only here).</summary>
-public sealed record CreatedApiKeyResponse(ApiKeyResponse Key, string Plaintext);
-
-/// <summary>Create an API key. <see cref="Role"/> defaults to Viewer; <see cref="ExpiresAt"/> optional.</summary>
-public sealed record CreateApiKeyRequest(string Name, Role Role = Role.Viewer, DateTimeOffset? ExpiresAt = null);
-
-/// <summary>Partial update of an API key (null = leave unchanged). <see cref="Version"/> guards concurrent edits.</summary>
-public sealed record UpdateApiKeyRequest(string? Name, Role? Role, bool? Enabled, DateTimeOffset? ExpiresAt, long Version);
-
-/// <summary>The current principal: who they are, how they authenticated, and their effective roles.</summary>
-public sealed record MeResponse(string Actor, string AuthMethod, Role HighestRole, IReadOnlyList<string> Roles, bool Authenticated);
-
-/// <summary>One role and what it grants (static legend for the UI).</summary>
-public sealed record RoleInfo(string Name, string Description);
-
 /// <summary>Response after creating an instance: the record plus the result of provisioning its folder skeleton (null when skipped).</summary>
 public sealed record CreatedInstanceResponse(ComparisonInstance Instance, InstanceStructureReport? Structure);
 
