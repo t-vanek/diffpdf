@@ -11,6 +11,7 @@ public partial class BranchesViewModel : PageViewModel
 {
     private readonly ServerSession _session;
     private readonly DialogService _dialogs;
+    private readonly NavigationService _navigation;
 
     public override string Title => "Větve";
     public override int NavOrder => 1;
@@ -19,6 +20,9 @@ public partial class BranchesViewModel : PageViewModel
 
     /// <summary>Statistiky vztažené pouze k vybrané větvi (úlohy, kontroly, automatizace, porovnávání).</summary>
     public ObservableCollection<StatGroup> Stats { get; } = [];
+
+    /// <summary>Spouštěče v této větvi (souhrn; správa je v sekci Spouštěče).</summary>
+    public ObservableCollection<TriggerResponse> Triggers { get; } = [];
 
     [ObservableProperty] private Branch? _selectedBranch;
     [ObservableProperty] private bool _showCreateForm;
@@ -52,10 +56,11 @@ public partial class BranchesViewModel : PageViewModel
     [ObservableProperty] private string _editName = string.Empty;
     [ObservableProperty] private bool _editEnabled = true;
 
-    public BranchesViewModel(ServerSession session, DialogService dialogs)
+    public BranchesViewModel(ServerSession session, DialogService dialogs, NavigationService navigation)
     {
         _session = session;
         _dialogs = dialogs;
+        _navigation = navigation;
     }
 
     public override Task ActivateAsync() => RunAsync(async () =>
@@ -77,6 +82,7 @@ public partial class BranchesViewModel : PageViewModel
     partial void OnSelectedBranchChanged(Branch? value)
     {
         Stats.Clear();
+        Triggers.Clear();
         if (value is null) return;
         EditName = value.Name;
         EditEnabled = value.Enabled;
@@ -86,9 +92,21 @@ public partial class BranchesViewModel : PageViewModel
     private async Task LoadStatsAsync()
     {
         Stats.Clear();
+        Triggers.Clear();
         if (SelectedBranch is not { } b) return;
-        var stats = await _session.Require().GetBranchStatsAsync(b.Key);
+        var client = _session.Require();
+        var stats = await client.GetBranchStatsAsync(b.Key);
         foreach (var g in ScopeStatGroups.From(stats)) Stats.Add(g);
+        foreach (var t in await client.ListBranchTriggersAsync(b.Id)) Triggers.Add(t);
+    }
+
+    /// <summary>Přejde do sekce Spouštěče předfiltrované na tuto větev.</summary>
+    [RelayCommand]
+    private void ManageTriggers()
+    {
+        if (SelectedBranch is not { } b) return;
+        var branchKey = b.Key;
+        _navigation.GoTo<TriggerManagementViewModel>(vm => vm.FocusBranch(branchKey));
     }
 
     [RelayCommand]

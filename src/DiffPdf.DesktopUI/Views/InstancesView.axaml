@@ -2,7 +2,8 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:DiffPdf.DesktopUI.ViewModels"
              x:Class="DiffPdf.DesktopUI.Views.InstancesView"
-             x:DataType="vm:InstancesViewModel">
+             x:DataType="vm:InstancesViewModel"
+             x:Name="Root">
 
   <DockPanel>
     <!-- Toolbar: výběr větve + akce -->
@@ -102,6 +103,34 @@
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>
+
+            <!-- Spouštěče této instance -->
+            <Border BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="4" Padding="10">
+              <StackPanel Spacing="6">
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock Grid.Column="0" Text="Spouštěče" FontWeight="Bold" VerticalAlignment="Center"/>
+                  <Button Grid.Column="1" Content="Spravovat spouštěče" Command="{Binding ManageTriggersCommand}"/>
+                </Grid>
+                <TextBlock Text="Žádné spouštěče." Foreground="#808080" IsVisible="{Binding !Triggers.Count}"/>
+                <ItemsControl x:CompileBindings="False" ItemsSource="{Binding Triggers}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,2">
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                          <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
+                          <TextBlock Foreground="#808080" FontSize="12"
+                                     Text="{Binding Status, StringFormat='Stav: {0}'}"/>
+                        </StackPanel>
+                        <TextBlock Grid.Column="1" VerticalAlignment="Center" Margin="6,0" Foreground="#6A9955"
+                                   Text="výchozí" IsVisible="{Binding IsDefault}"/>
+                        <Button Grid.Column="2" Content="▶ Spustit" Margin="2"
+                                Command="{Binding #Root.DataContext.RunTriggerCommand}" CommandParameter="{Binding}"/>
+                      </Grid>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </Border>
 
             <!-- Připravenost (jen pro čtení) -->
             <Border BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="4" Padding="10"
