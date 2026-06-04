@@ -22,6 +22,53 @@ namespace DiffPdf.Persistence.Postgres.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("DiffPdf.Persistence.Postgres.Entities.AuditLogEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("action");
+
+                    b.Property<string>("Actor")
+                        .HasColumnType("text")
+                        .HasColumnName("actor");
+
+                    b.Property<DateTimeOffset>("At")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("at");
+
+                    b.Property<string>("Detail")
+                        .HasColumnType("text")
+                        .HasColumnName("detail");
+
+                    b.Property<string>("EntityId")
+                        .HasColumnType("text")
+                        .HasColumnName("entity_id");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("entity_type");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("source");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("At");
+
+                    b.HasIndex("EntityType", "EntityId", "At");
+
+                    b.ToTable("audit_log", (string)null);
+                });
+
             modelBuilder.Entity("DiffPdf.Persistence.Postgres.Entities.BranchEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -363,6 +410,11 @@ namespace DiffPdf.Persistence.Postgres.Migrations
                         .HasColumnType("jsonb")
                         .HasColumnName("request_json");
 
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("source");
+
                     b.Property<DateTimeOffset?>("StartedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("started_at");
@@ -376,6 +428,10 @@ namespace DiffPdf.Persistence.Postgres.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("total_count");
 
+                    b.Property<Guid?>("TriggerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("trigger_id");
+
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
@@ -385,6 +441,8 @@ namespace DiffPdf.Persistence.Postgres.Migrations
                         .HasColumnName("version");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("TriggerId");
 
                     b.HasIndex("Status", "CreatedAt");
 
@@ -444,6 +502,180 @@ namespace DiffPdf.Persistence.Postgres.Migrations
                     b.HasIndex("Enabled");
 
                     b.ToTable("notification_subscriptions", (string)null);
+                });
+
+            modelBuilder.Entity("DiffPdf.Persistence.Postgres.Entities.TriggerEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ActionType")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("action_type");
+
+                    b.Property<Guid>("BranchId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("branch_id");
+
+                    b.Property<string>("BranchKey")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("branch_key");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text")
+                        .HasColumnName("description");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enabled");
+
+                    b.Property<Guid>("InstanceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("instance_id");
+
+                    b.Property<string>("InstanceKey")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("instance_key");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_default");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<string>("LastOutcome")
+                        .HasColumnType("text")
+                        .HasColumnName("last_outcome");
+
+                    b.Property<DateTimeOffset?>("LastRunAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_run_at");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("name");
+
+                    b.Property<int>("RunCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("run_count");
+
+                    b.Property<string>("SpecJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("spec_json");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("updated_by");
+
+                    b.Property<long>("Version")
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BranchId");
+
+                    b.HasIndex("InstanceId")
+                        .IsUnique()
+                        .HasFilter("is_default AND NOT is_deleted");
+
+                    b.HasIndex("InstanceId", "Status");
+
+                    b.ToTable("triggers", (string)null);
+                });
+
+            modelBuilder.Entity("DiffPdf.Persistence.Postgres.Entities.TriggerRunEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("BatchJobId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("batch_job_id");
+
+                    b.Property<long?>("DurationMs")
+                        .HasColumnType("bigint")
+                        .HasColumnName("duration_ms");
+
+                    b.Property<string>("Error")
+                        .HasColumnType("text")
+                        .HasColumnName("error");
+
+                    b.Property<DateTimeOffset?>("FinishedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("finished_at");
+
+                    b.Property<string>("IdempotencyKey")
+                        .HasColumnType("text")
+                        .HasColumnName("idempotency_key");
+
+                    b.Property<string>("RequestedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("requested_by");
+
+                    b.Property<string>("Result")
+                        .HasColumnType("text")
+                        .HasColumnName("result");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("source");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("TriggerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("trigger_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TriggerId", "IdempotencyKey")
+                        .IsUnique()
+                        .HasFilter("idempotency_key IS NOT NULL");
+
+                    b.HasIndex("TriggerId", "StartedAt");
+
+                    b.ToTable("trigger_runs", (string)null);
                 });
 
             modelBuilder.Entity("OpenIddict.EntityFrameworkCore.Models.OpenIddictEntityFrameworkCoreApplication", b =>

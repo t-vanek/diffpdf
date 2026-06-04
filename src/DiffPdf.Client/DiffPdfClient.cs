@@ -234,6 +234,72 @@ public sealed class DiffPdfClient(HttpClient http)
         JsonAsync<IReadOnlyList<CheckRunResponse>>(
             HttpMethod.Get, $"/api/v1/checks/{id}/runs" + (limit is { } l ? $"?limit={l}" : ""), null, ct);
 
+    // ---------------- Triggers (Spouštěče) ----------------
+
+    public Task<IReadOnlyList<TriggerResponse>> ListTriggersAsync(
+        Guid? instanceId = null, Guid? branchId = null, TriggerStatus? status = null, bool includeDeleted = false, CancellationToken ct = default)
+    {
+        var q = new List<string>();
+        if (instanceId is { } i) q.Add($"instanceId={i}");
+        if (branchId is { } b) q.Add($"branchId={b}");
+        if (status is { } s) q.Add($"status={s}");
+        if (includeDeleted) q.Add("includeDeleted=true");
+        string url = "/api/v1/triggers" + (q.Count > 0 ? "?" + string.Join("&", q) : "");
+        return JsonAsync<IReadOnlyList<TriggerResponse>>(HttpMethod.Get, url, null, ct);
+    }
+
+    public Task<TriggerResponse?> GetTriggerAsync(Guid id, CancellationToken ct = default) =>
+        GetOrNullAsync<TriggerResponse>($"/api/v1/triggers/{id}", ct);
+
+    public Task<TriggerResponse> CreateTriggerAsync(CreateTriggerRequest request, CancellationToken ct = default) =>
+        JsonAsync<TriggerResponse>(HttpMethod.Post, "/api/v1/triggers", request, ct);
+
+    public Task<TriggerResponse> UpdateTriggerAsync(Guid id, UpdateTriggerRequest request, CancellationToken ct = default) =>
+        JsonAsync<TriggerResponse>(HttpMethod.Patch, $"/api/v1/triggers/{id}", request, ct);
+
+    /// <summary>Soft-deletes a trigger (history preserved). Throws 404 if unknown.</summary>
+    public async Task DeleteTriggerAsync(Guid id, CancellationToken ct = default)
+    {
+        using var resp = await SendRawAsync(HttpMethod.Delete, $"/api/v1/triggers/{id}", null, ct);
+    }
+
+    public Task<TriggerResponse> EnableTriggerAsync(Guid id, CancellationToken ct = default) =>
+        JsonAsync<TriggerResponse>(HttpMethod.Post, $"/api/v1/triggers/{id}/enable", null, ct);
+
+    public Task<TriggerResponse> DisableTriggerAsync(Guid id, CancellationToken ct = default) =>
+        JsonAsync<TriggerResponse>(HttpMethod.Post, $"/api/v1/triggers/{id}/disable", null, ct);
+
+    /// <summary>
+    /// Runs a trigger: creates + enqueues a batch job and returns its id without waiting. Returns the result
+    /// for both 202 (queued) and 4xx (validation), so callers inspect Success/ErrorCode; only unexpected statuses throw.
+    /// Pass <paramref name="idempotencyKey"/> to dedupe retries (a repeat returns the original batch job).
+    /// </summary>
+    public async Task<RunTriggerResponse> RunTriggerAsync(Guid id, string? idempotencyKey = null, CancellationToken ct = default)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Post, $"/api/v1/triggers/{id}/run");
+        if (!string.IsNullOrWhiteSpace(idempotencyKey)) req.Headers.TryAddWithoutValidation("Idempotency-Key", idempotencyKey);
+        using var resp = await http.SendAsync(req, ct);
+        if (resp.StatusCode is HttpStatusCode.Accepted or HttpStatusCode.OK or HttpStatusCode.NotFound
+            or HttpStatusCode.Conflict or HttpStatusCode.UnprocessableEntity)
+            return (await resp.Content.ReadFromJsonAsync<RunTriggerResponse>(Json, ct))!;
+        throw await ApiException(resp, ct);
+    }
+
+    public Task<IReadOnlyList<TriggerRunResponse>> ListTriggerRunsAsync(Guid id, int? limit = null, CancellationToken ct = default) =>
+        JsonAsync<IReadOnlyList<TriggerRunResponse>>(HttpMethod.Get, $"/api/v1/triggers/{id}/runs" + (limit is { } l ? $"?limit={l}" : ""), null, ct);
+
+    public Task<IReadOnlyList<JobSummary>> ListTriggerJobsAsync(Guid id, CancellationToken ct = default) =>
+        JsonAsync<IReadOnlyList<JobSummary>>(HttpMethod.Get, $"/api/v1/triggers/{id}/jobs", null, ct);
+
+    public Task<IReadOnlyList<AuditEntryResponse>> ListTriggerAuditAsync(Guid id, CancellationToken ct = default) =>
+        JsonAsync<IReadOnlyList<AuditEntryResponse>>(HttpMethod.Get, $"/api/v1/triggers/{id}/audit", null, ct);
+
+    public Task<IReadOnlyList<TriggerResponse>> ListInstanceTriggersAsync(Guid instanceId, CancellationToken ct = default) =>
+        JsonAsync<IReadOnlyList<TriggerResponse>>(HttpMethod.Get, $"/api/v1/instances/{instanceId}/triggers", null, ct);
+
+    public Task<IReadOnlyList<TriggerResponse>> ListBranchTriggersAsync(Guid branchId, CancellationToken ct = default) =>
+        JsonAsync<IReadOnlyList<TriggerResponse>>(HttpMethod.Get, $"/api/v1/branches/{branchId}/triggers", null, ct);
+
     // ---------------- Notification subscriptions ----------------
 
     public Task<SubscriptionResponse> CreateSubscriptionAsync(CreateSubscriptionRequest request, CancellationToken ct = default) =>

@@ -26,6 +26,12 @@ public sealed record ComparisonJob
     public string BranchKey => Request.Scope.BranchKey;
     public string InstanceKey => Request.Scope.InstanceKey;
 
+    // --- Provenance: which trigger (if any) launched this batch, and from where ---
+    /// <summary>The trigger that launched this batch; null for ad-hoc launches.</summary>
+    public Guid? TriggerId { get; init; }
+    /// <summary>Where the batch was launched from (Manager / REST API / System / Scheduler).</summary>
+    public JobSource Source { get; init; } = JobSource.System;
+
     public JobStatus Status { get; init; } = JobStatus.Queued;
 
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;

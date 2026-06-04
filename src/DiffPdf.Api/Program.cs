@@ -14,6 +14,7 @@ using DiffPdf.Messaging;
 using DiffPdf.Messaging.ControlPlane;
 using DiffPdf.Messaging.Scheduling;
 using DiffPdf.Messaging.ScopeSync;
+using DiffPdf.Messaging.Triggers;
 using DiffPdf.Notifications.DependencyInjection;
 using DiffPdf.Pdf.DependencyInjection;
 using DiffPdf.Persistence;
@@ -145,6 +146,9 @@ else
     builder.Services.AddSingleton<ISubscriptionStore, InMemorySubscriptionStore>();
     builder.Services.AddSingleton<IControlCheckStore, InMemoryControlCheckStore>();
     builder.Services.AddSingleton<IControlCheckRunStore, InMemoryControlCheckRunStore>();
+    builder.Services.AddSingleton<ITriggerStore, InMemoryTriggerStore>();
+    builder.Services.AddSingleton<ITriggerRunStore, InMemoryTriggerRunStore>();
+    builder.Services.AddSingleton<IAuditLogStore, InMemoryAuditLogStore>();
     builder.Services.AddSingleton<ILeaderElection, InMemoryLeaderElection>();
     builder.Services.AddScoped<IJobSubmissionService, SimpleJobSubmissionService>();
     builder.Host.UseWolverine(opts =>
@@ -173,6 +177,8 @@ builder.Services.AddHostedService<InstanceStructureHostedService>();
 // Outbound notifications (DB-backed subscriptions) + the on-demand batch launcher used by the triggers.
 builder.Services.AddDiffPdfNotifications(builder.Configuration);
 builder.Services.AddScoped<IBatchLauncher, BatchLauncher>();
+builder.Services.AddScoped<ITriggerService, TriggerService>();
+builder.Services.AddScoped<ITriggerProvisioner, TriggerProvisioner>();
 builder.Services.AddDiffPdfScopeSync(builder.Configuration);
 
 // Unified control/monitoring mechanism: runtime-configured checks (readiness, health, structure-sync,

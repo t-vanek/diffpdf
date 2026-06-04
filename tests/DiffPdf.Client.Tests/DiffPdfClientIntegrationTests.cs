@@ -346,4 +346,77 @@ public class DiffPdfClientIntegrationTests(InMemoryApiFactory factory)
             try { Directory.Delete(basePath, recursive: true); } catch (IOException) { }
         }
     }
+
+    [Fact]
+    public async Task Trigger_AutoDefault_Run_Idempotency_SoftDelete()
+    {
+        var diff = NewClient();
+        var (bk, ik) = FreshKeys();
+        await diff.CreateBranchAsync(new(bk, "Branch"));
+        string basePath = Path.Combine(Path.GetTempPath(), "diffpdf-trg-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var instance = (await diff.CreateInstanceAsync(bk, new(ik, "Inst", basePath))).Instance;
+            await File.WriteAllTextAsync(Path.Combine(basePath, "old", "doc.pdf"), "%PDF-1.4 stub");
+            await File.WriteAllTextAsync(Path.Combine(basePath, "new", "doc.pdf"), "%PDF-1.4 stub");
+
+            // A default trigger was auto-created over the instance.
+            var def = Assert.Single(await diff.ListInstanceTriggersAsync(instance.Id), t => t.IsDefault);
+            Assert.Equal(TriggerActionType.RunComparison, def.ActionType);
+
+            // Run → creates + enqueues a batch job and returns its id immediately (no waiting).
+            var run = await diff.RunTriggerAsync(def.Id);
+            Assert.True(run.Success);
+            Assert.NotNull(run.BatchJobId);
+            Assert.Equal("queued", run.Status);
+
+            // Idempotency-Key dedupe: the same key returns the original batch job.
+            var k1 = await diff.RunTriggerAsync(def.Id, idempotencyKey: "k1");
+            var k1again = await diff.RunTriggerAsync(def.Id, idempotencyKey: "k1");
+            Assert.Equal(k1.BatchJobId, k1again.BatchJobId);
+
+            Assert.True((await diff.ListTriggerRunsAsync(def.Id)).Count >= 1);
+            Assert.NotEmpty(await diff.ListTriggerJobsAsync(def.Id));
+
+            // Soft delete: marked deleted, history preserved, no longer runnable.
+            await diff.DeleteTriggerAsync(def.Id);
+            Assert.True((await diff.GetTriggerAsync(def.Id))!.IsDeleted);
+            Assert.True((await diff.ListTriggerRunsAsync(def.Id)).Count >= 1);
+            var blocked = await diff.RunTriggerAsync(def.Id);
+            Assert.False(blocked.Success);
+            Assert.Equal("TRIGGER_DELETED", blocked.ErrorCode);
+        }
+        finally
+        {
+            try { Directory.Delete(basePath, recursive: true); } catch (IOException) { }
+        }
+    }
+
+    [Fact]
+    public async Task Trigger_Crud_RoundTrip_ViaApi()
+    {
+        var diff = NewClient();
+        var (bk, ik) = FreshKeys();
+        await diff.CreateBranchAsync(new(bk, "B"));
+        string basePath = Path.Combine(Path.GetTempPath(), "diffpdf-tc-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            await diff.CreateInstanceAsync(bk, new(ik, "Inst", basePath));
+
+            var created = await diff.CreateTriggerAsync(new CreateTriggerRequest { BranchKey = bk, InstanceKey = ik, Name = "Custom" });
+            Assert.False(created.IsDefault);
+            Assert.Equal("Custom", created.Name);
+
+            var updated = await diff.UpdateTriggerAsync(created.Id, new UpdateTriggerRequest { Name = "Renamed", Enabled = false });
+            Assert.Equal("Renamed", updated.Name);
+            Assert.False(updated.Enabled);
+
+            await diff.DeleteTriggerAsync(created.Id);
+            Assert.True((await diff.GetTriggerAsync(created.Id))!.IsDeleted);
+        }
+        finally
+        {
+            try { Directory.Delete(basePath, recursive: true); } catch (IOException) { }
+        }
+    }
 }

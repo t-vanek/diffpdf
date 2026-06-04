@@ -93,6 +93,85 @@ public sealed record ScopeRootInfo
     public bool Configured { get; init; }
 }
 
+// ---------------- Triggers (Spouštěče) ----------------
+
+/// <summary>Comparison parameters a trigger runs a batch with.</summary>
+public sealed record TriggerSpec
+{
+    public string SearchPattern { get; init; } = "*.pdf";
+    public bool Recursive { get; init; } = true;
+    public ComparisonOptions Options { get; init; } = new();
+    public BatchGate? Gate { get; init; }
+    public int MaxDegreeOfParallelism { get; init; }
+}
+
+/// <summary>A trigger as returned by the API.</summary>
+public sealed record TriggerResponse
+{
+    public Guid Id { get; init; }
+    public Guid BranchId { get; init; }
+    public Guid InstanceId { get; init; }
+    public string BranchKey { get; init; } = "";
+    public string InstanceKey { get; init; } = "";
+    public string Name { get; init; } = "";
+    public string? Description { get; init; }
+    public TriggerActionType ActionType { get; init; }
+    public TriggerStatus Status { get; init; }
+    public bool Enabled { get; init; }
+    public bool IsDefault { get; init; }
+    public TriggerSpec Spec { get; init; } = new();
+    public int RunCount { get; init; }
+    public DateTimeOffset? LastRunAt { get; init; }
+    public string? LastOutcome { get; init; }
+    public string? CreatedBy { get; init; }
+    public string? UpdatedBy { get; init; }
+    public DateTimeOffset CreatedAt { get; init; }
+    public DateTimeOffset? UpdatedAt { get; init; }
+    public bool IsDeleted { get; init; }
+    public DateTimeOffset? DeletedAt { get; init; }
+    public long Version { get; init; }
+}
+
+/// <summary>One trigger run as returned by the API.</summary>
+public sealed record TriggerRunResponse
+{
+    public Guid Id { get; init; }
+    public Guid TriggerId { get; init; }
+    public Guid? BatchJobId { get; init; }
+    public JobSource Source { get; init; }
+    public string Status { get; init; } = "";
+    public string? Result { get; init; }
+    public DateTimeOffset StartedAt { get; init; }
+    public DateTimeOffset? FinishedAt { get; init; }
+    public long? DurationMs { get; init; }
+    public string? Error { get; init; }
+    public string? RequestedBy { get; init; }
+}
+
+/// <summary>Result of running a trigger (the run does not wait for the comparison to finish).</summary>
+public sealed record RunTriggerResponse
+{
+    public bool Success { get; init; }
+    public Guid TriggerId { get; init; }
+    public Guid? BatchJobId { get; init; }
+    public string Status { get; init; } = "";
+    public string Message { get; init; } = "";
+    public string? ErrorCode { get; init; }
+}
+
+/// <summary>One audit entry as returned by the API.</summary>
+public sealed record AuditEntryResponse
+{
+    public Guid Id { get; init; }
+    public DateTimeOffset At { get; init; }
+    public string? Actor { get; init; }
+    public string Source { get; init; } = "";
+    public string Action { get; init; } = "";
+    public string EntityType { get; init; } = "";
+    public string? EntityId { get; init; }
+    public string? Detail { get; init; }
+}
+
 /// <summary>State of one required subfolder after inspecting / ensuring it.</summary>
 public sealed record StructureItem
 {

@@ -28,6 +28,52 @@ public sealed record UpdateInstanceRequest(string Name, string BasePath, string?
 /// <summary>The configured structure root under which branches/instances are created server-side (null when not configured).</summary>
 public sealed record ScopeRootInfo(string? Root, bool Configured);
 
+// ---------------- Triggers (Spouštěče) ----------------
+
+/// <summary>Create a trigger bound to a branch+instance.</summary>
+public sealed record CreateTriggerRequest(
+    string BranchKey, string InstanceKey, string Name, string? Description = null, bool Enabled = true, TriggerSpec? Spec = null);
+
+/// <summary>Partial update of a trigger (null = leave unchanged). <see cref="Version"/> guards concurrent edits.</summary>
+public sealed record UpdateTriggerRequest(
+    string? Name = null, string? Description = null, bool? Enabled = null, TriggerSpec? Spec = null, long? Version = null);
+
+/// <summary>A trigger as returned by the API.</summary>
+public sealed record TriggerResponse(
+    Guid Id, Guid BranchId, Guid InstanceId, string BranchKey, string InstanceKey,
+    string Name, string? Description, TriggerActionType ActionType, TriggerStatus Status,
+    bool Enabled, bool IsDefault, TriggerSpec Spec, int RunCount, DateTimeOffset? LastRunAt, string? LastOutcome,
+    string? CreatedBy, string? UpdatedBy, DateTimeOffset CreatedAt, DateTimeOffset? UpdatedAt,
+    bool IsDeleted, DateTimeOffset? DeletedAt, long Version)
+{
+    public static TriggerResponse From(Trigger t) => new(
+        t.Id, t.BranchId, t.InstanceId, t.BranchKey, t.InstanceKey, t.Name, t.Description, t.ActionType, t.Status,
+        t.Enabled, t.IsDefault, t.Spec, t.RunCount, t.LastRunAt, t.LastOutcome, t.CreatedBy, t.UpdatedBy,
+        t.CreatedAt, t.UpdatedAt, t.IsDeleted, t.DeletedAt, t.Version);
+}
+
+/// <summary>One trigger run as returned by the API.</summary>
+public sealed record TriggerRunResponse(
+    Guid Id, Guid TriggerId, Guid? BatchJobId, JobSource Source, string Status, string? Result,
+    DateTimeOffset StartedAt, DateTimeOffset? FinishedAt, long? DurationMs, string? Error, string? RequestedBy)
+{
+    public static TriggerRunResponse From(TriggerRun r) => new(
+        r.Id, r.TriggerId, r.BatchJobId, r.Source, r.Status, r.Result, r.StartedAt, r.FinishedAt, r.DurationMs, r.Error, r.RequestedBy);
+}
+
+/// <summary>Result of running a trigger (the run does not wait for the comparison to finish).</summary>
+public sealed record RunTriggerResponse(bool Success, Guid TriggerId, Guid? BatchJobId, string Status, string Message, string? ErrorCode);
+
+/// <summary>A trigger management error (no internal details leaked).</summary>
+public sealed record TriggerErrorResponse(bool Success, string ErrorCode, string Message);
+
+/// <summary>One audit entry as returned by the API.</summary>
+public sealed record AuditEntryResponse(
+    Guid Id, DateTimeOffset At, string? Actor, string Source, string Action, string EntityType, string? EntityId, string? Detail)
+{
+    public static AuditEntryResponse From(AuditEntry a) => new(a.Id, a.At, a.Actor, a.Source, a.Action, a.EntityType, a.EntityId, a.Detail);
+}
+
 /// <summary>Response after creating an instance: the record plus the result of provisioning its folder skeleton (null when skipped).</summary>
 public sealed record CreatedInstanceResponse(ComparisonInstance Instance, InstanceStructureReport? Structure);
 

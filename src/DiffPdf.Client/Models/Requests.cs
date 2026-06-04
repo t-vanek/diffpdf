@@ -18,6 +18,27 @@ public sealed record CreateInstanceRequest(string Key, string Name, string BaseP
 /// <summary>Update an instance's name/basePath/credentialProfile/enabled (Key is the immutable identity). <see cref="Version"/> guards concurrent edits.</summary>
 public sealed record UpdateInstanceRequest(string Name, string BasePath, string? CredentialProfile, bool Enabled, long Version);
 
+/// <summary>Create a trigger bound to a branch + instance.</summary>
+public sealed record CreateTriggerRequest
+{
+    public required string BranchKey { get; init; }
+    public required string InstanceKey { get; init; }
+    public required string Name { get; init; }
+    public string? Description { get; init; }
+    public bool Enabled { get; init; } = true;
+    public TriggerSpec? Spec { get; init; }
+}
+
+/// <summary>Partial update of a trigger (null = leave unchanged). <see cref="Version"/> guards concurrent edits.</summary>
+public sealed record UpdateTriggerRequest
+{
+    public string? Name { get; init; }
+    public string? Description { get; init; }
+    public bool? Enabled { get; init; }
+    public TriggerSpec? Spec { get; init; }
+    public long? Version { get; init; }
+}
+
 /// <summary>Compare a single old/new PDF pair synchronously.</summary>
 public sealed record SingleComparisonRequest
 {

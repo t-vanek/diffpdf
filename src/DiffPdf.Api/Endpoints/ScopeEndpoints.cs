@@ -4,6 +4,7 @@ using DiffPdf.Core.Network;
 using DiffPdf.Core.Storage;
 using DiffPdf.Messaging.ControlPlane;
 using DiffPdf.Messaging.ScopeSync;
+using DiffPdf.Messaging.Triggers;
 using DiffPdf.Persistence;
 using Microsoft.Extensions.Options;
 
@@ -121,7 +122,7 @@ public static class ScopeEndpoints
         group.MapPost("/{branchKey}/instances", async (
             string branchKey, CreateInstanceRequest request,
             IBranchStore branches, IInstanceStore instances, IInstanceStructureService structure,
-            IControlCheckProvisioner provisioner, IOptions<ScopeSyncOptions> scopeSync,
+            IControlCheckProvisioner provisioner, ITriggerProvisioner triggerProvisioner, IOptions<ScopeSyncOptions> scopeSync,
             bool? ensureStructure, bool? autoProvision, CancellationToken ct) =>
         {
             if (!StorageKeyValidator.IsValidKey(request.Key))
@@ -166,7 +167,11 @@ public static class ScopeEndpoints
             // Ensure the branch's readiness check exists (it already covers this new instance). Idempotent
             // safety net for branches that predate the branch-create hook; suppressed with ?autoProvision=false.
             if (autoProvision != false)
+            {
                 await provisioner.EnsureBranchChecksAsync(branchKey, ct);
+                // After a correct branch+instance creation, provision the instance's default trigger (idempotent).
+                await triggerProvisioner.EnsureDefaultTriggerAsync(branch.Id, branchKey, created.Id, created.Key, actor: null, ct);
+            }
 
             return Results.Created(
                 $"/api/v1/branches/{branchKey}/instances/{created.Key}",
@@ -227,7 +232,7 @@ public static class ScopeEndpoints
         group.MapDelete("/{branchKey}/instances/{instanceKey}", async (
             string branchKey, string instanceKey,
             IBranchStore branches, IInstanceStore instances,
-            IJobStore jobs, CancellationToken ct) =>
+            IJobStore jobs, ITriggerProvisioner triggerProvisioner, CancellationToken ct) =>
         {
             var branch = await branches.GetByKeyAsync(branchKey, ct);
             if (branch is null) return Results.NotFound();
@@ -242,6 +247,8 @@ public static class ScopeEndpoints
                 return Results.Problem($"Instance '{instanceKey}' has job history; it cannot be deleted (history is preserved).", statusCode: StatusCodes.Status409Conflict);
 
             await instances.DeleteByKeyAsync(branch.Id, instanceKey, ct);
+            // Soft-delete the instance's triggers (run history is preserved).
+            await triggerProvisioner.SoftDeleteInstanceTriggersAsync(instance.Id, actor: null, ct);
             return Results.NoContent();
         }).WithSummary("Delete an instance (409 if it has any jobs)")
           .Produces(StatusCodes.Status204NoContent)
