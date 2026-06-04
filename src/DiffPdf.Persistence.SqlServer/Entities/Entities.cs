@@ -127,7 +127,6 @@ public sealed class TriggerEntity
     public string Status { get; set; } = "Active";
     public bool Enabled { get; set; } = true;
     public bool IsDefault { get; set; }
-    public string SpecJson { get; set; } = "{}";
     public int RunCount { get; set; }
     public DateTimeOffset? LastRunAt { get; set; }
     public string? LastOutcome { get; set; }

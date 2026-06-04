@@ -49,19 +49,6 @@ public sealed class PostgresJobStore(DiffPdfDbContext db, EntityMapper mapper) :
             select j;
     }
 
-    public Task<int> CountActiveByBranchAsync(Guid branchId, CancellationToken ct = default) =>
-        db.Jobs.Where(j => j.BranchId == branchId
-            && (j.Status == "Queued" || j.Status == "Running" || j.Status == "Paused")).CountAsync(ct);
-
-    public async Task<ComparisonJob?> NextDraftForBranchAsync(Guid branchId, CancellationToken ct = default)
-    {
-        var e = await db.Jobs.AsNoTracking()
-            .Where(j => j.BranchId == branchId && j.Status == "Draft")
-            .OrderByDescending(j => j.Priority).ThenBy(j => j.CreatedAt)
-            .FirstOrDefaultAsync(ct);
-        return e is null ? null : mapper.ToDomain(e);
-    }
-
     public async Task<IReadOnlyList<ComparisonJob>> ListActiveAndDraftByBranchAsync(Guid branchId, CancellationToken ct = default)
     {
         var rows = await db.Jobs.AsNoTracking()

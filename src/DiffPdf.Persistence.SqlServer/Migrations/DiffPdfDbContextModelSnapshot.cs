@@ -689,11 +689,6 @@ namespace DiffPdf.Persistence.SqlServer.Migrations
                         .HasColumnType("int")
                         .HasColumnName("run_count");
 
-                    b.Property<string>("SpecJson")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)")
-                        .HasColumnName("spec_json");
-
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(32)

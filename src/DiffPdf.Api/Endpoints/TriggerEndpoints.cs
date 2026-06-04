@@ -87,7 +87,7 @@ public static class TriggerEndpoints
                 var t = await svc.CreateAsync(new CreateTriggerInput
                 {
                     BranchKey = req.BranchKey, InstanceKey = req.InstanceKey, Name = req.Name,
-                    Description = req.Description, Enabled = req.Enabled, Spec = req.Spec ?? new TriggerSpec(),
+                    Description = req.Description, Enabled = req.Enabled,
                 }, Actor(user), JobSource.RestApi, ct);
                 return Results.Created($"/api/v1/triggers/{t.Id}", TriggerResponse.From(t));
             }
@@ -103,7 +103,7 @@ public static class TriggerEndpoints
             {
                 var t = await svc.UpdateAsync(triggerId, new UpdateTriggerInput
                 {
-                    Name = req.Name, Description = req.Description, Enabled = req.Enabled, Spec = req.Spec, ExpectedVersion = req.Version,
+                    Name = req.Name, Description = req.Description, Enabled = req.Enabled, ExpectedVersion = req.Version,
                 }, Actor(user), ct);
                 return t is null ? Results.NotFound() : Results.Ok(TriggerResponse.From(t));
             }

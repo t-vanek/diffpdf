@@ -30,9 +30,9 @@ public enum ConfigSource
 }
 
 /// <summary>
-/// The non-comparison launch knobs of a <see cref="TriggerSpec"/>, split out so they can be configured
-/// per scope independently of the comparer (<see cref="ComparisonOptions"/>) chain. Composed with an
-/// effective <see cref="ComparisonOptions"/> into a <see cref="TriggerSpec"/> at launch time.
+/// The non-comparison launch knobs (search pattern, recursion, parallelism, gate), split out so they can be
+/// configured per scope independently of the comparer (<see cref="ComparisonOptions"/>) chain. Composed with
+/// an effective <see cref="ComparisonOptions"/> into the launch <c>LaunchSpec</c> at run time.
 /// </summary>
 public sealed record TriggerConfig
 {

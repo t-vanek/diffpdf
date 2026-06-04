@@ -50,7 +50,6 @@ public sealed class TriggerProvisioner(
                 Status = TriggerStatus.Active,
                 Enabled = true,
                 IsDefault = true,
-                Spec = new TriggerSpec(),
                 CreatedBy = actor ?? "system",
             }, ct);
 

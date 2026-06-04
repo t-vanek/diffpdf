@@ -17,7 +17,6 @@ public sealed record CreateTriggerInput
     public string? Description { get; init; }
     public TriggerActionType ActionType { get; init; } = TriggerActionType.RunComparison;
     public bool Enabled { get; init; } = true;
-    public TriggerSpec Spec { get; init; } = new();
 }
 
 /// <summary>Partial update of a trigger (null = leave unchanged).</summary>
@@ -26,7 +25,6 @@ public sealed record UpdateTriggerInput
     public string? Name { get; init; }
     public string? Description { get; init; }
     public bool? Enabled { get; init; }
-    public TriggerSpec? Spec { get; init; }
     public long? ExpectedVersion { get; init; }
 }
 
@@ -90,7 +88,6 @@ public sealed class TriggerService(
             Status = input.Enabled ? TriggerStatus.Active : TriggerStatus.Inactive,
             Enabled = input.Enabled,
             IsDefault = false,
-            Spec = input.Spec,
             CreatedBy = actor,
         }, ct);
 
@@ -110,7 +107,6 @@ public sealed class TriggerService(
             Description = patch.Description ?? existing.Description,
             Enabled = patch.Enabled ?? existing.Enabled,
             Status = (patch.Enabled ?? existing.Enabled) ? TriggerStatus.Active : TriggerStatus.Inactive,
-            Spec = patch.Spec ?? existing.Spec,
             UpdatedBy = actor,
         };
         var saved = await triggers.UpdateAsync(updated, patch.ExpectedVersion ?? existing.Version, ct);

@@ -28,7 +28,6 @@ public sealed partial class EntityMapper
 
     public partial ControlCheckRun ToDomain(ControlCheckRunEntity entity);
 
-    [MapProperty(nameof(TriggerEntity.SpecJson), nameof(Trigger.Spec))]
     public partial Trigger ToDomain(TriggerEntity entity);
 
     public partial TriggerRun ToDomain(TriggerRunEntity entity);
@@ -40,9 +39,6 @@ public sealed partial class EntityMapper
     public partial ScopeConfiguration ToDomain(ScopeConfigurationEntity entity);
 
     // User-defined conversions Mapperly uses for the json columns.
-    private static TriggerSpec MapTriggerSpec(string json) =>
-        string.IsNullOrEmpty(json) ? new TriggerSpec() : DiffPdfJson.Deserialize<TriggerSpec>(json);
-
     private static TriggerConfig MapTriggerConfig(string json) =>
         string.IsNullOrEmpty(json) ? new TriggerConfig() : DiffPdfJson.Deserialize<TriggerConfig>(json);
 

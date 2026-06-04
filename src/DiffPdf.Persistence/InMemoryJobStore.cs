@@ -51,16 +51,6 @@ public sealed class InMemoryJobStore : IJobStore
         return q;
     }
 
-    public Task<int> CountActiveByBranchAsync(Guid branchId, CancellationToken ct = default) =>
-        Task.FromResult(_jobs.Values.Count(j => j.BranchId == branchId
-            && j.Status is JobStatus.Queued or JobStatus.Running or JobStatus.Paused));
-
-    public Task<ComparisonJob?> NextDraftForBranchAsync(Guid branchId, CancellationToken ct = default) =>
-        Task.FromResult(_jobs.Values
-            .Where(j => j.BranchId == branchId && j.Status == JobStatus.Draft)
-            .OrderByDescending(j => j.Priority).ThenBy(j => j.CreatedAt)
-            .FirstOrDefault());
-
     public Task<IReadOnlyList<ComparisonJob>> ListActiveAndDraftByBranchAsync(Guid branchId, CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<ComparisonJob>>(_jobs.Values
             .Where(j => j.BranchId == branchId

@@ -32,16 +32,6 @@ public enum JobSource
     Scheduler,
 }
 
-/// <summary>The comparison knobs a trigger runs a batch with (Core mirror of the messaging LaunchSpec).</summary>
-public sealed record TriggerSpec
-{
-    public string SearchPattern { get; init; } = "*.pdf";
-    public bool Recursive { get; init; } = true;
-    public ComparisonOptions Options { get; init; } = new();
-    public BatchGate? Gate { get; init; }
-    public int MaxDegreeOfParallelism { get; init; }
-}
-
 /// <summary>
 /// A managed launch entity bound to an instance (and its branch). Running it creates a batch comparison
 /// (<see cref="ComparisonJob"/>) and enqueues it — never synchronously. Soft-deleted (never hard-deleted)
@@ -69,9 +59,6 @@ public sealed record Trigger
 
     /// <summary>True for the single auto-provisioned default trigger of an instance.</summary>
     public bool IsDefault { get; init; }
-
-    /// <summary>Comparison parameters used when the trigger launches a batch.</summary>
-    public TriggerSpec Spec { get; init; } = new();
 
     public int RunCount { get; init; }
     public DateTimeOffset? LastRunAt { get; init; }

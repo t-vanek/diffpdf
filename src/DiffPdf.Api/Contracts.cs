@@ -36,23 +36,23 @@ public sealed record ScopeRootInfo(string? Root, bool Configured);
 
 /// <summary>Create a trigger bound to a branch+instance.</summary>
 public sealed record CreateTriggerRequest(
-    string BranchKey, string InstanceKey, string Name, string? Description = null, bool Enabled = true, TriggerSpec? Spec = null);
+    string BranchKey, string InstanceKey, string Name, string? Description = null, bool Enabled = true);
 
 /// <summary>Partial update of a trigger (null = leave unchanged). <see cref="Version"/> guards concurrent edits.</summary>
 public sealed record UpdateTriggerRequest(
-    string? Name = null, string? Description = null, bool? Enabled = null, TriggerSpec? Spec = null, long? Version = null);
+    string? Name = null, string? Description = null, bool? Enabled = null, long? Version = null);
 
 /// <summary>A trigger as returned by the API.</summary>
 public sealed record TriggerResponse(
     Guid Id, Guid BranchId, Guid InstanceId, string BranchKey, string InstanceKey,
     string Name, string? Description, TriggerActionType ActionType, TriggerStatus Status,
-    bool Enabled, bool IsDefault, TriggerSpec Spec, int RunCount, DateTimeOffset? LastRunAt, string? LastOutcome,
+    bool Enabled, bool IsDefault, int RunCount, DateTimeOffset? LastRunAt, string? LastOutcome,
     string? CreatedBy, string? UpdatedBy, DateTimeOffset CreatedAt, DateTimeOffset? UpdatedAt,
     bool IsDeleted, DateTimeOffset? DeletedAt, long Version)
 {
     public static TriggerResponse From(Trigger t) => new(
         t.Id, t.BranchId, t.InstanceId, t.BranchKey, t.InstanceKey, t.Name, t.Description, t.ActionType, t.Status,
-        t.Enabled, t.IsDefault, t.Spec, t.RunCount, t.LastRunAt, t.LastOutcome, t.CreatedBy, t.UpdatedBy,
+        t.Enabled, t.IsDefault, t.RunCount, t.LastRunAt, t.LastOutcome, t.CreatedBy, t.UpdatedBy,
         t.CreatedAt, t.UpdatedAt, t.IsDeleted, t.DeletedAt, t.Version);
 }
 

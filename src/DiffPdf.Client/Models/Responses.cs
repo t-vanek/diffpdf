@@ -95,16 +95,6 @@ public sealed record ScopeRootInfo
 
 // ---------------- Triggers (Spouštěče) ----------------
 
-/// <summary>Comparison parameters a trigger runs a batch with.</summary>
-public sealed record TriggerSpec
-{
-    public string SearchPattern { get; init; } = "*.pdf";
-    public bool Recursive { get; init; } = true;
-    public ComparisonOptions Options { get; init; } = new();
-    public BatchGate? Gate { get; init; }
-    public int MaxDegreeOfParallelism { get; init; }
-}
-
 /// <summary>
 /// A scope's stored configuration together with the server-resolved effective configuration. The UI binds
 /// the stored sources/payloads for editing and shows the effective values + the level each resolved from
@@ -182,7 +172,6 @@ public sealed record TriggerResponse
     public TriggerStatus Status { get; init; }
     public bool Enabled { get; init; }
     public bool IsDefault { get; init; }
-    public TriggerSpec Spec { get; init; } = new();
     public int RunCount { get; init; }
     public DateTimeOffset? LastRunAt { get; init; }
     public string? LastOutcome { get; init; }

@@ -26,7 +26,6 @@ public sealed record CreateTriggerRequest
     public required string Name { get; init; }
     public string? Description { get; init; }
     public bool Enabled { get; init; } = true;
-    public TriggerSpec? Spec { get; init; }
 }
 
 /// <summary>Partial update of a trigger (null = leave unchanged). <see cref="Version"/> guards concurrent edits.</summary>
@@ -35,7 +34,6 @@ public sealed record UpdateTriggerRequest
     public string? Name { get; init; }
     public string? Description { get; init; }
     public bool? Enabled { get; init; }
-    public TriggerSpec? Spec { get; init; }
     public long? Version { get; init; }
 }
 

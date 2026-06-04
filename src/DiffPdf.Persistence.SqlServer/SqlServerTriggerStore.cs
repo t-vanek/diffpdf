@@ -51,7 +51,6 @@ public sealed class SqlServerTriggerStore(DiffPdfDbContext db, EntityMapper mapp
     public async Task<Trigger> UpdateAsync(Trigger trigger, long expectedVersion, CancellationToken ct = default)
     {
         var now = DateTimeOffset.UtcNow;
-        string specJson = DiffPdfJson.Serialize(trigger.Spec);
         int rows;
         try
         {
@@ -64,7 +63,6 @@ public sealed class SqlServerTriggerStore(DiffPdfDbContext db, EntityMapper mapp
                     .SetProperty(x => x.Status, trigger.Status.ToString())
                     .SetProperty(x => x.Enabled, trigger.Enabled)
                     .SetProperty(x => x.IsDefault, trigger.IsDefault)
-                    .SetProperty(x => x.SpecJson, specJson)
                     .SetProperty(x => x.UpdatedBy, trigger.UpdatedBy)
                     .SetProperty(x => x.UpdatedAt, now)
                     .SetProperty(x => x.Version, x => x.Version + 1), ct);
@@ -133,7 +131,6 @@ public sealed class SqlServerTriggerStore(DiffPdfDbContext db, EntityMapper mapp
         Status = t.Status.ToString(),
         Enabled = t.Enabled,
         IsDefault = t.IsDefault,
-        SpecJson = DiffPdfJson.Serialize(t.Spec),
         RunCount = t.RunCount,
         LastRunAt = t.LastRunAt,
         LastOutcome = t.LastOutcome,

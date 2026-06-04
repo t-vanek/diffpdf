@@ -173,7 +173,6 @@ public sealed class DiffPdfDbContext(DbContextOptions<DiffPdfDbContext> options)
             e.Property(x => x.Status).HasColumnName("status");
             e.Property(x => x.Enabled).HasColumnName("enabled");
             e.Property(x => x.IsDefault).HasColumnName("is_default");
-            e.Property(x => x.SpecJson).HasColumnName("spec_json").HasColumnType("jsonb");
             e.Property(x => x.RunCount).HasColumnName("run_count");
             e.Property(x => x.LastRunAt).HasColumnName("last_run_at");
             e.Property(x => x.LastOutcome).HasColumnName("last_outcome");

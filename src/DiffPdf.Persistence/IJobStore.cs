@@ -21,12 +21,6 @@ public interface IJobStore
     /// <summary>Atomically claims a Queued job for a worker (Queued → Running). Null if it could not be claimed.</summary>
     Task<ComparisonJob?> TryStartAsync(Guid id, string workerId, TimeSpan lease, CancellationToken ct = default);
 
-    /// <summary>Count of a branch's "active" jobs (Queued/Running/Paused) — the per-branch sequential queue's busy check.</summary>
-    Task<int> CountActiveByBranchAsync(Guid branchId, CancellationToken ct = default);
-
-    /// <summary>The next pending (Draft) job to release for a branch, ordered by Priority DESC then CreatedAt ASC. Null if none.</summary>
-    Task<ComparisonJob?> NextDraftForBranchAsync(Guid branchId, CancellationToken ct = default);
-
     /// <summary>A branch's pending + active jobs (Draft/Queued/Running/Paused), for the queue-state read and branch "stop".</summary>
     Task<IReadOnlyList<ComparisonJob>> ListActiveAndDraftByBranchAsync(Guid branchId, CancellationToken ct = default);
 
