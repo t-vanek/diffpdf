@@ -13,6 +13,10 @@ namespace DiffPdf.Api.Operational;
 /// <summary>The configured persistence backend name, for the operational status view.</summary>
 public sealed record PersistenceInfo(string Provider);
 
+/// <summary>The effective auth state (<c>Auth:Enabled</c> AND a relational DB is configured), surfaced
+/// anonymously on <c>/health</c> so clients can decide whether to prompt for credentials.</summary>
+public sealed record ServerAuthInfo(bool AuthEnabled);
+
 /// <summary>Process build version + start time, shared by the liveness probe and the status view.</summary>
 public static class BuildInfo
 {

@@ -334,6 +334,15 @@ public sealed record ReadinessResponse
     public IReadOnlyList<DependencyCheck> Checks { get; init; } = [];
 }
 
+/// <summary>Liveness info from <c>GET /health</c> (anonymous): build version, uptime, and whether the server requires auth.</summary>
+public sealed record ServerInfo
+{
+    public string Status { get; init; } = "";
+    public string Version { get; init; } = "";
+    public double UptimeSeconds { get; init; }
+    public bool AuthEnabled { get; init; }
+}
+
 // ---------------- Scope sync ----------------
 
 /// <summary>How a branch folder reconciled against the database.</summary>

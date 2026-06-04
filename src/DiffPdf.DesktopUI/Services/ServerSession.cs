@@ -15,6 +15,9 @@ public sealed class ServerSession
     public string? ClientId { get; private set; }
     public string? ClientSecret { get; private set; }
 
+    /// <summary>Whether the connected server requires auth (read from <c>/health</c>); drives credential-field visibility.</summary>
+    public bool ServerRequiresAuth { get; private set; }
+
     public bool IsConnected => Client is not null;
 
     public event EventHandler? StateChanged;
@@ -27,8 +30,19 @@ public sealed class ServerSession
     {
         var uri = new Uri(baseUrl, UriKind.Absolute);
 
+        // Probe anonymously first: confirms liveness AND learns whether the server requires auth, so we
+        // attach credentials only when they're actually needed (and the UI can hide them otherwise).
+        ServerInfo? info;
+        using (var probe = new HttpClient { BaseAddress = uri })
+            info = await new DiffPdfClient(probe).GetServerInfoAsync(ct);
+
+        if (info is null)
+            throw new InvalidOperationException($"Server {baseUrl} neodpovídá na /health.");
+
+        bool useAuth = info.AuthEnabled && !string.IsNullOrWhiteSpace(clientId);
+
         HttpClient http;
-        if (!string.IsNullOrWhiteSpace(clientId))
+        if (useAuth)
         {
             // OAuth2 client-credentials: the SDK handler fetches + caches the bearer token.
             var handler = new ClientCredentialsTokenHandler(uri, clientId!, clientSecret ?? string.Empty)
@@ -42,17 +56,11 @@ public sealed class ServerSession
             http = new HttpClient { BaseAddress = uri };
         }
 
-        var client = new DiffPdfClient(http);
-        if (!await client.HealthAsync(ct))
-        {
-            http.Dispose();
-            throw new InvalidOperationException($"Server {baseUrl} neodpovídá na /health.");
-        }
-
-        Client = client;
+        Client = new DiffPdfClient(http);
         BaseUrl = baseUrl;
-        ClientId = clientId;
-        ClientSecret = clientSecret;
+        ClientId = useAuth ? clientId : null;
+        ClientSecret = useAuth ? clientSecret : null;
+        ServerRequiresAuth = info.AuthEnabled;
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
 

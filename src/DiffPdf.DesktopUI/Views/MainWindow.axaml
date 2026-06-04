@@ -12,8 +12,8 @@
       <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
         <TextBlock Text="Server" VerticalAlignment="Center" Foreground="White"/>
         <TextBox Width="280" Text="{Binding ServerUrl}" PlaceholderText="http://localhost:5275"/>
-        <TextBox Width="150" Text="{Binding ClientId}" PlaceholderText="ClientId (volitelné)"/>
-        <TextBox Width="130" Text="{Binding ClientSecret}" PlaceholderText="Secret" PasswordChar="•"/>
+        <TextBox Width="150" Text="{Binding ClientId}" PlaceholderText="ClientId" IsVisible="{Binding AuthEnabled}"/>
+        <TextBox Width="130" Text="{Binding ClientSecret}" PlaceholderText="Secret" PasswordChar="•" IsVisible="{Binding AuthEnabled}"/>
         <Button Content="Connect" Command="{Binding ConnectCommand}" IsVisible="{Binding !IsConnected}"/>
         <Button Content="Disconnect" Command="{Binding DisconnectCommand}" IsVisible="{Binding IsConnected}"/>
         <TextBlock Text="{Binding ConnectionStatus}" VerticalAlignment="Center" Foreground="#9CDCFE"/>

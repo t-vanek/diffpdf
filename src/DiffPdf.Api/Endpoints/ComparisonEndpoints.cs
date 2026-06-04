@@ -14,8 +14,15 @@ public static class ComparisonEndpoints
         app.MapGet("/", () => Results.Ok(new { service = "diffpdf", status = "ok" }))
             .AllowAnonymous().WithTags("Health").WithSummary("Service info").ExcludeFromDescription();
 
-        // Liveness — cheap, dependency-free, always 200 while the process serves HTTP.
-        app.MapGet("/health", () => Results.Ok(new { status = "healthy", version = BuildInfo.Version, uptimeSeconds = BuildInfo.UptimeSeconds }))
+        // Liveness — cheap, dependency-free, always 200 while the process serves HTTP. Also advertises
+        // the effective auth state so anonymous clients know whether to prompt for credentials.
+        app.MapGet("/health", (ServerAuthInfo authInfo) => Results.Ok(new
+            {
+                status = "healthy",
+                version = BuildInfo.Version,
+                uptimeSeconds = BuildInfo.UptimeSeconds,
+                authEnabled = authInfo.AuthEnabled,
+            }))
             .AllowAnonymous().WithTags("Health").WithSummary("Liveness probe");
 
         // Readiness — checks critical dependencies (DB / renderer / storage); 200 ready, 503 degraded.
