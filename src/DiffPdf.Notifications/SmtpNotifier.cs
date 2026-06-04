@@ -11,7 +11,7 @@ public sealed class SmtpNotifier(IOptions<NotificationOptions> options, ILogger<
 {
     public string Channel => "smtp";
 
-    public async Task SendAsync(NotificationSubscription subscription, BatchNotification notification, CancellationToken ct)
+    public async Task SendAsync(NotificationSubscription subscription, INotification notification, CancellationToken ct)
     {
         var smtp = options.Value.Smtp;
         if (smtp is null || string.IsNullOrWhiteSpace(smtp.Host))
