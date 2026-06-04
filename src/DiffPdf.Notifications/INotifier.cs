@@ -9,5 +9,5 @@ public interface INotifier
     string Channel { get; }
 
     /// <summary>Sends the notification to the subscription's target. Should throw only on transient failures.</summary>
-    Task SendAsync(NotificationSubscription subscription, BatchNotification notification, CancellationToken ct);
+    Task SendAsync(NotificationSubscription subscription, INotification notification, CancellationToken ct);
 }

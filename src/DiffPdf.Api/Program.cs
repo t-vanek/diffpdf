@@ -11,6 +11,7 @@ using DiffPdf.Core.Network;
 using DiffPdf.Core.Storage;
 using DiffPdf.Messaging;
 using DiffPdf.Messaging.Automation;
+using DiffPdf.Messaging.ControlPlane;
 using DiffPdf.Messaging.Retention;
 using DiffPdf.Messaging.Scheduling;
 using DiffPdf.Messaging.ScopeSync;
@@ -180,6 +181,10 @@ builder.Services.AddDiffPdfDefaultAutomation(builder.Configuration);
 builder.Services.AddDiffPdfScopeSync(builder.Configuration);
 builder.Services.AddDiffPdfRetention(builder.Configuration);
 
+// Unified control/monitoring mechanism: runtime-configured checks (readiness, health, structure-sync,
+// retention) executed on a cadence by one leader-gated runner. Idle until checks are created via the API.
+builder.Services.AddDiffPdfControlPlane(builder.Configuration);
+
 var auth = builder.Configuration.GetSection("Auth").Get<AuthOptions>() ?? new AuthOptions();
 builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection("Auth"));
 bool authEnabled = auth.Enabled && !string.IsNullOrWhiteSpace(relational);
@@ -222,6 +227,7 @@ api.MapDiscoveryEndpoints();
 api.MapTriggerEndpoints();
 api.MapWatchEndpoints();
 api.MapStatusEndpoints();
+api.MapControlCheckEndpoints();
 
 app.MapHub<JobsHub>("/hubs/jobs");
 

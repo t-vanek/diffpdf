@@ -9,9 +9,9 @@ public class BatchFailedNotificationHandlerTests
 {
     private sealed class CapturingDispatcher : INotificationDispatcher
     {
-        public BatchNotification? Captured;
+        public INotification? Captured;
 
-        public Task DispatchAsync(BatchNotification notification, CancellationToken ct = default)
+        public Task DispatchAsync(INotification notification, CancellationToken ct = default)
         {
             Captured = notification;
             return Task.CompletedTask;
@@ -26,11 +26,11 @@ public class BatchFailedNotificationHandlerTests
 
         await BatchFailedNotificationHandler.Handle(evt, dispatcher, CancellationToken.None);
 
-        Assert.NotNull(dispatcher.Captured);
-        Assert.Equal(NotificationEvent.Failed, dispatcher.Captured!.Event);
-        Assert.Equal(evt.JobId, dispatcher.Captured.JobId);
-        Assert.Equal("Alfa", dispatcher.Captured.BranchKey);
-        Assert.Equal("Lama", dispatcher.Captured.InstanceKey);
-        Assert.False(dispatcher.Captured.Passed);
+        var captured = Assert.IsType<BatchNotification>(dispatcher.Captured);
+        Assert.Equal(NotificationEvent.Failed, captured.Event);
+        Assert.Equal(evt.JobId, captured.JobId);
+        Assert.Equal("Alfa", captured.BranchKey);
+        Assert.Equal("Lama", captured.InstanceKey);
+        Assert.False(captured.Passed);
     }
 }

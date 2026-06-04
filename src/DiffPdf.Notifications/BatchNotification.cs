@@ -18,8 +18,11 @@ public sealed record BatchNotification(
     int FilesWithContentErrors,
     bool Passed,
     IReadOnlyList<string> GateViolations,
-    DateTimeOffset OccurredAt)
+    DateTimeOffset OccurredAt) : INotification
 {
+    /// <summary>The whole batch notification is the structured webhook detail.</summary>
+    public object Detail => this;
+
     /// <summary>One-line headline suitable for an e-mail subject or chat title.</summary>
     public string Title => Event switch
     {

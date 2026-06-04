@@ -14,7 +14,7 @@ public sealed class WebhookNotifier(IHttpClientFactory httpFactory, ILogger<Webh
 
     public string Channel => "webhook";
 
-    public async Task SendAsync(NotificationSubscription subscription, BatchNotification notification, CancellationToken ct)
+    public async Task SendAsync(NotificationSubscription subscription, INotification notification, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(subscription.Target))
         {
@@ -26,14 +26,14 @@ public sealed class WebhookNotifier(IHttpClientFactory httpFactory, ILogger<Webh
         var payload = new
         {
             text = $"{notification.Title}\n{notification.Summary}",
-            diffpdf = notification,
+            diffpdf = notification.Detail,
         };
 
         // Connection-level failures bubble (HttpRequestException) so Wolverine can retry the
         // event; a non-2xx response is logged but not retried (avoids hammering a bad endpoint).
         using var response = await client.PostAsJsonAsync(subscription.Target, payload, ct);
         if (!response.IsSuccessStatusCode)
-            logger.LogWarning("Webhook to {Target} returned {Status} for job {JobId}.",
-                subscription.Target, (int)response.StatusCode, notification.JobId);
+            logger.LogWarning("Webhook to {Target} returned {Status} for event {Event}.",
+                subscription.Target, (int)response.StatusCode, notification.Event);
     }
 }

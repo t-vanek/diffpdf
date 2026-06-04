@@ -4,10 +4,10 @@ using Microsoft.Extensions.Logging;
 
 namespace DiffPdf.Notifications;
 
-/// <summary>Fans a finished-batch notification out to every matching subscription.</summary>
+/// <summary>Fans a notification (batch outcome or control-check result) out to every matching subscription.</summary>
 public interface INotificationDispatcher
 {
-    Task DispatchAsync(BatchNotification notification, CancellationToken ct = default);
+    Task DispatchAsync(INotification notification, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -22,7 +22,7 @@ public sealed class NotificationDispatcher(
     ISubscriptionStore subscriptions,
     ILogger<NotificationDispatcher> logger) : INotificationDispatcher
 {
-    public async Task DispatchAsync(BatchNotification notification, CancellationToken ct = default)
+    public async Task DispatchAsync(INotification notification, CancellationToken ct = default)
     {
         var subs = await subscriptions.ListEnabledAsync(ct);
 
@@ -52,8 +52,8 @@ public sealed class NotificationDispatcher(
             }
             catch (Exception ex)
             {
-                logger.LogWarning(ex, "Notification via {Channel} to {Target} failed for job {JobId}.",
-                    subscription.Channel, subscription.Target, notification.JobId);
+                logger.LogWarning(ex, "Notification via {Channel} to {Target} failed for event {Event}.",
+                    subscription.Channel, subscription.Target, notification.Event);
             }
         }
     }

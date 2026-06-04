@@ -10,9 +10,9 @@ public class NotificationDispatcherTests
     private sealed class RecordingNotifier(string channel, bool throwOnSend = false) : INotifier
     {
         public string Channel { get; } = channel;
-        public List<BatchNotification> Sent { get; } = [];
+        public List<INotification> Sent { get; } = [];
 
-        public Task SendAsync(NotificationSubscription subscription, BatchNotification notification, CancellationToken ct)
+        public Task SendAsync(NotificationSubscription subscription, INotification notification, CancellationToken ct)
         {
             if (throwOnSend)
                 throw new InvalidOperationException("boom");
