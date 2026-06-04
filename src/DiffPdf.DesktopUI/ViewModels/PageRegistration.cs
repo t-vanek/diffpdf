@@ -15,6 +15,7 @@ internal static class PageRegistration
         Add<BranchesViewModel>(services);
         Add<InstancesViewModel>(services);
         Add<AutomationsViewModel>(services);
+        Add<TriggerManagementViewModel>(services);
         Add<SubscriptionsViewModel>(services);
         Add<DiscoveryViewModel>(services);
         Add<TriggersViewModel>(services);

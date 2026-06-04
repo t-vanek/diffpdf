@@ -85,6 +85,29 @@
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>
+
+          <!-- Souhrn spouštěčů této větve -->
+          <Border BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="4" Padding="10">
+            <StackPanel Spacing="6">
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" VerticalAlignment="Center" FontWeight="Bold"
+                           Text="{Binding Triggers.Count, StringFormat='Spouštěče ({0})'}"/>
+                <Button Grid.Column="1" Content="Spravovat spouštěče" Command="{Binding ManageTriggersCommand}"/>
+              </Grid>
+              <TextBlock Text="Žádné spouštěče." Foreground="#808080" IsVisible="{Binding !Triggers.Count}"/>
+              <ItemsControl x:CompileBindings="False" ItemsSource="{Binding Triggers}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,1">
+                      <TextBlock Grid.Column="0" Text="{Binding Name}"/>
+                      <TextBlock Grid.Column="1" Margin="6,0" Foreground="#808080" Text="{Binding InstanceKey}"/>
+                      <TextBlock Grid.Column="2" Text="{Binding Status}" Foreground="#9CDCFE"/>
+                    </Grid>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </Border>
         </StackPanel>
       </ScrollViewer>
     </Grid>

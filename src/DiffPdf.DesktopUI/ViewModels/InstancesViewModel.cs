@@ -14,6 +14,7 @@ public partial class InstancesViewModel : PageViewModel
 {
     private readonly ServerSession _session;
     private readonly DialogService _dialogs;
+    private readonly NavigationService _navigation;
 
     public override string Title => "Instance";
     public override int NavOrder => 2;
@@ -23,6 +24,9 @@ public partial class InstancesViewModel : PageViewModel
 
     /// <summary>Statistiky vztažené pouze k vybrané instanci.</summary>
     public ObservableCollection<StatGroup> Stats { get; } = [];
+
+    /// <summary>Spouštěče této instance (rychlý přehled + spuštění; správa je v sekci Spouštěče).</summary>
+    public ObservableCollection<TriggerResponse> Triggers { get; } = [];
 
     [ObservableProperty] private Branch? _selectedBranch;
     [ObservableProperty] private Instance? _selectedInstance;
@@ -85,10 +89,11 @@ public partial class InstancesViewModel : PageViewModel
         return trimmed.StartsWith(@"\\", StringComparison.Ordinal) ? $@"{trimmed}\{sub}" : System.IO.Path.Combine(trimmed, sub);
     }
 
-    public InstancesViewModel(ServerSession session, DialogService dialogs)
+    public InstancesViewModel(ServerSession session, DialogService dialogs, NavigationService navigation)
     {
         _session = session;
         _dialogs = dialogs;
+        _navigation = navigation;
     }
 
     public override Task ActivateAsync() => RunAsync(async () =>
@@ -209,6 +214,7 @@ public partial class InstancesViewModel : PageViewModel
     partial void OnSelectedInstanceChanged(Instance? value)
     {
         Stats.Clear();
+        Triggers.Clear();
         if (value is null || SelectedBranch is null)
         {
             Readiness = null;
@@ -234,5 +240,31 @@ public partial class InstancesViewModel : PageViewModel
         var stats = await client.GetInstanceStatsAsync(SelectedBranch.Key, SelectedInstance.Key);
         Stats.Clear();
         foreach (var g in ScopeStatGroups.From(stats)) Stats.Add(g);
+
+        Triggers.Clear();
+        foreach (var t in await client.ListInstanceTriggersAsync(SelectedInstance.Id)) Triggers.Add(t);
+    }
+
+    /// <summary>Spustí vybraný spouštěč této instance a přeskočí na úlohu (správa spouštěčů je v sekci Spouštěče).</summary>
+    [RelayCommand]
+    private Task RunTriggerAsync(TriggerResponse? trigger) => RunAsync(async () =>
+    {
+        if (trigger is null) return;
+        var result = await _session.Require().RunTriggerAsync(trigger.Id);
+        Info = result.Success
+            ? $"Spouštěč '{trigger.Name}' spuštěn: {result.Status}" + (result.BatchJobId is { } id ? $" (úloha {id})" : "")
+            : $"Spouštěč '{trigger.Name}' nespuštěn: {result.Message}";
+        if (result.BatchJobId is { } jobId)
+            _navigation.GoTo<JobsViewModel>(j => j.OpenJob(jobId));
+    });
+
+    /// <summary>Přejde do sekce Spouštěče předfiltrované na tuto instanci.</summary>
+    [RelayCommand]
+    private void ManageTriggers()
+    {
+        if (SelectedBranch is null || SelectedInstance is null) return;
+        var branchKey = SelectedBranch.Key;
+        var instanceKey = SelectedInstance.Key;
+        _navigation.GoTo<TriggerManagementViewModel>(vm => vm.FocusInstance(branchKey, instanceKey));
     }
 }

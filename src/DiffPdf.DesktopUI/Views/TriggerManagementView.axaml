@@ -1,0 +1,195 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:DiffPdf.DesktopUI.ViewModels"
+             x:Class="DiffPdf.DesktopUI.Views.TriggerManagementView"
+             x:DataType="vm:TriggerManagementViewModel"
+             x:Name="Root">
+
+  <DockPanel>
+    <!-- Toolbar: filtry + akce -->
+    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+      <TextBlock Text="Spouštěče" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
+      <TextBlock Text="Větev:" VerticalAlignment="Center"/>
+      <ComboBox Width="150" ItemsSource="{Binding Branches}" SelectedItem="{Binding FilterBranch}">
+        <ComboBox.ItemTemplate><DataTemplate x:CompileBindings="False"><TextBlock Text="{Binding Key}"/></DataTemplate></ComboBox.ItemTemplate>
+      </ComboBox>
+      <TextBlock Text="Instance:" VerticalAlignment="Center"/>
+      <ComboBox Width="150" ItemsSource="{Binding FilterInstances}" SelectedItem="{Binding FilterInstance}">
+        <ComboBox.ItemTemplate><DataTemplate x:CompileBindings="False"><TextBlock Text="{Binding Key}"/></DataTemplate></ComboBox.ItemTemplate>
+      </ComboBox>
+      <TextBlock Text="Stav:" VerticalAlignment="Center"/>
+      <ComboBox Width="110" ItemsSource="{Binding StatusFilters}" SelectedItem="{Binding SelectedStatusFilter}"/>
+      <CheckBox Content="vč. smazaných" IsChecked="{Binding IncludeDeleted}" VerticalAlignment="Center"/>
+      <Button Content="🔄 Obnovit" Command="{Binding RefreshCommand}"/>
+      <Button Content="➕ Nový spouštěč" Command="{Binding ShowCreateCommand}"/>
+      <ProgressBar IsIndeterminate="True" Width="100" Height="4" VerticalAlignment="Center" IsVisible="{Binding IsBusy}"/>
+    </StackPanel>
+
+    <!-- Stavový řádek (info / chyba / real-time) -->
+    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="12" Margin="0,0,0,8">
+      <TextBlock Text="{Binding Info}" Foreground="#9CDCFE" VerticalAlignment="Center"
+                 IsVisible="{Binding Info, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+      <TextBlock Text="{Binding Error}" Foreground="#C0392B" VerticalAlignment="Center"
+                 IsVisible="{Binding Error, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+      <TextBlock Text="{Binding LiveStatus, StringFormat='● {0}'}" Foreground="#6A9955" VerticalAlignment="Center"
+                 IsVisible="{Binding LiveStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+    </StackPanel>
+
+    <!-- Zakládací formulář -->
+    <Border DockPanel.Dock="Top" IsVisible="{Binding ShowCreateForm}"
+            BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,0,8">
+      <StackPanel Spacing="8">
+        <TextBlock Text="Nový spouštěč" FontWeight="Bold"/>
+        <WrapPanel>
+          <ComboBox Width="160" Margin="0,0,8,6" ItemsSource="{Binding Branches}" SelectedItem="{Binding NewBranch}" PlaceholderText="Větev">
+            <ComboBox.ItemTemplate><DataTemplate x:CompileBindings="False"><TextBlock Text="{Binding Key}"/></DataTemplate></ComboBox.ItemTemplate>
+          </ComboBox>
+          <ComboBox Width="160" Margin="0,0,8,6" ItemsSource="{Binding CreateInstances}" SelectedItem="{Binding NewInstance}" PlaceholderText="Instance">
+            <ComboBox.ItemTemplate><DataTemplate x:CompileBindings="False"><TextBlock Text="{Binding Key}"/></DataTemplate></ComboBox.ItemTemplate>
+          </ComboBox>
+          <TextBox Width="200" Margin="0,0,8,6" Text="{Binding NewName}" PlaceholderText="Název spouštěče"/>
+          <TextBox Width="240" Margin="0,0,8,6" Text="{Binding NewDescription}" PlaceholderText="Popis (volitelné)"/>
+          <TextBox Width="120" Margin="0,0,8,6" Text="{Binding NewSearchPattern}" PlaceholderText="Maska (*.pdf)"/>
+        </WrapPanel>
+        <StackPanel Orientation="Horizontal" Spacing="12">
+          <CheckBox Content="Rekurzivně" IsChecked="{Binding NewRecursive}"/>
+          <CheckBox Content="Povoleno" IsChecked="{Binding NewEnabled}"/>
+          <Button Content="Uložit" Command="{Binding SaveCreateCommand}"/>
+          <Button Content="Zrušit" Command="{Binding CancelCreateCommand}"/>
+        </StackPanel>
+        <TextBlock Text="{Binding ValidationError}" Foreground="#C0392B" TextWrapping="Wrap"
+                   IsVisible="{Binding ValidationError, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+      </StackPanel>
+    </Border>
+
+    <!-- Oznámení (real-time), dole -->
+    <Border DockPanel.Dock="Bottom" BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="4" Padding="8" Margin="0,8,0,0"
+            MaxHeight="120" IsVisible="{Binding Notifications.Count}">
+      <DockPanel>
+        <TextBlock DockPanel.Dock="Top" Text="Oznámení (real-time)" FontWeight="Bold" Margin="0,0,0,4"/>
+        <ScrollViewer>
+          <ItemsControl x:CompileBindings="False" ItemsSource="{Binding Notifications}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <TextBlock Text="{Binding}" Foreground="#CCC" FontFamily="Consolas,monospace" FontSize="12"/>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+      </DockPanel>
+    </Border>
+
+    <!-- Master (seznam) + detail -->
+    <Grid ColumnDefinitions="*,470">
+      <DataGrid Grid.Column="0" Margin="0,0,8,0" x:CompileBindings="False" ItemsSource="{Binding Triggers}"
+                SelectedItem="{Binding SelectedTrigger}" IsReadOnly="True" AutoGenerateColumns="False" CanUserResizeColumns="True">
+        <DataGrid.Columns>
+          <DataGridTextColumn Header="Název" Binding="{Binding Name}" Width="*"/>
+          <DataGridTextColumn Header="Instance" Binding="{Binding InstanceKey}" Width="130"/>
+          <DataGridTextColumn Header="Stav" Binding="{Binding Status}" Width="80"/>
+          <DataGridCheckBoxColumn Header="Povoleno" Binding="{Binding Enabled}" Width="80"/>
+          <DataGridCheckBoxColumn Header="Výchozí" Binding="{Binding IsDefault}" Width="75"/>
+          <DataGridTextColumn Header="Běhů" Binding="{Binding RunCount}" Width="60"/>
+          <DataGridTextColumn Header="Výsledek" Binding="{Binding LastOutcome}" Width="100"/>
+          <DataGridTextColumn Header="Poslední běh" Binding="{Binding LastRunAt}" Width="150"/>
+        </DataGrid.Columns>
+      </DataGrid>
+
+      <ScrollViewer Grid.Column="1">
+        <StackPanel Spacing="10">
+          <TextBlock Text="Vyber spouštěč v seznamu pro detail a akce."
+                     Foreground="#808080" TextWrapping="Wrap"
+                     IsVisible="{Binding SelectedTrigger, Converter={x:Static ObjectConverters.IsNull}}"/>
+
+          <StackPanel Spacing="10" IsVisible="{Binding SelectedTrigger, Converter={x:Static ObjectConverters.IsNotNull}}">
+            <TextBlock Text="{Binding SelectedTrigger.Name, StringFormat='Detail spouštěče: {0}'}" FontWeight="Bold" FontSize="16"/>
+
+            <!-- Akce -->
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Button Content="▶ Spustit" Command="{Binding RunTriggerCommand}"/>
+              <Button Content="✔ Povolit" Command="{Binding EnableCommand}"/>
+              <Button Content="⏸ Zakázat" Command="{Binding DisableCommand}"/>
+              <Button Content="🗑 Smazat" Command="{Binding DeleteCommand}"/>
+            </StackPanel>
+
+            <!-- Souhrn -->
+            <Border BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="4" Padding="10">
+              <StackPanel Spacing="3">
+                <TextBlock Text="{Binding SelectedTrigger.BranchKey, StringFormat='Větev: {0}'}"/>
+                <TextBlock Text="{Binding SelectedTrigger.InstanceKey, StringFormat='Instance: {0}'}"/>
+                <TextBlock Text="{Binding SelectedTrigger.Status, StringFormat='Stav: {0}'}"/>
+                <TextBlock Text="{Binding SelectedTrigger.ActionType, StringFormat='Typ akce: {0}'}"/>
+                <TextBlock Text="{Binding SelectedTrigger.IsDefault, StringFormat='Výchozí pro instanci: {0}'}"/>
+                <TextBlock Text="{Binding SelectedTrigger.RunCount, StringFormat='Počet běhů: {0}'}"/>
+                <TextBlock Text="{Binding SelectedTrigger.LastRunAt, StringFormat='Poslední běh: {0}'}"/>
+                <TextBlock Text="{Binding SelectedTrigger.LastOutcome, StringFormat='Poslední výsledek: {0}'}"/>
+                <TextBlock Text="{Binding SelectedTrigger.CreatedBy, StringFormat='Vytvořil: {0}'}" Foreground="#808080"/>
+              </StackPanel>
+            </Border>
+
+            <!-- Úprava -->
+            <Border BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="4" Padding="10">
+              <StackPanel Spacing="8">
+                <TextBlock Text="Úprava spouštěče" FontWeight="Bold"/>
+                <TextBox Text="{Binding EditName}" PlaceholderText="Název"/>
+                <TextBox Text="{Binding EditDescription}" PlaceholderText="Popis (volitelné)"/>
+                <TextBox Text="{Binding EditSearchPattern}" PlaceholderText="Maska souborů (*.pdf)"/>
+                <CheckBox Content="Rekurzivně" IsChecked="{Binding EditRecursive}"/>
+                <CheckBox Content="Povoleno" IsChecked="{Binding EditEnabled}"/>
+                <Button Content="💾 Uložit změny" Command="{Binding SaveEditCommand}"/>
+              </StackPanel>
+            </Border>
+
+            <!-- Běhy -->
+            <TextBlock Text="Historie běhů" FontWeight="Bold"/>
+            <DataGrid x:CompileBindings="False" ItemsSource="{Binding Runs}" IsReadOnly="True"
+                      AutoGenerateColumns="False" CanUserResizeColumns="True" MaxHeight="200">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="Začátek" Binding="{Binding StartedAt}" Width="150"/>
+                <DataGridTextColumn Header="Stav" Binding="{Binding Status}" Width="90"/>
+                <DataGridTextColumn Header="Výsledek" Binding="{Binding Result}" Width="100"/>
+                <DataGridTextColumn Header="Zdroj" Binding="{Binding Source}" Width="80"/>
+                <DataGridTextColumn Header="Trvání(ms)" Binding="{Binding DurationMs}" Width="90"/>
+                <DataGridTextColumn Header="Žadatel" Binding="{Binding RequestedBy}" Width="*"/>
+              </DataGrid.Columns>
+            </DataGrid>
+
+            <!-- Úlohy -->
+            <TextBlock Text="Vytvořené úlohy" FontWeight="Bold"/>
+            <DataGrid x:CompileBindings="False" ItemsSource="{Binding Jobs}" IsReadOnly="True"
+                      AutoGenerateColumns="False" CanUserResizeColumns="True" MaxHeight="200">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="Stav" Binding="{Binding Status}" Width="100"/>
+                <DataGridTextColumn Header="Hotovo" Binding="{Binding ProcessedCount}" Width="70"/>
+                <DataGridTextColumn Header="Celkem" Binding="{Binding TotalCount}" Width="70"/>
+                <DataGridTextColumn Header="Vytvořeno" Binding="{Binding CreatedAt}" Width="150"/>
+                <DataGridTemplateColumn Header="" Width="90">
+                  <DataGridTemplateColumn.CellTemplate>
+                    <DataTemplate>
+                      <Button Content="Otevřít" Margin="2"
+                              Command="{Binding #Root.DataContext.OpenJobCommand}" CommandParameter="{Binding}"/>
+                    </DataTemplate>
+                  </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+              </DataGrid.Columns>
+            </DataGrid>
+
+            <!-- Audit -->
+            <TextBlock Text="Audit" FontWeight="Bold"/>
+            <ItemsControl x:CompileBindings="False" ItemsSource="{Binding Audit}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Grid ColumnDefinitions="150,90,*" Margin="0,1">
+                    <TextBlock Grid.Column="0" Text="{Binding At}" Foreground="#808080" FontSize="12"/>
+                    <TextBlock Grid.Column="1" Text="{Binding Action}" FontWeight="SemiBold" FontSize="12"/>
+                    <TextBlock Grid.Column="2" Text="{Binding Detail}" Foreground="#CCC" FontSize="12" TextWrapping="Wrap"/>
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </StackPanel>
+      </ScrollViewer>
+    </Grid>
+  </DockPanel>
+</UserControl>
