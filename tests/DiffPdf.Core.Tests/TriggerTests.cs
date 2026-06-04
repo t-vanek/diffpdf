@@ -1,3 +1,4 @@
+using DiffPdf.Core.Abstractions;
 using DiffPdf.Core.Models;
 using DiffPdf.Core.Storage;
 using DiffPdf.Messaging.Scheduling;
@@ -23,43 +24,53 @@ public class TriggerTests
         }
     }
 
-    private static async Task<(TriggerService Svc, InMemoryTriggerStore Triggers, InMemoryTriggerRunStore Runs, FakeBatchLauncher Launcher)> BuildAsync()
+    private sealed class CapturingEventPublisher : ITriggerEventPublisher
+    {
+        public List<TriggerEvent> Events { get; } = [];
+        public Task PublishAsync(TriggerEvent evt, CancellationToken ct = default) { Events.Add(evt); return Task.CompletedTask; }
+    }
+
+    private sealed record Ctx(TriggerService Svc, InMemoryTriggerStore Triggers, InMemoryTriggerRunStore Runs,
+        FakeBatchLauncher Launcher, CapturingEventPublisher Events);
+
+    private static async Task<Ctx> BuildAsync()
     {
         var triggers = new InMemoryTriggerStore();
         var runs = new InMemoryTriggerRunStore();
         var launcher = new FakeBatchLauncher();
+        var events = new CapturingEventPublisher();
         var branches = new InMemoryBranchStore();
         var instances = new InMemoryInstanceStore();
         var b = await branches.CreateAsync("Alfa", "Alfa");
         await instances.CreateAsync(b.Id, "Lama", "Lama", "/base", null);
         var svc = new TriggerService(triggers, runs, new InMemoryAuditLogStore(), launcher, branches, instances,
-            NullLogger<TriggerService>.Instance);
-        return (svc, triggers, runs, launcher);
+            events, NullLogger<TriggerService>.Instance);
+        return new Ctx(svc, triggers, runs, launcher, events);
     }
 
     [Fact]
     public async Task Run_CreatesJobAndRun_AndThreadsTriggerAndSource()
     {
-        var (svc, _, runs, launcher) = await BuildAsync();
-        var t = await svc.CreateAsync(new CreateTriggerInput { BranchKey = "Alfa", InstanceKey = "Lama", Name = "T" }, "tester", JobSource.RestApi);
+        var c = await BuildAsync();
+        var t = await c.Svc.CreateAsync(new CreateTriggerInput { BranchKey = "Alfa", InstanceKey = "Lama", Name = "T" }, "tester", JobSource.RestApi);
 
-        var r = await svc.RunAsync(t.Id, JobSource.RestApi, "tester", idempotencyKey: null);
+        var r = await c.Svc.RunAsync(t.Id, JobSource.RestApi, "tester", idempotencyKey: null);
 
         Assert.True(r.Success);
         Assert.NotNull(r.BatchJobId);
         Assert.Equal("queued", r.Status);
-        Assert.Equal(t.Id, launcher.LastSpec!.TriggerId);     // launch carries the trigger + source
-        Assert.Equal(JobSource.RestApi, launcher.LastSpec.Source);
-        Assert.Single(await runs.ListByTriggerAsync(t.Id));
+        Assert.Equal(t.Id, c.Launcher.LastSpec!.TriggerId);
+        Assert.Equal(JobSource.RestApi, c.Launcher.LastSpec.Source);
+        Assert.Single(await c.Runs.ListByTriggerAsync(t.Id));
     }
 
     [Fact]
     public async Task Run_DisabledTrigger_FailsWithCode()
     {
-        var (svc, _, _, _) = await BuildAsync();
-        var t = await svc.CreateAsync(new CreateTriggerInput { BranchKey = "Alfa", InstanceKey = "Lama", Name = "T", Enabled = false }, "tester", JobSource.RestApi);
+        var c = await BuildAsync();
+        var t = await c.Svc.CreateAsync(new CreateTriggerInput { BranchKey = "Alfa", InstanceKey = "Lama", Name = "T", Enabled = false }, "tester", JobSource.RestApi);
 
-        var r = await svc.RunAsync(t.Id, JobSource.RestApi, "tester", null);
+        var r = await c.Svc.RunAsync(t.Id, JobSource.RestApi, "tester", null);
 
         Assert.False(r.Success);
         Assert.Equal("TRIGGER_DISABLED", r.ErrorCode);
@@ -68,33 +79,51 @@ public class TriggerTests
     [Fact]
     public async Task Run_WithIdempotencyKey_ReturnsSameJob()
     {
-        var (svc, _, _, _) = await BuildAsync();
-        var t = await svc.CreateAsync(new CreateTriggerInput { BranchKey = "Alfa", InstanceKey = "Lama", Name = "T" }, "tester", JobSource.RestApi);
+        var c = await BuildAsync();
+        var t = await c.Svc.CreateAsync(new CreateTriggerInput { BranchKey = "Alfa", InstanceKey = "Lama", Name = "T" }, "tester", JobSource.RestApi);
 
-        var first = await svc.RunAsync(t.Id, JobSource.RestApi, "tester", "key-1");
-        var second = await svc.RunAsync(t.Id, JobSource.RestApi, "tester", "key-1");
+        var first = await c.Svc.RunAsync(t.Id, JobSource.RestApi, "tester", "key-1");
+        var second = await c.Svc.RunAsync(t.Id, JobSource.RestApi, "tester", "key-1");
 
         Assert.True(first.Success);
-        Assert.Equal(first.BatchJobId, second.BatchJobId); // deduped — no second job despite the fake minting fresh ids
+        Assert.Equal(first.BatchJobId, second.BatchJobId); // deduped despite the fake minting fresh ids
     }
 
     [Fact]
     public async Task Delete_IsSoftAndKeepsRunHistory()
     {
-        var (svc, triggers, runs, _) = await BuildAsync();
-        var t = await svc.CreateAsync(new CreateTriggerInput { BranchKey = "Alfa", InstanceKey = "Lama", Name = "T" }, "tester", JobSource.RestApi);
-        await svc.RunAsync(t.Id, JobSource.RestApi, "tester", null);
+        var c = await BuildAsync();
+        var t = await c.Svc.CreateAsync(new CreateTriggerInput { BranchKey = "Alfa", InstanceKey = "Lama", Name = "T" }, "tester", JobSource.RestApi);
+        await c.Svc.RunAsync(t.Id, JobSource.RestApi, "tester", null);
 
-        await svc.DeleteAsync(t.Id, "tester", JobSource.RestApi);
+        await c.Svc.DeleteAsync(t.Id, "tester", JobSource.RestApi);
 
-        var deleted = await triggers.GetAsync(t.Id);
+        var deleted = await c.Triggers.GetAsync(t.Id);
         Assert.True(deleted!.IsDeleted);
         Assert.Equal(TriggerStatus.Deleted, deleted.Status);
-        Assert.NotEmpty(await runs.ListByTriggerAsync(t.Id)); // history preserved
+        Assert.NotEmpty(await c.Runs.ListByTriggerAsync(t.Id));
 
-        var run = await svc.RunAsync(t.Id, JobSource.RestApi, "tester", null);
+        var run = await c.Svc.RunAsync(t.Id, JobSource.RestApi, "tester", null);
         Assert.False(run.Success);
         Assert.Equal("TRIGGER_DELETED", run.ErrorCode);
+    }
+
+    [Fact]
+    public async Task Lifecycle_PublishesSignalREvents()
+    {
+        var c = await BuildAsync();
+        var t = await c.Svc.CreateAsync(new CreateTriggerInput { BranchKey = "Alfa", InstanceKey = "Lama", Name = "T" }, "tester", JobSource.RestApi);
+        await c.Svc.RunAsync(t.Id, JobSource.RestApi, "tester", null);
+        await c.Svc.DeleteAsync(t.Id, "tester", JobSource.RestApi);
+
+        var types = c.Events.Events.Select(e => e.EventType).ToList();
+        Assert.Contains("trigger.created", types);
+        Assert.Contains("trigger.run.requested", types);
+        Assert.Contains("batch.created", types);
+        Assert.Contains("batch.queued", types);
+        Assert.Contains("trigger.deleted", types);
+        // Events carry the trigger + scope for routing.
+        Assert.All(c.Events.Events, e => Assert.Equal(t.Id, e.TriggerId));
     }
 
     [Fact]
@@ -121,7 +150,7 @@ public class TriggerTests
         var instanceId = Guid.NewGuid();
 
         await prov.EnsureDefaultTriggerAsync(branchId, "Alfa", instanceId, "Lama", "system");
-        await prov.EnsureDefaultTriggerAsync(branchId, "Alfa", instanceId, "Lama", "system"); // again — must not duplicate
+        await prov.EnsureDefaultTriggerAsync(branchId, "Alfa", instanceId, "Lama", "system");
 
         var list = await triggers.ListAsync(new TriggerQuery { InstanceId = instanceId });
         Assert.Single(list);

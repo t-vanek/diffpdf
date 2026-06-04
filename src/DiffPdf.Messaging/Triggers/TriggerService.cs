@@ -1,3 +1,4 @@
+using DiffPdf.Core.Abstractions;
 using DiffPdf.Core.Models;
 using DiffPdf.Core.Storage;
 using DiffPdf.Messaging.Scheduling;
@@ -59,6 +60,7 @@ public sealed class TriggerService(
     IBatchLauncher launcher,
     IBranchStore branches,
     IInstanceStore instances,
+    ITriggerEventPublisher events,
     ILogger<TriggerService> logger) : ITriggerService
 {
     public async Task<Trigger> CreateAsync(CreateTriggerInput input, string? actor, JobSource source, CancellationToken ct = default)
@@ -91,6 +93,7 @@ public sealed class TriggerService(
         }, ct);
 
         await AuditAsync("trigger.created", created.Id, source, actor, $"{created.BranchKey}/{created.InstanceKey} '{created.Name}'", ct);
+        await PublishAsync("trigger.created", created, source, ct: ct);
         return created;
     }
 
@@ -110,6 +113,7 @@ public sealed class TriggerService(
         };
         var saved = await triggers.UpdateAsync(updated, patch.ExpectedVersion ?? existing.Version, ct);
         await AuditAsync("trigger.updated", id, JobSource.Manager, actor, null, ct);
+        await PublishAsync("trigger.updated", saved, JobSource.Manager, ct: ct);
         return saved;
     }
 
@@ -117,7 +121,10 @@ public sealed class TriggerService(
     {
         var result = await triggers.SetEnabledAsync(id, enabled, actor, ct);
         if (result is not null)
+        {
             await AuditAsync(enabled ? "trigger.enabled" : "trigger.disabled", id, source, actor, null, ct);
+            await PublishAsync(enabled ? "trigger.enabled" : "trigger.disabled", result, source, ct: ct);
+        }
         return result;
     }
 
@@ -125,7 +132,10 @@ public sealed class TriggerService(
     {
         var result = await triggers.SoftDeleteAsync(id, actor, ct);
         if (result is not null)
+        {
             await AuditAsync("trigger.deleted", id, source, actor, null, ct);
+            await PublishAsync("trigger.deleted", result, source, ct: ct);
+        }
         return result;
     }
 
@@ -194,6 +204,10 @@ public sealed class TriggerService(
         }
         await triggers.TouchLastRunAsync(t.Id, run.StartedAt, "Launched", ct);
         await AuditAsync("trigger.run.requested", t.Id, source, actor, $"batchJobId={launch.JobId}", ct);
+        // Real-time: the batch job exists + is queued (published after the outbox commit).
+        await PublishAsync("trigger.run.requested", t, source, launch.JobId, "queued", ct: ct);
+        await PublishAsync("batch.created", t, source, launch.JobId, "created", ct: ct);
+        await PublishAsync("batch.queued", t, source, launch.JobId, "queued", ct: ct);
         return new TriggerRunResult(true, t.Id, launch.JobId, "queued", "Porovnání bylo zařazeno do fronty.");
     }
 
@@ -209,6 +223,11 @@ public sealed class TriggerService(
         await AuditAsync("trigger.run.failed", t.Id, source, actor, $"{errorCode}: {message}", ct);
         return new TriggerRunResult(false, t.Id, null, "failed", message, errorCode);
     }
+
+    private Task PublishAsync(string eventType, Trigger t, JobSource source, Guid? batchJobId = null, string? status = null, CancellationToken ct = default) =>
+        events.PublishAsync(new TriggerEvent(
+            eventType, t.Id, batchJobId, t.BranchId, t.InstanceId, t.BranchKey, t.InstanceKey,
+            Status: status, Source: source.ToString()), ct);
 
     private Task AuditAsync(string action, Guid triggerId, JobSource source, string? actor, string? detail, CancellationToken ct) =>
         audit.AddAsync(new AuditEntry

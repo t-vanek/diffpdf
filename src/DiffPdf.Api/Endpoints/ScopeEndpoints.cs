@@ -1,3 +1,4 @@
+using DiffPdf.Core.Abstractions;
 using DiffPdf.Core.Comparison;
 using DiffPdf.Core.Models;
 using DiffPdf.Core.Network;
@@ -62,7 +63,7 @@ public static class ScopeEndpoints
         }).WithSummary("Get a branch").Produces<Branch>().ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPut("/{branchKey}", async (
-            string branchKey, UpdateBranchRequest request, IBranchStore store, CancellationToken ct) =>
+            string branchKey, UpdateBranchRequest request, IBranchStore store, ITriggerEventPublisher events, CancellationToken ct) =>
         {
             var existing = await store.GetByKeyAsync(branchKey, ct);
             if (existing is null) return Results.NotFound();
@@ -74,7 +75,10 @@ public static class ScopeEndpoints
             };
             try
             {
-                return Results.Ok(await store.UpdateAsync(updated, request.Version, ct));
+                var saved = await store.UpdateAsync(updated, request.Version, ct);
+                await events.PublishAsync(new TriggerEvent("branch.status.changed", Guid.Empty,
+                    BranchId: saved.Id, BranchKey: saved.Key, Status: saved.Enabled ? "Enabled" : "Disabled"), ct);
+                return Results.Ok(saved);
             }
             catch (ConcurrencyConflictException ex)
             {
@@ -200,7 +204,7 @@ public static class ScopeEndpoints
 
         group.MapPut("/{branchKey}/instances/{instanceKey}", async (
             string branchKey, string instanceKey, UpdateInstanceRequest request,
-            IBranchStore branches, IInstanceStore instances, CancellationToken ct) =>
+            IBranchStore branches, IInstanceStore instances, ITriggerEventPublisher events, CancellationToken ct) =>
         {
             if (string.IsNullOrWhiteSpace(request.BasePath))
                 return Results.Problem("Instance basePath must not be empty.", statusCode: StatusCodes.Status400BadRequest);
@@ -219,7 +223,11 @@ public static class ScopeEndpoints
             };
             try
             {
-                return Results.Ok(await instances.UpdateAsync(updated, request.Version, ct));
+                var saved = await instances.UpdateAsync(updated, request.Version, ct);
+                await events.PublishAsync(new TriggerEvent("instance.status.changed", Guid.Empty,
+                    BranchId: branch.Id, InstanceId: saved.Id, BranchKey: branchKey, InstanceKey: saved.Key,
+                    Status: saved.Enabled ? "Enabled" : "Disabled"), ct);
+                return Results.Ok(saved);
             }
             catch (ConcurrencyConflictException ex)
             {
