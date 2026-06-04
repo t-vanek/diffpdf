@@ -3,7 +3,7 @@ using DiffPdf.Client;
 
 namespace DiffPdf.DesktopUI.ViewModels;
 
-/// <summary>Reusable editor model for <see cref="ComparisonOptions"/> (used by Schedules + Single compare).</summary>
+/// <summary>Reusable editor model for <see cref="ComparisonOptions"/> (used by Single compare).</summary>
 public partial class ComparisonOptionsViewModel : ObservableObject
 {
     public ComparisonMode[] Modes { get; } = Enum.GetValues<ComparisonMode>();

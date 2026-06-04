@@ -20,38 +20,36 @@ public sealed record SingleComparisonRequest
     public ComparisonOptions Options { get; init; } = new();
 }
 
-/// <summary>Create a schedule under an instance; it runs the instance on its cron with the given options/gate.</summary>
-public sealed record CreateScheduleRequest
+/// <summary>Create a control check (the unified control/monitoring mechanism).</summary>
+public sealed record CreateCheckRequest
 {
     public required string Key { get; init; }
     public string? Name { get; init; }
-    public required string Cron { get; init; }
-    public ComparisonOptions Options { get; init; } = new();
-    public BatchGate? Gate { get; init; }
-    public string SearchPattern { get; init; } = "*.pdf";
-    public bool Recursive { get; init; } = true;
-    public int MaxDegreeOfParallelism { get; init; }
+    public required CheckType Type { get; init; }
+    public CheckScopeKind ScopeKind { get; init; } = CheckScopeKind.Global;
+    public string? BranchKey { get; init; }
+    public string? InstanceKey { get; init; }
+    public string? Cron { get; init; }
+    public int? IntervalSeconds { get; init; }
+    public IReadOnlyDictionary<string, string>? Parameters { get; init; }
+    public IReadOnlyList<NotificationEvent>? Events { get; init; }
     public bool Enabled { get; init; } = true;
 }
 
-/// <summary>Update a schedule. <see cref="Version"/> guards against concurrent edits (409 on mismatch).</summary>
-public sealed record UpdateScheduleRequest
+/// <summary>Update a control check. <see cref="Version"/> guards against concurrent edits (409 on mismatch).</summary>
+public sealed record UpdateCheckRequest
 {
+    public required string Key { get; init; }
     public string? Name { get; init; }
-    public required string Cron { get; init; }
-    public ComparisonOptions Options { get; init; } = new();
-    public BatchGate? Gate { get; init; }
-    public string SearchPattern { get; init; } = "*.pdf";
-    public bool Recursive { get; init; } = true;
-    public int MaxDegreeOfParallelism { get; init; }
-    public bool Enabled { get; init; } = true;
+    public required CheckType Type { get; init; }
     public required long Version { get; init; }
-}
-
-/// <summary>Create or replace an instance's folder-watch (launches a batch when a drop into new/ settles).</summary>
-public sealed record SetWatchRequest
-{
-    public int StabilitySeconds { get; init; } = 30;
+    public CheckScopeKind ScopeKind { get; init; } = CheckScopeKind.Global;
+    public string? BranchKey { get; init; }
+    public string? InstanceKey { get; init; }
+    public string? Cron { get; init; }
+    public int? IntervalSeconds { get; init; }
+    public IReadOnlyDictionary<string, string>? Parameters { get; init; }
+    public IReadOnlyList<NotificationEvent>? Events { get; init; }
     public bool Enabled { get; init; } = true;
 }
 

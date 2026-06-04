@@ -19,7 +19,6 @@ public sealed class IndexBatchHandler
         IndexBatch command,
         IJobStore jobStore,
         IFilePairTaskStore taskStore,
-        IScheduleRunStore scheduleRuns,
         IStorageProvisioner provisioner,
         IMessageBus bus,
         ILogger<IndexBatchHandler> logger,
@@ -45,7 +44,6 @@ public sealed class IndexBatchHandler
             logger.LogError(ex, "Indexing failed for job {JobId}", job.Id);
             var now = DateTimeOffset.UtcNow;
             await jobStore.FailAsync(job.Id, ex.Message, job.Version, ct);
-            await scheduleRuns.CompleteByJobAsync(job.Id, ScheduleRunOutcome.Failed, 0, 0, 0, false, [], ex.Message, now, ct);
             return new BatchFailed(job.Id, job.BranchKey, job.InstanceKey, ex.Message, now);
         }
 

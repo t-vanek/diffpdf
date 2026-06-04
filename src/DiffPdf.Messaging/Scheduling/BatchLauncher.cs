@@ -7,20 +7,16 @@ using Microsoft.Extensions.Logging;
 
 namespace DiffPdf.Messaging.Scheduling;
 
-/// <summary>The comparison knobs a launched batch runs with (carried by a schedule, or defaults for a trigger).</summary>
+/// <summary>The comparison knobs a launched batch runs with (defaults for an on-demand trigger).</summary>
 public sealed record LaunchSpec(
     ComparisonOptions Options,
     BatchGate? Gate,
     string SearchPattern,
     bool Recursive,
-    int MaxDegreeOfParallelism,
-    Guid? ScheduleId = null)
+    int MaxDegreeOfParallelism)
 {
-    /// <summary>Default knobs (default options, no gate, all *.pdf recursively) — used by webhook / folder-watch triggers, which carry no schedule.</summary>
+    /// <summary>Default knobs (default options, no gate, all *.pdf recursively) — used by the on-demand triggers.</summary>
     public static LaunchSpec Default { get; } = new(new ComparisonOptions(), null, "*.pdf", true, 0);
-
-    public static LaunchSpec FromSchedule(ComparisonSchedule s) =>
-        new(s.Options, s.Gate, s.SearchPattern, s.Recursive, s.MaxDegreeOfParallelism, s.Id);
 }
 
 /// <summary>Why a launch did or did not happen.</summary>
@@ -46,11 +42,9 @@ public sealed record LaunchResult(LaunchOutcome Outcome, Guid? JobId = null, str
 }
 
 /// <summary>
-/// Creates and starts a batch for a configured branch/instance in one step — the automation
-/// equivalent of the (removed) manual <c>POST /batch</c> + <c>POST /jobs/{id}/start</c>. The job
-/// is persisted as <see cref="JobStatus.Queued"/> and its run command published atomically
-/// (transactional outbox on relational stores). Used by the scheduler, the run-now endpoint,
-/// the webhook trigger and folder-watch.
+/// Creates and starts a batch for a configured branch/instance in one step. The job is persisted as
+/// <see cref="JobStatus.Queued"/> and its run command published atomically (transactional outbox on
+/// relational stores). Used by the on-demand triggers (single instance and branch fan-out).
 /// </summary>
 public interface IBatchLauncher
 {
@@ -69,7 +63,6 @@ public sealed class BatchLauncher(
     IInstanceStructureService structure,
     INetworkShareResolver shareResolver,
     IJobSubmissionService submission,
-    IScheduleRunStore scheduleRuns,
     ILogger<BatchLauncher> logger) : IBatchLauncher
 {
     public async Task<LaunchResult> LaunchAsync(string branchKey, string instanceKey, LaunchSpec spec, CancellationToken ct = default)
@@ -138,11 +131,6 @@ public sealed class BatchLauncher(
             BranchId = branch.Id,
             InstanceId = instance.Id,
         };
-
-        // Record the schedule run BEFORE publishing the command, so the finish-time patch (by job id)
-        // can never lose a race with a fast in-process / DB-local pipeline. No-op for non-schedule launches.
-        if (spec.ScheduleId is { } scheduleId)
-            await scheduleRuns.RecordStartAsync(scheduleId, job.Id, DateTimeOffset.UtcNow, ct);
 
         await submission.SubmitAsync(job, new RunBatchComparison(job.Id, branchKey, instanceKey), ct);
         logger.LogInformation("Batch {JobId} launched for {Branch}/{Instance}.", job.Id, branchKey, instanceKey);

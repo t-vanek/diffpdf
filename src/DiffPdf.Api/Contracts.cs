@@ -98,108 +98,6 @@ public sealed record JobSummary
     };
 }
 
-// ---------------- Automation: schedules ----------------
-
-/// <summary>Create a schedule under an instance. It runs the instance's old/new folders on its cron with the given options/gate.</summary>
-public sealed record CreateScheduleRequest
-{
-    public required string Key { get; init; }
-    public string? Name { get; init; }
-    public required string Cron { get; init; }
-    public ComparisonOptions Options { get; init; } = new();
-    public BatchGate? Gate { get; init; }
-    public string SearchPattern { get; init; } = "*.pdf";
-    public bool Recursive { get; init; } = true;
-    public int MaxDegreeOfParallelism { get; init; }
-    public bool Enabled { get; init; } = true;
-}
-
-/// <summary>Update a schedule. <see cref="Version"/> guards against concurrent edits (409 on mismatch).</summary>
-public sealed record UpdateScheduleRequest
-{
-    public string? Name { get; init; }
-    public required string Cron { get; init; }
-    public ComparisonOptions Options { get; init; } = new();
-    public BatchGate? Gate { get; init; }
-    public string SearchPattern { get; init; } = "*.pdf";
-    public bool Recursive { get; init; } = true;
-    public int MaxDegreeOfParallelism { get; init; }
-    public bool Enabled { get; init; } = true;
-    public required long Version { get; init; }
-}
-
-/// <summary>A schedule as returned by the API.</summary>
-public sealed record ScheduleResponse
-{
-    public required Guid Id { get; init; }
-    public required string BranchKey { get; init; }
-    public required string InstanceKey { get; init; }
-    public required string Key { get; init; }
-    public required string Name { get; init; }
-    public required string Cron { get; init; }
-    public required ComparisonOptions Options { get; init; }
-    public BatchGate? Gate { get; init; }
-    public required string SearchPattern { get; init; }
-    public bool Recursive { get; init; }
-    public int MaxDegreeOfParallelism { get; init; }
-    public bool Enabled { get; init; }
-    public DateTimeOffset CreatedAt { get; init; }
-    public DateTimeOffset? UpdatedAt { get; init; }
-    public DateTimeOffset? LastRunAt { get; init; }
-    public long Version { get; init; }
-
-    public static ScheduleResponse From(ComparisonSchedule s) => new()
-    {
-        Id = s.Id,
-        BranchKey = s.BranchKey,
-        InstanceKey = s.InstanceKey,
-        Key = s.Key,
-        Name = s.Name,
-        Cron = s.Cron,
-        Options = s.Options,
-        Gate = s.Gate,
-        SearchPattern = s.SearchPattern,
-        Recursive = s.Recursive,
-        MaxDegreeOfParallelism = s.MaxDegreeOfParallelism,
-        Enabled = s.Enabled,
-        CreatedAt = s.CreatedAt,
-        UpdatedAt = s.UpdatedAt,
-        LastRunAt = s.LastRunAt,
-        Version = s.Version,
-    };
-}
-
-/// <summary>One run of a schedule (the batch it launched) as returned by the API.</summary>
-public sealed record ScheduleRunResponse
-{
-    public required Guid Id { get; init; }
-    public required Guid JobId { get; init; }
-    public DateTimeOffset StartedAt { get; init; }
-    public DateTimeOffset? CompletedAt { get; init; }
-    public required string Outcome { get; init; }
-    public int Differing { get; init; }
-    public int Errors { get; init; }
-    public int FilesWithContentErrors { get; init; }
-    public bool Passed { get; init; }
-    public IReadOnlyList<string> GateViolations { get; init; } = [];
-    public string? Error { get; init; }
-
-    public static ScheduleRunResponse From(ScheduleRun r) => new()
-    {
-        Id = r.Id,
-        JobId = r.JobId,
-        StartedAt = r.StartedAt,
-        CompletedAt = r.CompletedAt,
-        Outcome = r.Outcome.ToString(),
-        Differing = r.Differing,
-        Errors = r.Errors,
-        FilesWithContentErrors = r.FilesWithContentErrors,
-        Passed = r.Passed,
-        GateViolations = r.GateViolations,
-        Error = r.Error,
-    };
-}
-
 // ---------------- Automation: notification subscriptions ----------------
 
 /// <summary>Create a notification subscription routing finished-batch events to a webhook or e-mail.</summary>
@@ -265,42 +163,6 @@ public sealed record InstanceRunResult(string InstanceKey, string Outcome, Guid?
 /// <summary>Result of triggering every enabled instance under a branch.</summary>
 public sealed record BranchRunResult(string BranchKey, int Launched, int Skipped, IReadOnlyList<InstanceRunResult> Instances);
 
-// ---------------- Automation: folder-watch ----------------
-
-/// <summary>Create or replace an instance's folder-watch.</summary>
-public sealed record SetWatchRequest
-{
-    public int StabilitySeconds { get; init; } = 30;
-    public bool Enabled { get; init; } = true;
-}
-
-/// <summary>An instance's folder-watch as returned by the API.</summary>
-public sealed record WatchResponse
-{
-    public required Guid Id { get; init; }
-    public required string BranchKey { get; init; }
-    public required string InstanceKey { get; init; }
-    public int StabilitySeconds { get; init; }
-    public bool Enabled { get; init; }
-    public DateTimeOffset CreatedAt { get; init; }
-    public DateTimeOffset? UpdatedAt { get; init; }
-    public DateTimeOffset? LastTriggeredAt { get; init; }
-    public long Version { get; init; }
-
-    public static WatchResponse From(FolderWatch w) => new()
-    {
-        Id = w.Id,
-        BranchKey = w.BranchKey,
-        InstanceKey = w.InstanceKey,
-        StabilitySeconds = w.StabilitySeconds,
-        Enabled = w.Enabled,
-        CreatedAt = w.CreatedAt,
-        UpdatedAt = w.UpdatedAt,
-        LastTriggeredAt = w.LastTriggeredAt,
-        Version = w.Version,
-    };
-}
-
 // ---------------- Operational visibility ----------------
 
 /// <summary>Identity, build version and uptime of the responding API replica.</summary>
@@ -335,9 +197,7 @@ public sealed record OperationalStatusResponse(
     LeaderInfo Leader,
     IReadOnlyList<ServiceHealthInfo> Services,
     BacklogInfo Backlog,
-    int EnabledSchedules,
-    int EnabledWatches,
-    bool RetentionEnabled,
+    int EnabledChecks,
     DependenciesInfo Dependencies);
 
 /// <summary>Readiness summary: overall status plus the per-check breakdown (200 ready / 503 degraded).</summary>

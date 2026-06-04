@@ -3,7 +3,6 @@ using DiffPdf.Core.Comparison;
 using DiffPdf.Core.Models;
 using DiffPdf.Core.Network;
 using DiffPdf.Core.Storage;
-using DiffPdf.Messaging.Automation;
 using DiffPdf.Persistence;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -32,7 +31,6 @@ public sealed class ScopeSyncService(
     IBranchStore branches,
     IInstanceStore instances,
     IInstanceStructureService structure,
-    IDefaultAutomationProvisioner defaultAutomation,
     IOptions<ScopeSyncOptions> options,
     ILogger<ScopeSyncService> logger) : IScopeSyncService
 {
@@ -144,11 +142,6 @@ public sealed class ScopeSyncService(
                     }
 
                     var structureReport = await EnsureOrInspectAsync(basePath, opt.CredentialProfile, apply && opt.AutoCreateFolders, ct);
-
-                    // Provision default automation for an instance registered for the first time, after its
-                    // skeleton exists (so the optional initial trigger has old/new to compare). No-op unless enabled.
-                    if (newlyRegistered is not null && branch is not null)
-                        await defaultAutomation.ProvisionAsync(branch, newlyRegistered, ct);
 
                     instanceResults.Add(new InstanceSyncResult(instanceName, instanceName, basePath, state, structureReport, detail));
                 }

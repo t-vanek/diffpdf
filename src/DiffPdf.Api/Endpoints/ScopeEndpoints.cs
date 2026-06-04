@@ -2,7 +2,6 @@ using DiffPdf.Core.Comparison;
 using DiffPdf.Core.Models;
 using DiffPdf.Core.Network;
 using DiffPdf.Core.Storage;
-using DiffPdf.Messaging.Automation;
 using DiffPdf.Persistence;
 
 namespace DiffPdf.Api.Endpoints;
@@ -70,7 +69,7 @@ public static class ScopeEndpoints
         group.MapPost("/{branchKey}/instances", async (
             string branchKey, CreateInstanceRequest request,
             IBranchStore branches, IInstanceStore instances, IInstanceStructureService structure,
-            IDefaultAutomationProvisioner automation, bool? ensureStructure, CancellationToken ct) =>
+            bool? ensureStructure, CancellationToken ct) =>
         {
             if (!StorageKeyValidator.IsValidKey(request.Key))
                 return Results.Problem($"Invalid instance key '{request.Key}'.", statusCode: StatusCodes.Status400BadRequest);
@@ -97,10 +96,6 @@ public static class ScopeEndpoints
             InstanceStructureReport? report = null;
             if (ensureStructure != false)
                 report = await structure.EnsureAsync(created.BasePath, created.CredentialProfile, ct: ct);
-
-            // Provision the configured default automation (disabled schedule + watch, optional initial
-            // trigger) after the skeleton exists; best-effort and a no-op unless DefaultAutomation is enabled.
-            await automation.ProvisionAsync(branch, created, ct);
 
             return Results.Created(
                 $"/api/v1/branches/{branchKey}/instances/{created.Key}",
@@ -130,19 +125,14 @@ public static class ScopeEndpoints
         group.MapDelete("/{branchKey}/instances/{instanceKey}", async (
             string branchKey, string instanceKey,
             IBranchStore branches, IInstanceStore instances,
-            IScheduleStore schedules, IWatchStore watches, IJobStore jobs, CancellationToken ct) =>
+            IJobStore jobs, CancellationToken ct) =>
         {
             var branch = await branches.GetByKeyAsync(branchKey, ct);
             if (branch is null) return Results.NotFound();
             var instance = await instances.GetByKeyAsync(branch.Id, instanceKey, ct);
             if (instance is null) return Results.NotFound();
 
-            // Guard against orphaning anything that references the instance (schedules / watch / jobs).
-            if ((await schedules.ListByInstanceAsync(instance.Id, ct)).Count > 0)
-                return Results.Problem($"Instance '{instanceKey}' has schedule(s); delete those first.", statusCode: StatusCodes.Status409Conflict);
-            if (await watches.GetByInstanceAsync(instance.Id, ct) is not null)
-                return Results.Problem($"Instance '{instanceKey}' has a folder-watch; delete it first.", statusCode: StatusCodes.Status409Conflict);
-
+            // Guard against orphaning the instance's jobs (active or historical).
             var instanceJobs = await jobs.ListAsync(new JobListQuery { BranchKey = branchKey, InstanceKey = instanceKey }, ct);
             if (instanceJobs.Any(j => ActiveStatuses.Contains(j.Status)))
                 return Results.Problem($"Instance '{instanceKey}' has an active job; cancel or wait for it first.", statusCode: StatusCodes.Status409Conflict);
@@ -151,7 +141,7 @@ public static class ScopeEndpoints
 
             await instances.DeleteByKeyAsync(branch.Id, instanceKey, ct);
             return Results.NoContent();
-        }).WithSummary("Delete an instance (409 if it has schedules, a watch, or any jobs)")
+        }).WithSummary("Delete an instance (409 if it has any jobs)")
           .Produces(StatusCodes.Status204NoContent)
           .ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
 

@@ -1,0 +1,72 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:DiffPdf.DesktopUI.ViewModels"
+             x:Class="DiffPdf.DesktopUI.Views.ChecksView"
+             x:DataType="vm:ChecksViewModel">
+
+  <DockPanel>
+    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+      <TextBlock Text="Control checks" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
+      <Button Content="Obnovit" Command="{Binding RefreshCommand}"/>
+      <Button Content="Nová" Command="{Binding NewCommand}"/>
+      <Button Content="Editovat" Command="{Binding EditSelectedCommand}"/>
+      <Button Content="Spustit teď" Command="{Binding RunNowCommand}"/>
+      <Button Content="Smazat" Command="{Binding DeleteCommand}"/>
+      <TextBlock Text="{Binding Info}" Foreground="#9CDCFE" VerticalAlignment="Center"/>
+      <TextBlock Text="{Binding Error}" Foreground="#C0392B" VerticalAlignment="Center"/>
+    </StackPanel>
+
+    <Grid ColumnDefinitions="*,380">
+      <DockPanel Grid.Column="0" Margin="0,0,8,0">
+        <DataGrid DockPanel.Dock="Top" Height="280" x:CompileBindings="False" ItemsSource="{Binding Checks}"
+                  SelectedItem="{Binding Selected}" IsReadOnly="True" AutoGenerateColumns="False" CanUserResizeColumns="True">
+          <DataGrid.Columns>
+            <DataGridTextColumn Header="Key" Binding="{Binding Key}" Width="140"/>
+            <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="110"/>
+            <DataGridTextColumn Header="Scope" Binding="{Binding ScopeKind}" Width="90"/>
+            <DataGridTextColumn Header="Enabled" Binding="{Binding Enabled}" Width="70"/>
+            <DataGridTextColumn Header="Last" Binding="{Binding LastOutcome}" Width="90"/>
+            <DataGridTextColumn Header="v" Binding="{Binding Version}" Width="40"/>
+          </DataGrid.Columns>
+        </DataGrid>
+
+        <TextBlock DockPanel.Dock="Top" Text="Historie běhů" FontWeight="Bold" Margin="0,8,0,4"/>
+        <DataGrid x:CompileBindings="False" ItemsSource="{Binding Runs}" IsReadOnly="True"
+                  AutoGenerateColumns="False" CanUserResizeColumns="True">
+          <DataGrid.Columns>
+            <DataGridTextColumn Header="Started" Binding="{Binding StartedAt}" Width="180"/>
+            <DataGridTextColumn Header="Outcome" Binding="{Binding Outcome}" Width="90"/>
+            <DataGridTextColumn Header="Detail" Binding="{Binding Detail}" Width="*"/>
+          </DataGrid.Columns>
+        </DataGrid>
+      </DockPanel>
+
+      <ScrollViewer Grid.Column="1">
+        <StackPanel Spacing="6">
+          <TextBlock Text="Kontrola" FontWeight="Bold"/>
+          <TextBox Text="{Binding Key}" PlaceholderText="Key (unikátní)"/>
+          <TextBox Text="{Binding Name}" PlaceholderText="Name"/>
+          <TextBlock Text="Typ"/>
+          <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Types}" SelectedItem="{Binding Type}"/>
+          <TextBlock Text="Scope"/>
+          <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Scopes}" SelectedItem="{Binding ScopeKind}"/>
+          <TextBox Text="{Binding BranchKey}" PlaceholderText="BranchKey (pro Branch/Instance scope)"/>
+          <TextBox Text="{Binding InstanceKey}" PlaceholderText="InstanceKey (pro Instance scope)"/>
+          <TextBox Text="{Binding Cron}" PlaceholderText="Cron (UTC, 5 polí) — má přednost"/>
+          <TextBlock Text="nebo interval (s)"/>
+          <NumericUpDown Value="{Binding IntervalSeconds}" Minimum="0" Increment="30"/>
+          <TextBlock Text="Parametry (key=value na řádek)"/>
+          <TextBox Text="{Binding ParametersText}" AcceptsReturn="True" Height="60"
+                   PlaceholderText="retentionDays=30&#x0a;rootPath=/pdfs"/>
+          <TextBlock Text="Notifikační události při selhání"/>
+          <CheckBox Content="ReadinessFailed" IsChecked="{Binding EventReadinessFailed}"/>
+          <CheckBox Content="HealthDegraded" IsChecked="{Binding EventHealthDegraded}"/>
+          <CheckBox Content="StructureDrift" IsChecked="{Binding EventStructureDrift}"/>
+          <CheckBox Content="CheckRecovered" IsChecked="{Binding EventCheckRecovered}"/>
+          <CheckBox Content="Enabled" IsChecked="{Binding Enabled}"/>
+          <Button Content="Uložit kontrolu" Command="{Binding SaveCommand}" HorizontalAlignment="Left"/>
+        </StackPanel>
+      </ScrollViewer>
+    </Grid>
+  </DockPanel>
+</UserControl>

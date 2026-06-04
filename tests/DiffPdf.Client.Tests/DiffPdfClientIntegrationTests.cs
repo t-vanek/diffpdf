@@ -19,89 +19,54 @@ public class DiffPdfClientIntegrationTests(InMemoryApiFactory factory)
         ("B" + Guid.NewGuid().ToString("N")[..8], "I" + Guid.NewGuid().ToString("N")[..8]);
 
     [Fact]
-    public async Task Schedule_Crud_RoundTrip()
+    public async Task Check_Crud_Run_History_RoundTrip()
     {
         var diff = NewClient();
-        var (bk, ik) = FreshKeys();
-        await diff.CreateBranchAsync(new(bk, "Branch"));
 
-        string basePath = Path.Combine(Path.GetTempPath(), "diffpdf-sdk-" + Guid.NewGuid().ToString("N"));
-        try
+        // create (global health check on an interval)
+        var created = await diff.CreateCheckAsync(new CreateCheckRequest
         {
-            await diff.CreateInstanceAsync(bk, new(ik, "Inst", basePath));
+            Key = "chk_" + Guid.NewGuid().ToString("N")[..8],
+            Name = "Server health",
+            Type = CheckType.Health,
+            ScopeKind = CheckScopeKind.Global,
+            IntervalSeconds = 300,
+            Events = [NotificationEvent.HealthDegraded],
+        });
+        Assert.Equal(CheckType.Health, created.Type);
+        Assert.Equal(1, created.Version);
 
-            // create
-            var created = await diff.CreateScheduleAsync(bk, ik, new CreateScheduleRequest
-            {
-                Key = "nightly",
-                Name = "Nightly",
-                Cron = "0 2 * * *",
-            });
-            Assert.Equal("nightly", created.Key);
-            Assert.Equal(1, created.Version);
+        // get + list
+        var got = await diff.GetCheckAsync(created.Id);
+        Assert.NotNull(got);
+        Assert.Contains(await diff.ListChecksAsync(), c => c.Id == created.Id);
 
-            // get + list
-            var got = await diff.GetScheduleAsync(bk, ik, "nightly");
-            Assert.NotNull(got);
-            Assert.Equal("0 2 * * *", got!.Cron);
-            Assert.Contains(await diff.ListSchedulesAsync(bk, ik), s => s.Key == "nightly");
-
-            // update (optimistic concurrency via Version)
-            var updated = await diff.UpdateScheduleAsync(bk, ik, "nightly", new UpdateScheduleRequest
-            {
-                Cron = "0 3 * * *",
-                Enabled = false,
-                Version = created.Version,
-            });
-            Assert.Equal("0 3 * * *", updated.Cron);
-            Assert.False(updated.Enabled);
-            Assert.Equal(2, updated.Version);
-
-            // duplicate key -> 409
-            var dup = await Assert.ThrowsAsync<DiffPdfApiException>(() =>
-                diff.CreateScheduleAsync(bk, ik, new CreateScheduleRequest { Key = "nightly", Cron = "0 2 * * *" }));
-            Assert.Equal(HttpStatusCode.Conflict, dup.StatusCode);
-
-            // invalid cron -> 400
-            var bad = await Assert.ThrowsAsync<DiffPdfApiException>(() =>
-                diff.CreateScheduleAsync(bk, ik, new CreateScheduleRequest { Key = "broken", Cron = "not-a-cron" }));
-            Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
-
-            // delete
-            await diff.DeleteScheduleAsync(bk, ik, "nightly");
-            Assert.Null(await diff.GetScheduleAsync(bk, ik, "nightly"));
-        }
-        finally
+        // update (optimistic concurrency via Version)
+        var updated = await diff.UpdateCheckAsync(created.Id, new UpdateCheckRequest
         {
-            try { Directory.Delete(basePath, recursive: true); } catch (IOException) { }
-        }
+            Key = created.Key, Name = "Renamed", Type = CheckType.Health,
+            IntervalSeconds = 600, Enabled = false, Version = created.Version,
+        });
+        Assert.Equal("Renamed", updated.Name);
+        Assert.Equal(2, updated.Version);
+
+        // duplicate key -> 409
+        var dup = await Assert.ThrowsAsync<DiffPdfApiException>(() => diff.CreateCheckAsync(
+            new CreateCheckRequest { Key = created.Key, Type = CheckType.Health, IntervalSeconds = 60 }));
+        Assert.Equal(HttpStatusCode.Conflict, dup.StatusCode);
+
+        // run now -> recorded run + history
+        var run = await diff.RunCheckAsync(created.Id);
+        Assert.Equal(created.Id, run.CheckId);
+        Assert.True((await diff.ListCheckRunsAsync(created.Id)).Count >= 1);
+
+        // delete
+        await diff.DeleteCheckAsync(created.Id);
+        Assert.Null(await diff.GetCheckAsync(created.Id));
     }
 
     [Fact]
-    public async Task RunNow_EmptyInstance_Returns422()
-    {
-        var diff = NewClient();
-        var (bk, ik) = FreshKeys();
-        await diff.CreateBranchAsync(new(bk, "Branch"));
-
-        string basePath = Path.Combine(Path.GetTempPath(), "diffpdf-sdk-" + Guid.NewGuid().ToString("N"));
-        try
-        {
-            await diff.CreateInstanceAsync(bk, new(ik, "Inst", basePath));      // old/new auto-created, empty
-            await diff.CreateScheduleAsync(bk, ik, new CreateScheduleRequest { Key = "s", Cron = "0 2 * * *" });
-
-            // Nothing to compare -> the same gate the removed POST /jobs/{id}/start enforced.
-            var ex = await Assert.ThrowsAsync<DiffPdfApiException>(() => diff.RunScheduleNowAsync(bk, ik, "s"));
-            Assert.Equal(HttpStatusCode.UnprocessableEntity, ex.StatusCode);
-        }
-        finally
-        {
-            try { Directory.Delete(basePath, recursive: true); } catch (IOException) { }
-        }
-    }
-
-    [Fact]
-    public async Task RunNow_HappyPath_JobReachesCompleted()
+    public async Task Trigger_HappyPath_JobReachesCompleted()
     {
         var diff = NewClient();
         var (bk, ik) = FreshKeys();
@@ -115,98 +80,18 @@ public class DiffPdfClientIntegrationTests(InMemoryApiFactory factory)
             // One matching pair so the pre-flight gate passes and the pipeline has work. The files are
             // intentional stubs (not real PDFs): the engine records each as an Error without crashing the
             // batch, so the job still runs RunBatch -> Index -> ComparePair -> Finalize -> Completed. This
-            // proves the automation wiring end-to-end while staying hermetic (no Ghostscript / real PDFs).
+            // proves the trigger wiring end-to-end while staying hermetic (no Ghostscript / real PDFs).
             await File.WriteAllTextAsync(Path.Combine(basePath, "old", "doc.pdf"), "%PDF-1.4 stub");
             await File.WriteAllTextAsync(Path.Combine(basePath, "new", "doc.pdf"), "%PDF-1.4 stub");
 
-            await diff.CreateScheduleAsync(bk, ik, new CreateScheduleRequest { Key = "s", Cron = "0 2 * * *" });
-
-            Guid jobId = await diff.RunScheduleNowAsync(bk, ik, "s");
+            var trig = await diff.TriggerBatchAsync(bk, ik);
+            Assert.Equal("Launched", trig.Outcome);
+            Assert.NotNull(trig.JobId);
 
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            var report = await diff.WaitForReportAsync(jobId, TimeSpan.FromMilliseconds(200), cts.Token);
+            var report = await diff.WaitForReportAsync(trig.JobId!.Value, TimeSpan.FromMilliseconds(200), cts.Token);
 
             Assert.Equal(1, report.Total);   // the pipeline indexed and processed the single pair
-        }
-        finally
-        {
-            try { Directory.Delete(basePath, recursive: true); } catch (IOException) { }
-        }
-    }
-
-    [Fact]
-    public async Task Schedule_RunHistory_RecordsRunAndOutcome()
-    {
-        var diff = NewClient();
-        var (bk, ik) = FreshKeys();
-        await diff.CreateBranchAsync(new(bk, "Branch"));
-
-        string basePath = Path.Combine(Path.GetTempPath(), "diffpdf-sdk-" + Guid.NewGuid().ToString("N"));
-        try
-        {
-            await diff.CreateInstanceAsync(bk, new(ik, "Inst", basePath));
-            await File.WriteAllTextAsync(Path.Combine(basePath, "old", "doc.pdf"), "%PDF-1.4 stub");
-            await File.WriteAllTextAsync(Path.Combine(basePath, "new", "doc.pdf"), "%PDF-1.4 stub");
-            await diff.CreateScheduleAsync(bk, ik, new CreateScheduleRequest { Key = "s", Cron = "0 2 * * *" });
-
-            Guid jobId = await diff.RunScheduleNowAsync(bk, ik, "s");
-
-            // The run is recorded (Pending) at launch — before the command is published.
-            var runs = await diff.ListScheduleRunsAsync(bk, ik, "s");
-            Assert.Single(runs);
-            Assert.Equal(jobId, runs[0].JobId);
-
-            // Its outcome is patched once the batch finishes — poll until terminal.
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            ScheduleRunResponse run;
-            do
-            {
-                await Task.Delay(150, cts.Token);
-                run = (await diff.ListScheduleRunsAsync(bk, ik, "s"))[0];
-            }
-            while (run.Outcome == ScheduleRunOutcome.Pending && !cts.IsCancellationRequested);
-
-            Assert.NotEqual(ScheduleRunOutcome.Pending, run.Outcome);
-            Assert.NotNull(run.CompletedAt);
-        }
-        finally
-        {
-            try { Directory.Delete(basePath, recursive: true); } catch (IOException) { }
-        }
-    }
-
-    [Fact]
-    public async Task Watch_Crud_RoundTrip()
-    {
-        var diff = NewClient();
-        var (bk, ik) = FreshKeys();
-        await diff.CreateBranchAsync(new(bk, "Branch"));
-
-        string basePath = Path.Combine(Path.GetTempPath(), "diffpdf-sdk-" + Guid.NewGuid().ToString("N"));
-        try
-        {
-            await diff.CreateInstanceAsync(bk, new(ik, "Inst", basePath));
-
-            Assert.Null(await diff.GetWatchAsync(bk, ik));   // none yet
-
-            var set = await diff.SetWatchAsync(bk, ik, new SetWatchRequest { StabilitySeconds = 45 });
-            Assert.Equal(45, set.StabilitySeconds);
-            Assert.True(set.Enabled);
-
-            var got = await diff.GetWatchAsync(bk, ik);
-            Assert.NotNull(got);
-            Assert.Equal(set.Id, got!.Id);
-
-            // Upsert again keeps the id and replaces the fields.
-            var updated = await diff.SetWatchAsync(bk, ik, new SetWatchRequest { StabilitySeconds = 90, Enabled = false });
-            Assert.Equal(set.Id, updated.Id);
-            Assert.Equal(90, updated.StabilitySeconds);
-            Assert.False(updated.Enabled);
-
-            Assert.Contains(await diff.ListWatchesAsync(), w => w.Id == set.Id);
-
-            await diff.DeleteWatchAsync(bk, ik);
-            Assert.Null(await diff.GetWatchAsync(bk, ik));
         }
         finally
         {
@@ -317,8 +202,8 @@ public class DiffPdfClientIntegrationTests(InMemoryApiFactory factory)
         Assert.True(status.Leader.IsThisReplica);
         Assert.Equal(status.Replica.WorkerInstanceId, status.Leader.Owner);
         Assert.True(status.Dependencies.Database.Ok);
-        Assert.Contains(status.Services, s => s.Service == "scheduler");
-        Assert.Contains(status.Services, s => s.Service == "retention");
+        Assert.Contains(status.Services, s => s.Service == "control-plane");
+        Assert.Contains(status.Services, s => s.Service == "stale-recovery");
     }
 
     [Fact]
@@ -350,7 +235,7 @@ public class DiffPdfClientIntegrationTests(InMemoryApiFactory factory)
     }
 
     [Fact]
-    public async Task Instance_Delete_RespectsScheduleGuard()
+    public async Task Instance_Delete_RespectsJobGuard()
     {
         var diff = NewClient();
         var (bk, ik) = FreshKeys();
@@ -364,9 +249,14 @@ public class DiffPdfClientIntegrationTests(InMemoryApiFactory factory)
             await diff.DeleteInstanceAsync(bk, ik);
             Assert.Null(await diff.GetInstanceAsync(bk, ik));
 
-            // Re-create + add a schedule -> the instance can no longer be deleted (409).
+            // Re-create + run a batch (via trigger) -> the instance now has job history and cannot be deleted (409).
             await diff.CreateInstanceAsync(bk, new(ik, "Inst", basePath));
-            await diff.CreateScheduleAsync(bk, ik, new CreateScheduleRequest { Key = "nightly", Cron = "0 2 * * *" });
+            await File.WriteAllTextAsync(Path.Combine(basePath, "old", "doc.pdf"), "%PDF-1.4 stub");
+            await File.WriteAllTextAsync(Path.Combine(basePath, "new", "doc.pdf"), "%PDF-1.4 stub");
+            var trig = await diff.TriggerBatchAsync(bk, ik);
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            await diff.WaitForReportAsync(trig.JobId!.Value, TimeSpan.FromMilliseconds(200), cts.Token);
+
             var ex = await Assert.ThrowsAsync<DiffPdfApiException>(() => diff.DeleteInstanceAsync(bk, ik));
             Assert.Equal(HttpStatusCode.Conflict, ex.StatusCode);
             Assert.NotNull(await diff.GetInstanceAsync(bk, ik));

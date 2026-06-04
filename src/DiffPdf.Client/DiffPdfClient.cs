@@ -49,7 +49,7 @@ public sealed class DiffPdfClient(HttpClient http)
     public Task<Instance?> GetInstanceAsync(string branchKey, string instanceKey, CancellationToken ct = default) =>
         GetOrNullAsync<Instance>($"/api/v1/branches/{Esc(branchKey)}/instances/{Esc(instanceKey)}", ct);
 
-    /// <summary>Deletes an instance. Throws DiffPdfApiException 409 if it has schedules, a watch, or any jobs; 404 if unknown.</summary>
+    /// <summary>Deletes an instance. Throws DiffPdfApiException 409 if it has any jobs; 404 if unknown.</summary>
     public async Task DeleteInstanceAsync(string branchKey, string instanceKey, CancellationToken ct = default)
     {
         using var resp = await SendRawAsync(HttpMethod.Delete, $"/api/v1/branches/{Esc(branchKey)}/instances/{Esc(instanceKey)}", null, ct);
@@ -186,54 +186,33 @@ public sealed class DiffPdfClient(HttpClient http)
         return connection;
     }
 
-    // ---------------- Schedules ----------------
+    // ---------------- Control checks ----------------
 
-    public Task<ScheduleResponse> CreateScheduleAsync(string branchKey, string instanceKey, CreateScheduleRequest request, CancellationToken ct = default) =>
-        JsonAsync<ScheduleResponse>(HttpMethod.Post, SchedulesUrl(branchKey, instanceKey), request, ct);
+    public Task<CheckResponse> CreateCheckAsync(CreateCheckRequest request, CancellationToken ct = default) =>
+        JsonAsync<CheckResponse>(HttpMethod.Post, "/api/v1/checks", request, ct);
 
-    public Task<IReadOnlyList<ScheduleResponse>> ListSchedulesAsync(string branchKey, string instanceKey, CancellationToken ct = default) =>
-        JsonAsync<IReadOnlyList<ScheduleResponse>>(HttpMethod.Get, SchedulesUrl(branchKey, instanceKey), null, ct);
+    public Task<IReadOnlyList<CheckResponse>> ListChecksAsync(CancellationToken ct = default) =>
+        JsonAsync<IReadOnlyList<CheckResponse>>(HttpMethod.Get, "/api/v1/checks", null, ct);
 
-    public Task<ScheduleResponse?> GetScheduleAsync(string branchKey, string instanceKey, string scheduleKey, CancellationToken ct = default) =>
-        GetOrNullAsync<ScheduleResponse>($"{SchedulesUrl(branchKey, instanceKey)}/{Esc(scheduleKey)}", ct);
+    public Task<CheckResponse?> GetCheckAsync(Guid id, CancellationToken ct = default) =>
+        GetOrNullAsync<CheckResponse>($"/api/v1/checks/{id}", ct);
 
-    public Task<ScheduleResponse> UpdateScheduleAsync(string branchKey, string instanceKey, string scheduleKey, UpdateScheduleRequest request, CancellationToken ct = default) =>
-        JsonAsync<ScheduleResponse>(HttpMethod.Put, $"{SchedulesUrl(branchKey, instanceKey)}/{Esc(scheduleKey)}", request, ct);
+    public Task<CheckResponse> UpdateCheckAsync(Guid id, UpdateCheckRequest request, CancellationToken ct = default) =>
+        JsonAsync<CheckResponse>(HttpMethod.Put, $"/api/v1/checks/{id}", request, ct);
 
-    public async Task DeleteScheduleAsync(string branchKey, string instanceKey, string scheduleKey, CancellationToken ct = default)
+    public async Task DeleteCheckAsync(Guid id, CancellationToken ct = default)
     {
-        using var resp = await SendRawAsync(HttpMethod.Delete, $"{SchedulesUrl(branchKey, instanceKey)}/{Esc(scheduleKey)}", null, ct);
+        using var resp = await SendRawAsync(HttpMethod.Delete, $"/api/v1/checks/{id}", null, ct);
     }
 
-    /// <summary>Runs a schedule now; returns the queued job id. Throws DiffPdfApiException (422) when there is nothing to compare.</summary>
-    public async Task<Guid> RunScheduleNowAsync(string branchKey, string instanceKey, string scheduleKey, CancellationToken ct = default) =>
-        (await JsonAsync<RunScheduleResult>(HttpMethod.Post, $"{SchedulesUrl(branchKey, instanceKey)}/{Esc(scheduleKey)}/run", null, ct)).JobId;
+    /// <summary>Runs a control check now and returns the recorded run.</summary>
+    public Task<CheckRunResponse> RunCheckAsync(Guid id, CancellationToken ct = default) =>
+        JsonAsync<CheckRunResponse>(HttpMethod.Post, $"/api/v1/checks/{id}/run", null, ct);
 
-    /// <summary>Run history of a schedule (newest first).</summary>
-    public Task<IReadOnlyList<ScheduleRunResponse>> ListScheduleRunsAsync(
-        string branchKey, string instanceKey, string scheduleKey, int? limit = null, CancellationToken ct = default)
-    {
-        string url = $"{SchedulesUrl(branchKey, instanceKey)}/{Esc(scheduleKey)}/runs" + (limit is { } l ? $"?limit={l}" : "");
-        return JsonAsync<IReadOnlyList<ScheduleRunResponse>>(HttpMethod.Get, url, null, ct);
-    }
-
-    // ---------------- Folder-watch ----------------
-
-    /// <summary>Creates or replaces the instance's folder-watch (arms the watcher).</summary>
-    public Task<WatchResponse> SetWatchAsync(string branchKey, string instanceKey, SetWatchRequest request, CancellationToken ct = default) =>
-        JsonAsync<WatchResponse>(HttpMethod.Put, $"/api/v1/branches/{Esc(branchKey)}/instances/{Esc(instanceKey)}/watch", request, ct);
-
-    public Task<WatchResponse?> GetWatchAsync(string branchKey, string instanceKey, CancellationToken ct = default) =>
-        GetOrNullAsync<WatchResponse>($"/api/v1/branches/{Esc(branchKey)}/instances/{Esc(instanceKey)}/watch", ct);
-
-    public async Task DeleteWatchAsync(string branchKey, string instanceKey, CancellationToken ct = default)
-    {
-        using var resp = await SendRawAsync(HttpMethod.Delete, $"/api/v1/branches/{Esc(branchKey)}/instances/{Esc(instanceKey)}/watch", null, ct);
-    }
-
-    /// <summary>Lists all folder-watches across instances.</summary>
-    public Task<IReadOnlyList<WatchResponse>> ListWatchesAsync(CancellationToken ct = default) =>
-        JsonAsync<IReadOnlyList<WatchResponse>>(HttpMethod.Get, "/api/v1/watches", null, ct);
+    /// <summary>Run history of a control check (newest first).</summary>
+    public Task<IReadOnlyList<CheckRunResponse>> ListCheckRunsAsync(Guid id, int? limit = null, CancellationToken ct = default) =>
+        JsonAsync<IReadOnlyList<CheckRunResponse>>(
+            HttpMethod.Get, $"/api/v1/checks/{id}/runs" + (limit is { } l ? $"?limit={l}" : ""), null, ct);
 
     // ---------------- Notification subscriptions ----------------
 
@@ -253,9 +232,6 @@ public sealed class DiffPdfClient(HttpClient http)
     {
         using var resp = await SendRawAsync(HttpMethod.Delete, $"/api/v1/subscriptions/{id}", null, ct);
     }
-
-    private static string SchedulesUrl(string branchKey, string instanceKey) =>
-        $"/api/v1/branches/{Esc(branchKey)}/instances/{Esc(instanceKey)}/schedules";
 
     // ---------------- Discovery / single comparison / health ----------------
 
@@ -299,8 +275,6 @@ public sealed class DiffPdfClient(HttpClient http)
     // ---------------- plumbing ----------------
 
     private sealed record JobActionResult(int Resumed, int Retried, JobSummary Job);
-
-    private sealed record RunScheduleResult(Guid JobId);
 
     private async Task<T> JsonAsync<T>(HttpMethod method, string url, object? body, CancellationToken ct)
     {

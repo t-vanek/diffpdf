@@ -20,10 +20,7 @@ public static class PostgresPersistenceServiceCollectionExtensions
         services.AddScoped<IFilePairTaskStore, PostgresFilePairTaskStore>();
         services.AddScoped<IBranchStore, PostgresBranchStore>();
         services.AddScoped<IInstanceStore, PostgresInstanceStore>();
-        services.AddScoped<IScheduleStore, PostgresScheduleStore>();
         services.AddScoped<ISubscriptionStore, PostgresSubscriptionStore>();
-        services.AddScoped<IScheduleRunStore, PostgresScheduleRunStore>();
-        services.AddScoped<IWatchStore, PostgresWatchStore>();
         services.AddScoped<IControlCheckStore, PostgresControlCheckStore>();
         services.AddScoped<IControlCheckRunStore, PostgresControlCheckRunStore>();
         services.AddScoped<IJobSubmissionService, PostgresJobSubmissionService>();

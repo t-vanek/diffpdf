@@ -3,7 +3,6 @@ using System.Reflection;
 using DiffPdf.Core.Abstractions;
 using DiffPdf.Core.Models;
 using DiffPdf.Core.Storage;
-using DiffPdf.Messaging.Retention;
 using DiffPdf.Persistence;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -41,11 +40,10 @@ public sealed class OperationalStatusService(
     IEnumerable<IPdfPageRenderer> renderers,
     PersistenceInfo persistence,
     IOptions<StorageOptions> storage,
-    IOptions<RetentionOptions> retention,
     IHostEnvironment environment)
 {
     // Canonical automation services, so the status always lists them even before their first tick.
-    private static readonly string[] KnownServices = ["scheduler", "folder-watch", "scope-sync", "retention", "stale-recovery"];
+    private static readonly string[] KnownServices = ["control-plane", "stale-recovery"];
 
     private static readonly TimeSpan RendererCacheTtl = TimeSpan.FromSeconds(60);
     private readonly SemaphoreSlim _rendererGate = new(1, 1);
@@ -61,20 +59,18 @@ public sealed class OperationalStatusService(
 
         BacklogInfo backlog;
         DependencyCheck database;
-        int enabledSchedules, enabledWatches;
+        int enabledChecks;
         await using (var scope = scopeFactory.CreateAsyncScope())
         {
             var sp = scope.ServiceProvider;
             (backlog, database) = await BuildBacklogAsync(sp.GetRequiredService<IJobStore>(), sp.GetRequiredService<IFilePairTaskStore>(), ct);
-            enabledSchedules = (await sp.GetRequiredService<IScheduleStore>().ListEnabledAsync(ct)).Count;
-            enabledWatches = (await sp.GetRequiredService<IWatchStore>().ListEnabledAsync(ct)).Count;
+            enabledChecks = (await sp.GetRequiredService<IControlCheckStore>().ListEnabledAsync(ct)).Count;
         }
 
         var dependencies = new DependenciesInfo(database, await CheckRendererAsync(ct), CheckStorage());
 
         return new OperationalStatusResponse(
-            replica, leaderInfo, services, backlog,
-            enabledSchedules, enabledWatches, retention.Value.Enabled, dependencies);
+            replica, leaderInfo, services, backlog, enabledChecks, dependencies);
     }
 
     /// <summary>Readiness: are the critical dependencies usable? Returns whether ready plus the per-check breakdown.</summary>

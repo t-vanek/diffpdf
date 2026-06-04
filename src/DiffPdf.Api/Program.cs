@@ -10,12 +10,9 @@ using DiffPdf.Core.Abstractions;
 using DiffPdf.Core.Network;
 using DiffPdf.Core.Storage;
 using DiffPdf.Messaging;
-using DiffPdf.Messaging.Automation;
 using DiffPdf.Messaging.ControlPlane;
-using DiffPdf.Messaging.Retention;
 using DiffPdf.Messaging.Scheduling;
 using DiffPdf.Messaging.ScopeSync;
-using DiffPdf.Messaging.Triggers;
 using DiffPdf.Notifications.DependencyInjection;
 using DiffPdf.Pdf.DependencyInjection;
 using DiffPdf.Persistence;
@@ -144,10 +141,7 @@ else
     builder.Services.AddSingleton<IFilePairTaskStore, InMemoryFilePairTaskStore>();
     builder.Services.AddSingleton<IBranchStore, InMemoryBranchStore>();
     builder.Services.AddSingleton<IInstanceStore, InMemoryInstanceStore>();
-    builder.Services.AddSingleton<IScheduleStore, InMemoryScheduleStore>();
     builder.Services.AddSingleton<ISubscriptionStore, InMemorySubscriptionStore>();
-    builder.Services.AddSingleton<IScheduleRunStore, InMemoryScheduleRunStore>();
-    builder.Services.AddSingleton<IWatchStore, InMemoryWatchStore>();
     builder.Services.AddSingleton<IControlCheckStore, InMemoryControlCheckStore>();
     builder.Services.AddSingleton<IControlCheckRunStore, InMemoryControlCheckRunStore>();
     builder.Services.AddSingleton<ILeaderElection, InMemoryLeaderElection>();
@@ -172,14 +166,10 @@ builder.Services.AddHostedService<StaleTaskRecoveryService>();
 // (runs after the persistence migration above; no-op for the in-memory fallback).
 builder.Services.AddHostedService<InstanceStructureHostedService>();
 
-// Automation: outbound notifications (DB-backed subscriptions), a DB-backed recurring
-// scheduler, and folder-watch triggers. All are no-ops until configured / populated.
+// Outbound notifications (DB-backed subscriptions) + the on-demand batch launcher used by the triggers.
 builder.Services.AddDiffPdfNotifications(builder.Configuration);
-builder.Services.AddDiffPdfScheduling();
-builder.Services.AddDiffPdfFolderWatch();
-builder.Services.AddDiffPdfDefaultAutomation(builder.Configuration);
+builder.Services.AddScoped<IBatchLauncher, BatchLauncher>();
 builder.Services.AddDiffPdfScopeSync(builder.Configuration);
-builder.Services.AddDiffPdfRetention(builder.Configuration);
 
 // Unified control/monitoring mechanism: runtime-configured checks (readiness, health, structure-sync,
 // retention) executed on a cadence by one leader-gated runner. Idle until checks are created via the API.
@@ -220,12 +210,10 @@ var api = app.MapGroup("/api/v1");
 api.MapComparisonEndpoints();
 api.MapScopeEndpoints();
 api.MapScopeSyncEndpoints();
-api.MapScheduleEndpoints();
 api.MapSubscriptionEndpoints();
 api.MapJobEndpoints();
 api.MapDiscoveryEndpoints();
 api.MapTriggerEndpoints();
-api.MapWatchEndpoints();
 api.MapStatusEndpoints();
 api.MapControlCheckEndpoints();
 
