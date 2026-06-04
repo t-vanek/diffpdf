@@ -15,7 +15,6 @@ public sealed class DiffPdfDbContext(DbContextOptions<DiffPdfDbContext> options)
     public DbSet<TriggerEntity> Triggers => Set<TriggerEntity>();
     public DbSet<TriggerRunEntity> TriggerRuns => Set<TriggerRunEntity>();
     public DbSet<AuditLogEntity> AuditLog => Set<AuditLogEntity>();
-    public DbSet<ApiKeyEntity> ApiKeys => Set<ApiKeyEntity>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -221,30 +220,6 @@ public sealed class DiffPdfDbContext(DbContextOptions<DiffPdfDbContext> options)
             e.Property(x => x.Detail).HasColumnName("detail");
             e.HasIndex(x => new { x.EntityType, x.EntityId, x.At });
             e.HasIndex(x => x.At);
-        });
-
-        b.Entity<ApiKeyEntity>(e =>
-        {
-            e.ToTable("api_keys");
-            e.HasKey(x => x.Id);
-            e.Property(x => x.Id).HasColumnName("id");
-            e.Property(x => x.Name).HasColumnName("name");
-            e.Property(x => x.KeyHash).HasColumnName("key_hash");
-            e.Property(x => x.Prefix).HasColumnName("prefix");
-            e.Property(x => x.Role).HasColumnName("role");
-            e.Property(x => x.Enabled).HasColumnName("enabled");
-            e.Property(x => x.ExpiresAt).HasColumnName("expires_at");
-            e.Property(x => x.CreatedBy).HasColumnName("created_by");
-            e.Property(x => x.CreatedAt).HasColumnName("created_at");
-            e.Property(x => x.UpdatedBy).HasColumnName("updated_by");
-            e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
-            e.Property(x => x.LastUsedAt).HasColumnName("last_used_at");
-            e.Property(x => x.RevokedAt).HasColumnName("revoked_at");
-            e.Property(x => x.RevokedBy).HasColumnName("revoked_by");
-            e.Property(x => x.IsDeleted).HasColumnName("is_deleted");
-            e.Property(x => x.DeletedAt).HasColumnName("deleted_at");
-            e.Property(x => x.Version).HasColumnName("version");
-            e.HasIndex(x => x.KeyHash).IsUnique();
         });
 
         // OpenIddict's applications/authorizations/scopes/tokens tables share this context, so the

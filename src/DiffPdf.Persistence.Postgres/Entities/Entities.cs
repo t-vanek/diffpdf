@@ -165,24 +165,3 @@ public sealed class AuditLogEntity
     public string? EntityId { get; set; }
     public string? Detail { get; set; }
 }
-
-public sealed class ApiKeyEntity
-{
-    public Guid Id { get; set; }
-    public string Name { get; set; } = string.Empty;
-    public string KeyHash { get; set; } = string.Empty;
-    public string Prefix { get; set; } = string.Empty;
-    public string Role { get; set; } = "Viewer";
-    public bool Enabled { get; set; } = true;
-    public DateTimeOffset? ExpiresAt { get; set; }
-    public string? CreatedBy { get; set; }
-    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
-    public string? UpdatedBy { get; set; }
-    public DateTimeOffset? UpdatedAt { get; set; }
-    public DateTimeOffset? LastUsedAt { get; set; }
-    public DateTimeOffset? RevokedAt { get; set; }
-    public string? RevokedBy { get; set; }
-    public bool IsDeleted { get; set; }
-    public DateTimeOffset? DeletedAt { get; set; }
-    public long Version { get; set; } = 1;
-}
