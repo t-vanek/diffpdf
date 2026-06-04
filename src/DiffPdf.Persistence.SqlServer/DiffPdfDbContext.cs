@@ -13,6 +13,8 @@ public sealed class DiffPdfDbContext(DbContextOptions<DiffPdfDbContext> options)
     public DbSet<SubscriptionEntity> Subscriptions => Set<SubscriptionEntity>();
     public DbSet<ScheduleRunEntity> ScheduleRuns => Set<ScheduleRunEntity>();
     public DbSet<WatchEntity> Watches => Set<WatchEntity>();
+    public DbSet<ControlCheckEntity> ControlChecks => Set<ControlCheckEntity>();
+    public DbSet<ControlCheckRunEntity> ControlCheckRuns => Set<ControlCheckRunEntity>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -174,6 +176,44 @@ public sealed class DiffPdfDbContext(DbContextOptions<DiffPdfDbContext> options)
             e.Property(x => x.Version).HasColumnName("version");
             e.HasIndex(x => x.InstanceId).IsUnique();
             e.HasIndex(x => x.Enabled);
+        });
+
+        b.Entity<ControlCheckEntity>(e =>
+        {
+            e.ToTable("control_checks");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.Key).HasColumnName("key").HasMaxLength(256);
+            e.Property(x => x.Name).HasColumnName("name");
+            e.Property(x => x.Type).HasColumnName("type").HasMaxLength(32);
+            e.Property(x => x.ScopeKind).HasColumnName("scope_kind").HasMaxLength(32);
+            e.Property(x => x.BranchKey).HasColumnName("branch_key").HasMaxLength(256);
+            e.Property(x => x.InstanceKey).HasColumnName("instance_key").HasMaxLength(256);
+            e.Property(x => x.Cron).HasColumnName("cron").HasMaxLength(256);
+            e.Property(x => x.IntervalSeconds).HasColumnName("interval_seconds");
+            e.Property(x => x.ParametersJson).HasColumnName("parameters_json");
+            e.Property(x => x.EventsJson).HasColumnName("events_json");
+            e.Property(x => x.Enabled).HasColumnName("enabled");
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
+            e.Property(x => x.LastRunAt).HasColumnName("last_run_at");
+            e.Property(x => x.LastOutcome).HasColumnName("last_outcome").HasMaxLength(32);
+            e.Property(x => x.Version).HasColumnName("version");
+            e.HasIndex(x => x.Key).IsUnique();
+            e.HasIndex(x => x.Enabled);
+        });
+
+        b.Entity<ControlCheckRunEntity>(e =>
+        {
+            e.ToTable("control_check_runs");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.CheckId).HasColumnName("check_id");
+            e.Property(x => x.StartedAt).HasColumnName("started_at");
+            e.Property(x => x.CompletedAt).HasColumnName("completed_at");
+            e.Property(x => x.Outcome).HasColumnName("outcome").HasMaxLength(32);
+            e.Property(x => x.Detail).HasColumnName("detail");
+            e.HasIndex(x => new { x.CheckId, x.StartedAt });
         });
     }
 }

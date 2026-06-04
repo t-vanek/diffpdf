@@ -24,6 +24,8 @@ public static class PostgresPersistenceServiceCollectionExtensions
         services.AddScoped<ISubscriptionStore, PostgresSubscriptionStore>();
         services.AddScoped<IScheduleRunStore, PostgresScheduleRunStore>();
         services.AddScoped<IWatchStore, PostgresWatchStore>();
+        services.AddScoped<IControlCheckStore, PostgresControlCheckStore>();
+        services.AddScoped<IControlCheckRunStore, PostgresControlCheckRunStore>();
         services.AddScoped<IJobSubmissionService, PostgresJobSubmissionService>();
         services.AddSingleton<ILeaderElection>(new PostgresLeaderElection(connectionString));
 

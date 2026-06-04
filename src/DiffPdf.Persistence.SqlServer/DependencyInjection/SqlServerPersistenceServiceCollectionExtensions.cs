@@ -24,6 +24,8 @@ public static class SqlServerPersistenceServiceCollectionExtensions
         services.AddScoped<ISubscriptionStore, SqlServerSubscriptionStore>();
         services.AddScoped<IScheduleRunStore, SqlServerScheduleRunStore>();
         services.AddScoped<IWatchStore, SqlServerWatchStore>();
+        services.AddScoped<IControlCheckStore, SqlServerControlCheckStore>();
+        services.AddScoped<IControlCheckRunStore, SqlServerControlCheckRunStore>();
         services.AddScoped<IJobSubmissionService, SqlServerJobSubmissionService>();
         services.AddSingleton<ILeaderElection>(new SqlServerLeaderElection(connectionString));
 

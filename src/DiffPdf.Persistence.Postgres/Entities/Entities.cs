@@ -131,3 +131,34 @@ public sealed class WatchEntity
     public DateTimeOffset? LastTriggeredAt { get; set; }
     public long Version { get; set; } = 1;
 }
+
+public sealed class ControlCheckEntity
+{
+    public Guid Id { get; set; }
+    public string Key { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string Type { get; set; } = string.Empty;
+    public string ScopeKind { get; set; } = "Global";
+    public string? BranchKey { get; set; }
+    public string? InstanceKey { get; set; }
+    public string? Cron { get; set; }
+    public int? IntervalSeconds { get; set; }
+    public string ParametersJson { get; set; } = "{}";
+    public string EventsJson { get; set; } = "[]";
+    public bool Enabled { get; set; } = true;
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? UpdatedAt { get; set; }
+    public DateTimeOffset? LastRunAt { get; set; }
+    public string? LastOutcome { get; set; }
+    public long Version { get; set; } = 1;
+}
+
+public sealed class ControlCheckRunEntity
+{
+    public Guid Id { get; set; }
+    public Guid CheckId { get; set; }
+    public DateTimeOffset StartedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? CompletedAt { get; set; }
+    public string Outcome { get; set; } = "Ok";
+    public string? Detail { get; set; }
+}
