@@ -1,6 +1,7 @@
 using DiffPdf.Core.Abstractions;
 using DiffPdf.Core.Models;
 using DiffPdf.Core.Storage;
+using DiffPdf.Messaging.Configuration;
 using DiffPdf.Messaging.Scheduling;
 using DiffPdf.Messaging.Triggers;
 using DiffPdf.Persistence;
@@ -15,7 +16,7 @@ public class TriggerTests
     {
         public LaunchOutcome Outcome { get; set; } = LaunchOutcome.Launched;
         public LaunchSpec? LastSpec { get; private set; }
-        public Task<LaunchResult> LaunchAsync(string branchKey, string instanceKey, LaunchSpec spec, CancellationToken ct = default)
+        public Task<LaunchResult> LaunchAsync(string branchKey, string instanceKey, LaunchSpec spec, bool enqueueOnly = false, CancellationToken ct = default)
         {
             LastSpec = spec;
             return Task.FromResult(Outcome == LaunchOutcome.Launched
@@ -43,8 +44,9 @@ public class TriggerTests
         var instances = new InMemoryInstanceStore();
         var b = await branches.CreateAsync("Alfa", "Alfa");
         await instances.CreateAsync(b.Id, "Lama", "Lama", "/base", null);
+        var resolver = new ScopeConfigurationResolver(new InMemoryScopeConfigurationStore());
         var svc = new TriggerService(triggers, runs, new InMemoryAuditLogStore(), launcher, branches, instances,
-            events, NullLogger<TriggerService>.Instance);
+            resolver, events, NullLogger<TriggerService>.Instance);
         return new Ctx(svc, triggers, runs, launcher, events);
     }
 

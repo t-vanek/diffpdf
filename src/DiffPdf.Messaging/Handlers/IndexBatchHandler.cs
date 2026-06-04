@@ -2,6 +2,7 @@ using DiffPdf.Core.Abstractions;
 using DiffPdf.Core.Comparison;
 using DiffPdf.Core.Models;
 using DiffPdf.Messaging.Messages;
+using DiffPdf.Messaging.Observability;
 using DiffPdf.Persistence;
 using Microsoft.Extensions.Logging;
 using Wolverine;
@@ -22,6 +23,7 @@ public sealed class IndexBatchHandler
         IStorageProvisioner provisioner,
         ITriggerEventPublisher triggerEvents,
         IMessageBus bus,
+        DiffPdfMetrics metrics,
         ILogger<IndexBatchHandler> logger,
         CancellationToken ct)
     {
@@ -45,6 +47,7 @@ public sealed class IndexBatchHandler
             logger.LogError(ex, "Indexing failed for job {JobId}", job.Id);
             var now = DateTimeOffset.UtcNow;
             await jobStore.FailAsync(job.Id, ex.Message, job.Version, ct);
+            metrics.RecordJobFinished("failed", now - (job.StartedAt ?? job.CreatedAt));
 
             // Real-time comparison.failed for trigger-launched batches (after the failure is committed).
             if (job.TriggerId is { } triggerId)

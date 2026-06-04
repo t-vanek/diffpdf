@@ -32,6 +32,9 @@ public sealed record ComparisonJob
     /// <summary>Where the batch was launched from (Manager / REST API / System / Scheduler).</summary>
     public JobSource Source { get; init; } = JobSource.System;
 
+    /// <summary>Per-branch queue priority: higher is released first (0 = "Přidat do fronty", 100 = "Spustit"/run now).</summary>
+    public int Priority { get; init; }
+
     public JobStatus Status { get; init; } = JobStatus.Queued;
 
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;

@@ -33,8 +33,17 @@ public sealed class AutoProvisionOptions
     /// <summary>Cron (5-field, UTC) of the server-wide Retention check. Default: daily at 03:00.</summary>
     public string RetentionCron { get; set; } = "0 3 * * *";
 
-    /// <summary>Retention window in days handed to the Retention check.</summary>
+    /// <summary>Retention window in days handed to the (on-disk artifact) Retention check.</summary>
     public int RetentionDays { get; set; } = 30;
+
+    /// <summary>Cron (5-field, UTC) of the server-wide DB-row retention check. Default: daily at 04:00 (after artifact retention).</summary>
+    public string DbRowRetentionCron { get; set; } = "0 4 * * *";
+
+    /// <summary>
+    /// DB-row retention window in days. Kept longer than <see cref="RetentionDays"/> so on-disk artifacts are
+    /// pruned before their job rows; rows are in any case only deleted once their artifacts are gone.
+    /// </summary>
+    public int DbRowRetentionDays { get; set; } = 90;
 
     /// <summary>Cadence of the server-wide StructureSync check (seconds); only created when a ScopeSync root is set.</summary>
     public int StructureSyncIntervalSeconds { get; set; } = 900;

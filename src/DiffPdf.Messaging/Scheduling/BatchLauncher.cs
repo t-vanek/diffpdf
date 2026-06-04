@@ -15,10 +15,21 @@ public sealed record LaunchSpec(
     bool Recursive,
     int MaxDegreeOfParallelism,
     Guid? TriggerId = null,
-    JobSource Source = JobSource.System)
+    JobSource Source = JobSource.System,
+    int Priority = 0)
 {
     /// <summary>Default knobs (default options, no gate, all *.pdf recursively) — used by the on-demand triggers.</summary>
     public static LaunchSpec Default { get; } = new(new ComparisonOptions(), null, "*.pdf", true, 0);
+
+    /// <summary>
+    /// Composes the launch knobs from a resolved <see cref="EffectiveConfiguration"/> — the effective comparer
+    /// options plus the effective trigger config (search pattern, recursion, parallelism, gate). This is how
+    /// the per-scope inheritance actually drives a run. <paramref name="priority"/> is the per-branch queue
+    /// priority (0 = enqueue at back, 100 = run now / jump ahead).
+    /// </summary>
+    public static LaunchSpec FromEffective(EffectiveConfiguration eff, Guid? triggerId = null, JobSource source = JobSource.System, int priority = 0) =>
+        new(eff.ComparisonOptions, eff.TriggerConfig.Gate, eff.TriggerConfig.SearchPattern,
+            eff.TriggerConfig.Recursive, eff.TriggerConfig.MaxDegreeOfParallelism, triggerId, source, priority);
 }
 
 /// <summary>Why a launch did or did not happen.</summary>
@@ -53,9 +64,11 @@ public interface IBatchLauncher
     /// <summary>
     /// Launches a batch for the scope with the given <paramref name="spec"/>, after the same
     /// pre-flight readiness gate the readiness endpoint reports. The result carries the outcome
-    /// and the new job id (when launched).
+    /// and the new job id (when launched). When <paramref name="enqueueOnly"/> is true the job is
+    /// persisted as <see cref="JobStatus.Draft"/> (pending in the branch queue) without publishing its
+    /// run command — the branch queue dispatcher releases it later; otherwise it is queued + dispatched now.
     /// </summary>
-    Task<LaunchResult> LaunchAsync(string branchKey, string instanceKey, LaunchSpec spec, CancellationToken ct = default);
+    Task<LaunchResult> LaunchAsync(string branchKey, string instanceKey, LaunchSpec spec, bool enqueueOnly = false, CancellationToken ct = default);
 }
 
 /// <inheritdoc />
@@ -65,9 +78,10 @@ public sealed class BatchLauncher(
     IInstanceStructureService structure,
     INetworkShareResolver shareResolver,
     IJobSubmissionService submission,
+    IJobStore jobs,
     ILogger<BatchLauncher> logger) : IBatchLauncher
 {
-    public async Task<LaunchResult> LaunchAsync(string branchKey, string instanceKey, LaunchSpec spec, CancellationToken ct = default)
+    public async Task<LaunchResult> LaunchAsync(string branchKey, string instanceKey, LaunchSpec spec, bool enqueueOnly = false, CancellationToken ct = default)
     {
         var branch = await branches.GetByKeyAsync(branchKey, ct);
         if (branch is null || !branch.Enabled)
@@ -115,7 +129,9 @@ public sealed class BatchLauncher(
         var job = new ComparisonJob
         {
             Id = Guid.NewGuid(),
-            Status = JobStatus.Queued,
+            // enqueueOnly: persist as Draft (pending in the branch queue); the dispatcher releases it.
+            Status = enqueueOnly ? JobStatus.Draft : JobStatus.Queued,
+            Priority = spec.Priority,
             Request = new BatchComparisonRequest
             {
                 Scope = new JobScope(branchKey, instanceKey),
@@ -136,8 +152,17 @@ public sealed class BatchLauncher(
             Source = spec.Source,
         };
 
-        await submission.SubmitAsync(job, new RunBatchComparison(job.Id, branchKey, instanceKey), ct);
-        logger.LogInformation("Batch {JobId} launched for {Branch}/{Instance}.", job.Id, branchKey, instanceKey);
+        if (enqueueOnly)
+        {
+            // Pending in the branch queue — the dispatcher publishes RunBatchComparison when the branch is free.
+            await jobs.CreateAsync(job, ct);
+            logger.LogInformation("Batch {JobId} enqueued for {Branch}/{Instance} (priority {Priority}).", job.Id, branchKey, instanceKey, spec.Priority);
+        }
+        else
+        {
+            await submission.SubmitAsync(job, new RunBatchComparison(job.Id, branchKey, instanceKey), ct);
+            logger.LogInformation("Batch {JobId} launched for {Branch}/{Instance}.", job.Id, branchKey, instanceKey);
+        }
         return new LaunchResult(LaunchOutcome.Launched, job.Id);
     }
 }

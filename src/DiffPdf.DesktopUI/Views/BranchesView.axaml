@@ -2,7 +2,8 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:DiffPdf.DesktopUI.ViewModels"
              x:Class="DiffPdf.DesktopUI.Views.BranchesView"
-             x:DataType="vm:BranchesViewModel">
+             x:DataType="vm:BranchesViewModel"
+             x:Name="Root">
 
   <DockPanel>
     <!-- Toolbar -->
@@ -38,13 +39,39 @@
     <!-- Master (seznam) + detail (stav, úprava, statistiky této větve) -->
     <Grid ColumnDefinitions="*,400">
       <DataGrid Grid.Column="0" x:CompileBindings="False"
-                ItemsSource="{Binding Branches}" SelectedItem="{Binding SelectedBranch}"
+                ItemsSource="{Binding Branches}" SelectedItem="{Binding SelectedRow}"
                 IsReadOnly="True" AutoGenerateColumns="False" CanUserResizeColumns="True">
         <DataGrid.Columns>
-          <DataGridTextColumn Header="Klíč" Binding="{Binding Key}" Width="180"/>
-          <DataGridTextColumn Header="Název" Binding="{Binding Name}" Width="*"/>
-          <DataGridTextColumn Header="Povoleno" Binding="{Binding Enabled}" Width="90"/>
-          <DataGridTextColumn Header="Vytvořeno" Binding="{Binding CreatedAt}" Width="200"/>
+          <DataGridTemplateColumn Header="" Width="48">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate>
+                <Button Content="⚙" Padding="6,2" Margin="2" ToolTip.Tip="Konfigurace (triggery a porovnávače)"
+                        Command="{Binding #Root.DataContext.OpenSettingsCommand}" CommandParameter="{Binding}"/>
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+          <DataGridTemplateColumn Header="Akce" Width="Auto">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate>
+                <StackPanel Orientation="Horizontal" Spacing="2">
+                  <Button Content="▶" ToolTip.Tip="Spustit" Padding="6,2" IsEnabled="{Binding CanRun}"
+                          Command="{Binding #Root.DataContext.RunBranchCommand}" CommandParameter="{Binding}"/>
+                  <Button Content="➕" ToolTip.Tip="Přidat do fronty" Padding="6,2" IsEnabled="{Binding CanEnqueue}"
+                          Command="{Binding #Root.DataContext.EnqueueBranchCommand}" CommandParameter="{Binding}"/>
+                  <Button Content="⏸" ToolTip.Tip="Pozastavit" Padding="6,2" IsEnabled="{Binding CanPause}"
+                          Command="{Binding #Root.DataContext.PauseBranchCommand}" CommandParameter="{Binding}"/>
+                  <Button Content="↻" ToolTip.Tip="Obnovit" Padding="6,2" IsEnabled="{Binding CanResume}"
+                          Command="{Binding #Root.DataContext.ResumeBranchCommand}" CommandParameter="{Binding}"/>
+                  <Button Content="⏹" ToolTip.Tip="Zastavit" Padding="6,2" IsEnabled="{Binding CanStop}"
+                          Command="{Binding #Root.DataContext.StopBranchCommand}" CommandParameter="{Binding}"/>
+                </StackPanel>
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+          <DataGridTextColumn Header="Klíč" Binding="{Binding Branch.Key}" Width="160"/>
+          <DataGridTextColumn Header="Název" Binding="{Binding Branch.Name}" Width="*"/>
+          <DataGridTextColumn Header="Povoleno" Binding="{Binding Branch.Enabled}" Width="80"/>
+          <DataGridTextColumn Header="Fronta" Binding="{Binding StatusText}" Width="220"/>
         </DataGrid.Columns>
       </DataGrid>
 
@@ -89,11 +116,9 @@
           <!-- Souhrn spouštěčů této větve -->
           <Border BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="4" Padding="10">
             <StackPanel Spacing="6">
-              <Grid ColumnDefinitions="*,Auto">
-                <TextBlock Grid.Column="0" VerticalAlignment="Center" FontWeight="Bold"
-                           Text="{Binding Triggers.Count, StringFormat='Spouštěče ({0})'}"/>
-                <Button Grid.Column="1" Content="Spravovat spouštěče" Command="{Binding ManageTriggersCommand}"/>
-              </Grid>
+              <TextBlock FontWeight="Bold" Text="{Binding Triggers.Count, StringFormat='Spouštěče ({0})'}"/>
+              <TextBlock Foreground="#808080" TextWrapping="Wrap"
+                         Text="Konfigurace triggerů a porovnávačů je dostupná přes ⚙ u řádku větve."/>
               <TextBlock Text="Žádné spouštěče." Foreground="#808080" IsVisible="{Binding !Triggers.Count}"/>
               <ItemsControl x:CompileBindings="False" ItemsSource="{Binding Triggers}">
                 <ItemsControl.ItemTemplate>

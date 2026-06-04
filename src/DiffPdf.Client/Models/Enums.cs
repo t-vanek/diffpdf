@@ -98,6 +98,8 @@ public enum CheckType
     Health,
     StructureSync,
     Retention,
+    DbRowRetention,
+    ScheduledComparison,
 }
 
 /// <summary>How widely a control check applies.</summary>
@@ -141,4 +143,43 @@ public enum JobSource
     RestApi,
     System,
     Scheduler,
+}
+
+/// <summary>The scope level a configuration applies to (Global → Branch → Instance).</summary>
+public enum ConfigScopeLevel
+{
+    Global,
+    Branch,
+    Instance,
+}
+
+/// <summary>
+/// Where a scope sources its configuration from. A branch picks Global or Custom; an instance picks
+/// Branch or Custom; the global level is always Custom.
+/// </summary>
+public enum ConfigSource
+{
+    Global,
+    Branch,
+    Custom,
+}
+
+/// <summary>A run-queue control action for an instance or a whole branch.</summary>
+public enum QueueAction
+{
+    Enqueue,
+    Run,
+    Pause,
+    Resume,
+    Stop,
+}
+
+/// <summary>An instance's position in its branch's sequential queue (Idle = nothing pending/active).</summary>
+public enum InstanceQueueStatus
+{
+    Idle,
+    Pending,
+    Queued,
+    Running,
+    Paused,
 }

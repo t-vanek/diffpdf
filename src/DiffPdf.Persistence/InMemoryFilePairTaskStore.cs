@@ -142,4 +142,16 @@ public sealed class InMemoryFilePairTaskStore : IFilePairTaskStore
             .ToDictionary(g => g.Key, g => g.Count());
         return Task.FromResult<IReadOnlyDictionary<FilePairTaskStatus, int>>(counts);
     }
+
+    public Task<int> DeleteForJobsAsync(IReadOnlyCollection<Guid> jobIds, CancellationToken ct = default)
+    {
+        if (jobIds.Count == 0)
+            return Task.FromResult(0);
+
+        var set = jobIds as HashSet<Guid> ?? [.. jobIds];
+        int removed = 0;
+        foreach (var id in _tasks.Values.Where(t => set.Contains(t.JobId)).Select(t => t.Id).ToList())
+            if (_tasks.TryRemove(id, out _)) removed++;
+        return Task.FromResult(removed);
+    }
 }

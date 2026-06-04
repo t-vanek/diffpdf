@@ -1,6 +1,7 @@
 using DiffPdf.Core.Abstractions;
 using DiffPdf.Core.Models;
 using DiffPdf.Core.Storage;
+using DiffPdf.Messaging.Configuration;
 using DiffPdf.Messaging.Scheduling;
 using DiffPdf.Persistence;
 using Microsoft.Extensions.Logging;
@@ -60,6 +61,7 @@ public sealed class TriggerService(
     IBatchLauncher launcher,
     IBranchStore branches,
     IInstanceStore instances,
+    IScopeConfigurationResolver configResolver,
     ITriggerEventPublisher events,
     ILogger<TriggerService> logger) : ITriggerService
 {
@@ -160,8 +162,10 @@ public sealed class TriggerService(
         LaunchResult launch;
         try
         {
-            launch = await launcher.LaunchAsync(t.BranchKey, t.InstanceKey, new LaunchSpec(
-                t.Spec.Options, t.Spec.Gate, t.Spec.SearchPattern, t.Spec.Recursive, t.Spec.MaxDegreeOfParallelism, t.Id, source), ct);
+            // The effective, inherited per-scope configuration (global → branch → instance) drives the run,
+            // not the trigger's own legacy spec. Resolution is centralised in the configuration resolver.
+            var eff = await configResolver.ResolveForInstanceAsync(t.BranchId, t.InstanceId, ct);
+            launch = await launcher.LaunchAsync(t.BranchKey, t.InstanceKey, LaunchSpec.FromEffective(eff, t.Id, source), ct: ct);
         }
         catch (Exception ex)
         {

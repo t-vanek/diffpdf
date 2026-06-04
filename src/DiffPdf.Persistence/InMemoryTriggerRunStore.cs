@@ -20,4 +20,12 @@ public sealed class InMemoryTriggerRunStore : ITriggerRunStore
 
     public Task<TriggerRun?> GetByIdempotencyKeyAsync(Guid triggerId, string idempotencyKey, CancellationToken ct = default) =>
         Task.FromResult(_byId.Values.FirstOrDefault(r => r.TriggerId == triggerId && r.IdempotencyKey == idempotencyKey));
+
+    public Task<int> DeleteStartedBeforeAsync(DateTimeOffset startedBefore, CancellationToken ct = default)
+    {
+        int removed = 0;
+        foreach (var id in _byId.Values.Where(r => r.StartedAt < startedBefore).Select(r => r.Id).ToList())
+            if (_byId.TryRemove(id, out _)) removed++;
+        return Task.FromResult(removed);
+    }
 }

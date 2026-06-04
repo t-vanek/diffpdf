@@ -7,30 +7,35 @@ using DiffPdf.DesktopUI.Services;
 namespace DiffPdf.DesktopUI.ViewModels;
 
 /// <summary>
-/// Instance pod větví: seznam + vytvoření + úprava + smazání + detail se stavem (připravenost / struktura,
-/// jen pro čtení) a statistikami dané instance. Akce „oprava struktury" sem nepatří — řeší ji sekce Automatizace.
+/// Instance pod větví: seznam + vytvoření + úprava + smazání + detail (připravenost / struktura, jen pro
+/// čtení) a statistiky. U každého řádku ⚙ konfigurace a tlačítka fronty (Spustit / Přidat do fronty /
+/// Pozastavit / Zastavit / Obnovit) řízená živým stavem per-branch fronty. Instance ve větvi běží sekvenčně.
 /// </summary>
 public partial class InstancesViewModel : PageViewModel
 {
     private readonly ServerSession _session;
     private readonly DialogService _dialogs;
-    private readonly NavigationService _navigation;
+    private readonly JobProgressHubClient _hub;
+    private bool _subscribed;
 
     public override string Title => "Instance";
     public override int NavOrder => 2;
 
     public ObservableCollection<Branch> Branches { get; } = [];
-    public ObservableCollection<Instance> Instances { get; } = [];
+    public ObservableCollection<InstanceRowViewModel> Instances { get; } = [];
 
     /// <summary>Statistiky vztažené pouze k vybrané instanci.</summary>
     public ObservableCollection<StatGroup> Stats { get; } = [];
 
-    /// <summary>Spouštěče této instance (rychlý přehled + spuštění; správa je v sekci Spouštěče).</summary>
+    /// <summary>Spouštěče této instance (souhrn; konfigurace je přes ⚙).</summary>
     public ObservableCollection<TriggerResponse> Triggers { get; } = [];
 
     [ObservableProperty] private Branch? _selectedBranch;
-    [ObservableProperty] private Instance? _selectedInstance;
+    [ObservableProperty] private InstanceRowViewModel? _selectedRow;
     [ObservableProperty] private bool _showCreateForm;
+
+    /// <summary>Vybraná instance (odvozená z vybraného řádku) — pro detailní panel a akce úprav.</summary>
+    public Instance? SelectedInstance => SelectedRow?.Instance;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(NewBasePathPreview))]
@@ -38,14 +43,10 @@ public partial class InstancesViewModel : PageViewModel
 
     [ObservableProperty] private string _newName = string.Empty;
 
-    // Záloha pro případ, že server nemá nastavený kořen struktury: uživatel zadá kořen ručně a aplikace
-    // k němu připojí \<větev>\<instanci> (konvence kořen/větev/instance/{old,new,reports}).
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(NewBasePathPreview))]
     private string _newRoot = string.Empty;
 
-    // Kořen struktury nastavený na serveru (ScopeSync:RootPath). Je-li nastaven, cesty se odvozují z něj
-    // a uživatel kořen vůbec nezadává.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(NewBasePathPreview))]
     [NotifyPropertyChangedFor(nameof(RootInputVisible))]
@@ -89,15 +90,18 @@ public partial class InstancesViewModel : PageViewModel
         return trimmed.StartsWith(@"\\", StringComparison.Ordinal) ? $@"{trimmed}\{sub}" : System.IO.Path.Combine(trimmed, sub);
     }
 
-    public InstancesViewModel(ServerSession session, DialogService dialogs, NavigationService navigation)
+    public InstancesViewModel(ServerSession session, DialogService dialogs, JobProgressHubClient hub)
     {
         _session = session;
         _dialogs = dialogs;
-        _navigation = navigation;
+        _hub = hub;
     }
 
     public override Task ActivateAsync() => RunAsync(async () =>
     {
+        try { await _hub.EnsureStartedAsync(); } catch { /* live queue state is best-effort */ }
+        if (!_subscribed) { _hub.QueueStateReceived += OnQueueState; _subscribed = true; }
+
         await LoadBranchesAsync();
         ScopeRoot = (await _session.Require().GetScopeRootAsync()).Root;
     });
@@ -112,8 +116,30 @@ public partial class InstancesViewModel : PageViewModel
     private async Task LoadInstancesAsync()
     {
         Instances.Clear();
-        if (SelectedBranch is null) return;
-        foreach (var i in await _session.Require().ListInstancesAsync(SelectedBranch.Key)) Instances.Add(i);
+        if (SelectedBranch is not { } branch) return;
+        var client = _session.Require();
+        foreach (var i in await client.ListInstancesAsync(branch.Key))
+            Instances.Add(new InstanceRowViewModel(i));
+
+        // Seed per-instance run-queue status and join the branch's SignalR group for live pushes.
+        try
+        {
+            await _hub.JoinBranchAsync(branch.Key);
+            ApplyState(await client.GetBranchQueueAsync(branch.Key));
+        }
+        catch { /* queue state is best-effort */ }
+    }
+
+    private void OnQueueState(BranchQueueState state)
+    {
+        if (state.BranchKey == SelectedBranch?.Key)
+            ApplyState(state);
+    }
+
+    private void ApplyState(BranchQueueState? state)
+    {
+        foreach (var row in Instances)
+            row.Apply(state?.Instances.FirstOrDefault(i => i.InstanceKey == row.Instance.Key));
     }
 
     partial void OnSelectedBranchChanged(Branch? value)
@@ -127,6 +153,22 @@ public partial class InstancesViewModel : PageViewModel
     {
         await LoadBranchesAsync();
         await LoadInstancesAsync();
+    });
+
+    // ---------------- Run queue (per instance) ----------------
+
+    [RelayCommand] private Task RunInstance(InstanceRowViewModel row) => QueueInstanceAsync(row, QueueAction.Run);
+    [RelayCommand] private Task EnqueueInstance(InstanceRowViewModel row) => QueueInstanceAsync(row, QueueAction.Enqueue);
+    [RelayCommand] private Task PauseInstance(InstanceRowViewModel row) => QueueInstanceAsync(row, QueueAction.Pause);
+    [RelayCommand] private Task ResumeInstance(InstanceRowViewModel row) => QueueInstanceAsync(row, QueueAction.Resume);
+    [RelayCommand] private Task StopInstance(InstanceRowViewModel row) => QueueInstanceAsync(row, QueueAction.Stop);
+
+    private Task QueueInstanceAsync(InstanceRowViewModel? row, QueueAction action) => RunAsync(async () =>
+    {
+        if (row is null || SelectedBranch is not { } branch) return;
+        var outcome = await _session.Require().QueueInstanceAsync(branch.Key, row.Instance.Key, action);
+        ApplyState(outcome.State);
+        if (!string.IsNullOrEmpty(outcome.Message)) Info = outcome.Message;
     });
 
     [RelayCommand]
@@ -171,9 +213,9 @@ public partial class InstancesViewModel : PageViewModel
         if (key.Length == 0) return "Zadej klíč.";
         if (name.Length == 0) return "Zadej název.";
         if (RootInputVisible && NewRoot.Trim().Length == 0) return "Zadej kořenovou složku.";
-        if (Instances.Any(i => string.Equals(i.Key, key, StringComparison.Ordinal)))
+        if (Instances.Any(r => string.Equals(r.Instance.Key, key, StringComparison.Ordinal)))
             return $"Instance s klíčem '{key}' už v této větvi existuje.";
-        if (Instances.Any(i => string.Equals(i.Name, name, StringComparison.OrdinalIgnoreCase)))
+        if (Instances.Any(r => string.Equals(r.Instance.Name, name, StringComparison.OrdinalIgnoreCase)))
             return $"Instance s názvem '{name}' už v této větvi existuje.";
         return null;
     }
@@ -209,10 +251,10 @@ public partial class InstancesViewModel : PageViewModel
         await LoadInstancesAsync();
     });
 
-    // Výběr instance načte (jen pro čtení) její připravenost a inspekci struktury old/new/reports a statistiky.
-    // Žádný zápis na disk — oprava struktury se řeší přes sekci Automatizace, ne odsud.
-    partial void OnSelectedInstanceChanged(Instance? value)
+    // Výběr instance načte (jen pro čtení) připravenost, inspekci struktury old/new/reports a statistiky.
+    partial void OnSelectedRowChanged(InstanceRowViewModel? value)
     {
+        OnPropertyChanged(nameof(SelectedInstance));
         Stats.Clear();
         Triggers.Clear();
         if (value is null || SelectedBranch is null)
@@ -221,10 +263,10 @@ public partial class InstancesViewModel : PageViewModel
             Structure = null;
             return;
         }
-        EditName = value.Name;
-        EditBasePath = value.BasePath;
-        EditCredentialProfile = value.CredentialProfile ?? string.Empty;
-        EditEnabled = value.Enabled;
+        EditName = value.Instance.Name;
+        EditBasePath = value.Instance.BasePath;
+        EditCredentialProfile = value.Instance.CredentialProfile ?? string.Empty;
+        EditEnabled = value.Instance.Enabled;
         _ = RunAsync(LoadInstanceDetailsAsync);
     }
 
@@ -245,26 +287,13 @@ public partial class InstancesViewModel : PageViewModel
         foreach (var t in await client.ListInstanceTriggersAsync(SelectedInstance.Id)) Triggers.Add(t);
     }
 
-    /// <summary>Spustí vybraný spouštěč této instance a přeskočí na úlohu (správa spouštěčů je v sekci Spouštěče).</summary>
+    /// <summary>Otevře konfiguraci (triggery + porovnávače) této instance (ozubené kolo u řádku).</summary>
     [RelayCommand]
-    private Task RunTriggerAsync(TriggerResponse? trigger) => RunAsync(async () =>
+    private async Task OpenSettingsAsync(InstanceRowViewModel? row)
     {
-        if (trigger is null) return;
-        var result = await _session.Require().RunTriggerAsync(trigger.Id);
-        Info = result.Success
-            ? $"Spouštěč '{trigger.Name}' spuštěn: {result.Status}" + (result.BatchJobId is { } id ? $" (úloha {id})" : "")
-            : $"Spouštěč '{trigger.Name}' nespuštěn: {result.Message}";
-        if (result.BatchJobId is { } jobId)
-            _navigation.GoTo<JobsViewModel>(j => j.OpenJob(jobId));
-    });
-
-    /// <summary>Přejde do sekce Spouštěče předfiltrované na tuto instanci.</summary>
-    [RelayCommand]
-    private void ManageTriggers()
-    {
-        if (SelectedBranch is null || SelectedInstance is null) return;
-        var branchKey = SelectedBranch.Key;
-        var instanceKey = SelectedInstance.Key;
-        _navigation.GoTo<TriggerManagementViewModel>(vm => vm.FocusInstance(branchKey, instanceKey));
+        if (row is null || SelectedBranch is null) return;
+        var vm = new ScopeSettingsViewModel(_session, ConfigScopeLevel.Instance, SelectedBranch.Key, row.Instance.Key, isModal: true);
+        await vm.LoadAsync();
+        await _dialogs.ShowScopeSettingsAsync(vm);
     }
 }

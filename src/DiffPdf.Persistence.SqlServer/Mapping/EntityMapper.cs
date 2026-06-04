@@ -35,9 +35,19 @@ public sealed partial class EntityMapper
 
     public partial AuditEntry ToDomain(AuditLogEntity entity);
 
+    [MapProperty(nameof(ScopeConfigurationEntity.TriggerConfigJson), nameof(ScopeConfiguration.TriggerConfig))]
+    [MapProperty(nameof(ScopeConfigurationEntity.ComparisonOptionsJson), nameof(ScopeConfiguration.ComparisonOptions))]
+    public partial ScopeConfiguration ToDomain(ScopeConfigurationEntity entity);
+
     // User-defined conversions Mapperly uses for the json columns.
     private static TriggerSpec MapTriggerSpec(string json) =>
         string.IsNullOrEmpty(json) ? new TriggerSpec() : DiffPdfJson.Deserialize<TriggerSpec>(json);
+
+    private static TriggerConfig MapTriggerConfig(string json) =>
+        string.IsNullOrEmpty(json) ? new TriggerConfig() : DiffPdfJson.Deserialize<TriggerConfig>(json);
+
+    private static ComparisonOptions MapComparisonOptions(string json) =>
+        string.IsNullOrEmpty(json) ? new ComparisonOptions() : DiffPdfJson.Deserialize<ComparisonOptions>(json);
 
     private static BatchComparisonRequest MapRequest(string json) =>
         DiffPdfJson.Deserialize<BatchComparisonRequest>(json);

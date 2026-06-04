@@ -44,7 +44,7 @@ public sealed class CompareFilePairHandler
         FilePairResult result;
         try
         {
-            result = await CompareAsync(task, job, engine, paths, ct);
+            result = await CompareAsync(task, job, engine, paths, workerOptions.Value, ct);
         }
         catch (Exception ex) when (ExceptionClassifier.IsTransient(ex) && task.AttemptCount < workerOptions.Value.MaxFilePairAttempts)
         {
@@ -72,31 +72,69 @@ public sealed class CompareFilePairHandler
             await bus.PublishAsync(new FinalizeBatch(job.Id));
     }
 
-    private static async Task<FilePairResult> CompareAsync(
+    internal static async Task<FilePairResult> CompareAsync(
         FilePairTask task, ComparisonJob job, IComparisonEngine engine,
-        IJobStoragePathProvider paths, CancellationToken ct)
+        IJobStoragePathProvider paths, WorkerOptions options, CancellationToken ct)
     {
         if (task.OldFilePath is null)
             return new FilePairResult { RelativePath = task.RelativePath, Status = FilePairStatus.OnlyInNew };
         if (task.NewFilePath is null)
             return new FilePairResult { RelativePath = task.RelativePath, Status = FilePairStatus.OnlyInOld };
 
+        // Pre-flight size guard: reject an oversized input before it is opened, so a pathologically large PDF
+        // can't exhaust memory (the engine loads whole documents into RAM). 0 disables the check.
+        if (options.MaxPdfSizeBytes > 0
+            && (TooLarge(task.OldFilePath, options.MaxPdfSizeBytes) ?? TooLarge(task.NewFilePath, options.MaxPdfSizeBytes)) is { } sizeError)
+            return new FilePairResult { RelativePath = task.RelativePath, Status = FilePairStatus.Error, Error = sizeError };
+
         // Unexpected exceptions propagate to the caller for transient/permanent classification.
         string artifacts = paths.GetArtifactsPath(job);
-        var fr = await engine.CompareAsync(task.OldFilePath, task.NewFilePath, job.Request.Options, artifacts, ct);
 
-        // A readable-but-broken PDF is a handled (permanent) outcome, not a thrown error.
-        if (fr.Outcome == ComparisonOutcome.Failed)
-            return new FilePairResult { RelativePath = task.RelativePath, Status = FilePairStatus.Error, Error = fr.Error };
+        // Hard wall-clock cap on the whole pair (probe + extract + every render + highlight). Run off the
+        // message thread so even a synchronous hang (e.g. PdfPig opening a malformed file) is abandoned, and
+        // cancel the engine cooperatively on expiry. Our timeout → a per-file error; outer cancellation
+        // (shutdown / Wolverine) propagates untouched so the message is redelivered.
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(options.FilePairComparisonTimeout);
+        var compare = Task.Run(
+            () => engine.CompareAsync(task.OldFilePath, task.NewFilePath, job.Request.Options, artifacts, timeoutCts.Token),
+            timeoutCts.Token);
 
-        return new FilePairResult
+        try
         {
-            RelativePath = task.RelativePath,
-            Status = fr.AreIdentical ? FilePairStatus.Identical : FilePairStatus.Differs,
-            Similarity = fr.Similarity,
-            DifferingPages = fr.DifferingPages,
-            ContentErrorCount = fr.ContentErrors.Count,
-            HighlightedPdfPath = fr.HighlightedPdfPath,
-        };
+            var fr = await compare.WaitAsync(timeoutCts.Token);
+
+            // A readable-but-broken PDF is a handled (permanent) outcome, not a thrown error.
+            if (fr.Outcome == ComparisonOutcome.Failed)
+                return new FilePairResult { RelativePath = task.RelativePath, Status = FilePairStatus.Error, Error = fr.Error };
+
+            return new FilePairResult
+            {
+                RelativePath = task.RelativePath,
+                Status = fr.AreIdentical ? FilePairStatus.Identical : FilePairStatus.Differs,
+                Similarity = fr.Similarity,
+                DifferingPages = fr.DifferingPages,
+                ContentErrorCount = fr.ContentErrors.Count,
+                HighlightedPdfPath = fr.HighlightedPdfPath,
+            };
+        }
+        catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
+        {
+            return new FilePairResult
+            {
+                RelativePath = task.RelativePath,
+                Status = FilePairStatus.Error,
+                Error = $"Comparison exceeded the {options.FilePairComparisonTimeout.TotalMinutes:0} min limit.",
+            };
+        }
+    }
+
+    /// <summary>Returns an error message if the file exists and exceeds <paramref name="maxBytes"/>, else null.</summary>
+    private static string? TooLarge(string path, long maxBytes)
+    {
+        var info = new FileInfo(path);
+        return info.Exists && info.Length > maxBytes
+            ? $"PDF '{Path.GetFileName(path)}' is {info.Length / (1024 * 1024)} MB, over the {maxBytes / (1024 * 1024)} MB limit."
+            : null;
     }
 }

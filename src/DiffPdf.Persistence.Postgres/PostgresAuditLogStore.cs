@@ -23,6 +23,9 @@ public sealed class PostgresAuditLogStore(DiffPdfDbContext db, EntityMapper mapp
         return rows.Select(mapper.ToDomain).ToList();
     }
 
+    public Task<int> DeleteBeforeAsync(DateTimeOffset before, CancellationToken ct = default) =>
+        db.AuditLog.Where(x => x.At < before).ExecuteDeleteAsync(ct);
+
     private static AuditLogEntity ToEntity(AuditEntry a) => new()
     {
         Id = a.Id,

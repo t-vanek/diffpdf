@@ -1,7 +1,11 @@
+using DiffPdf.Core.Abstractions;
 using DiffPdf.Core.Models;
 using DiffPdf.Core.Network;
 
 namespace DiffPdf.Api;
+
+/// <summary>A run-queue control request (enqueue/run/pause/resume/stop) for an instance or a whole branch.</summary>
+public sealed record QueueActionRequest(QueueAction Action);
 
 /// <summary>Request body for comparing a single old/new PDF pair.</summary>
 public sealed record SingleComparisonRequest
@@ -76,6 +80,47 @@ public sealed record AuditEntryResponse(
 
 /// <summary>Response after creating an instance: the record plus the result of provisioning its folder skeleton (null when skipped).</summary>
 public sealed record CreatedInstanceResponse(ComparisonInstance Instance, InstanceStructureReport? Structure);
+
+// ---------------- Scope configuration (triggers + comparers) ----------------
+
+/// <summary>
+/// Upsert a scope's configuration: the source selectors plus this level's custom payloads. <see cref="Version"/>
+/// guards concurrent edits (null = overwrite the latest). Sources are validated against the level server-side.
+/// </summary>
+public sealed record UpsertScopeConfigRequest(
+    ConfigSource TriggerSource,
+    TriggerConfig TriggerConfig,
+    ConfigSource ComparerSource,
+    ComparisonOptions ComparisonOptions,
+    long? Version = null);
+
+/// <summary>
+/// A scope's stored configuration together with the server-resolved effective configuration. The client binds
+/// the stored sources/payloads for editing, and displays the effective values plus the level each resolved
+/// from (<see cref="TriggerResolvedFrom"/> / <see cref="ComparerResolvedFrom"/>) — it performs no inheritance itself.
+/// </summary>
+public sealed record ScopeConfigResponse(
+    ConfigScopeLevel Level,
+    string? BranchKey,
+    string? InstanceKey,
+    ConfigSource TriggerSource,
+    TriggerConfig TriggerConfig,
+    ConfigSource ComparerSource,
+    ComparisonOptions ComparisonOptions,
+    TriggerConfig EffectiveTriggerConfig,
+    ConfigScopeLevel TriggerResolvedFrom,
+    ComparisonOptions EffectiveComparisonOptions,
+    ConfigScopeLevel ComparerResolvedFrom,
+    DateTimeOffset? UpdatedAt,
+    long Version);
+
+// ---------------- Scheduled runs (gear "Konfigurace" → Plán běhu) ----------------
+
+/// <summary>Enable/disable a scope's scheduled comparison. <see cref="Cron"/> is a 5-field UTC cron (required when enabled).</summary>
+public sealed record SetScheduleRequest(bool Enabled, string? Cron);
+
+/// <summary>A scope's current scheduled-run setting.</summary>
+public sealed record ScheduleResponse(bool Enabled, string? Cron);
 
 // ---------------- Per-scope statistics (branch / instance detail) ----------------
 

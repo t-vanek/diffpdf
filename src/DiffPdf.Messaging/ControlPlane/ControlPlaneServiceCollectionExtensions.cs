@@ -19,9 +19,12 @@ public static class ControlPlaneServiceCollectionExtensions
         services.AddScoped<IControlCheckExecutor, HealthCheckExecutor>();
         services.AddScoped<IControlCheckExecutor, StructureSyncCheckExecutor>();
         services.AddScoped<IControlCheckExecutor, RetentionCheckExecutor>();
+        services.AddScoped<IControlCheckExecutor, DbRowRetentionCheckExecutor>();
+        services.AddScoped<IControlCheckExecutor, ScheduledComparisonCheckExecutor>();
 
         services.AddScoped<IControlCheckRunner, ControlCheckRunner>();
         services.AddScoped<IControlCheckProvisioner, ControlCheckProvisioner>();
+        services.AddScoped<IScheduleService, ScheduleService>();
         services.AddHostedService<ControlPlaneService>();
         return services;
     }

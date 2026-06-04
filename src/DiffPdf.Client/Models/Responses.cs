@@ -105,6 +105,69 @@ public sealed record TriggerSpec
     public int MaxDegreeOfParallelism { get; init; }
 }
 
+/// <summary>
+/// A scope's stored configuration together with the server-resolved effective configuration. The UI binds
+/// the stored sources/payloads for editing and shows the effective values + the level each resolved from
+/// (<see cref="TriggerResolvedFrom"/> / <see cref="ComparerResolvedFrom"/>), performing no inheritance itself.
+/// </summary>
+public sealed record ScopeConfigResponse
+{
+    public ConfigScopeLevel Level { get; init; }
+    public string? BranchKey { get; init; }
+    public string? InstanceKey { get; init; }
+
+    // Stored at this level:
+    public ConfigSource TriggerSource { get; init; }
+    public TriggerConfig TriggerConfig { get; init; } = new();
+    public ConfigSource ComparerSource { get; init; }
+    public ComparisonOptions ComparisonOptions { get; init; } = new();
+
+    // Server-resolved effective config:
+    public TriggerConfig EffectiveTriggerConfig { get; init; } = new();
+    public ConfigScopeLevel TriggerResolvedFrom { get; init; }
+    public ComparisonOptions EffectiveComparisonOptions { get; init; } = new();
+    public ConfigScopeLevel ComparerResolvedFrom { get; init; }
+
+    public DateTimeOffset? UpdatedAt { get; init; }
+    public long Version { get; init; }
+}
+
+/// <summary>A scope's current scheduled-run setting (gear "Konfigurace" → Plán běhu).</summary>
+public sealed record ScheduleResponse
+{
+    public bool Enabled { get; init; }
+    public string? Cron { get; init; }
+}
+
+/// <summary>One instance's state within its branch's sequential run-queue.</summary>
+public sealed record InstanceQueueState
+{
+    public string BranchKey { get; init; } = "";
+    public string InstanceKey { get; init; } = "";
+    public InstanceQueueStatus Status { get; init; }
+    public Guid? ActiveJobId { get; init; }
+    public int Priority { get; init; }
+}
+
+/// <summary>A branch's run-queue snapshot (hold flag + counts + per-instance states). Also the SignalR "queueState" payload.</summary>
+public sealed record BranchQueueState
+{
+    public string BranchKey { get; init; } = "";
+    public bool QueuePaused { get; init; }
+    public int Pending { get; init; }
+    public int Queued { get; init; }
+    public int Running { get; init; }
+    public int Paused { get; init; }
+    public IReadOnlyList<InstanceQueueState> Instances { get; init; } = [];
+}
+
+/// <summary>Result of a queue action: the updated branch state + an optional note to show the user.</summary>
+public sealed record QueueActionOutcome
+{
+    public BranchQueueState State { get; init; } = new();
+    public string? Message { get; init; }
+}
+
 /// <summary>A trigger as returned by the API.</summary>
 public sealed record TriggerResponse
 {

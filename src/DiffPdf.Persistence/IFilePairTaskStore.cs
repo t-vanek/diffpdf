@@ -37,4 +37,7 @@ public interface IFilePairTaskStore
     /// </summary>
     Task<IReadOnlyDictionary<FilePairTaskStatus, int>> CountByStatusForJobsAsync(
         IReadOnlyCollection<Guid> jobIds, CancellationToken ct = default);
+
+    /// <summary>Bulk-deletes all file-pair tasks belonging to the given jobs (DB-row retention). Returns rows removed.</summary>
+    Task<int> DeleteForJobsAsync(IReadOnlyCollection<Guid> jobIds, CancellationToken ct = default);
 }

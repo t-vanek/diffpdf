@@ -37,6 +37,30 @@ public class InMemoryJobStoreTests
     }
 
     [Fact]
+    public async Task ListStaleUnindexedRunning_FindsRunningNeverIndexedWithExpiredLease()
+    {
+        var store = new InMemoryJobStore();
+        var job = await store.CreateAsync(NewJob());
+        await store.TryStartAsync(job.Id, "w", TimeSpan.FromMinutes(5)); // Running, TotalCount 0, lease ~now+5min
+
+        Assert.Empty(await store.ListStaleUnindexedRunningAsync(DateTimeOffset.UtcNow, 10)); // lease still in the future
+        var stale = await store.ListStaleUnindexedRunningAsync(DateTimeOffset.UtcNow.AddMinutes(10), 10);
+        Assert.Single(stale);
+        Assert.Equal(job.Id, stale[0].Id);
+    }
+
+    [Fact]
+    public async Task ListStaleUnindexedRunning_IgnoresIndexedJobs()
+    {
+        var store = new InMemoryJobStore();
+        var job = await store.CreateAsync(NewJob());
+        await store.TryStartAsync(job.Id, "w", TimeSpan.FromMinutes(5));
+        await store.SetTotalAsync(job.Id, 3); // indexing produced tasks → recoverable by task recovery, not "stuck"
+
+        Assert.Empty(await store.ListStaleUnindexedRunningAsync(DateTimeOffset.UtcNow.AddMinutes(10), 10));
+    }
+
+    [Fact]
     public async Task Complete_RequiresMatchingVersion()
     {
         var store = new InMemoryJobStore();

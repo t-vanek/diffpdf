@@ -6,6 +6,7 @@ public sealed class BranchEntity
     public string Key { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public bool Enabled { get; set; } = true;
+    public bool QueuePaused { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? UpdatedAt { get; set; }
     public long Version { get; set; } = 1;
@@ -65,6 +66,7 @@ public sealed class JobEntity
     public DateTimeOffset? ArtifactsPrunedAt { get; set; }
     public Guid? TriggerId { get; set; }
     public string Source { get; set; } = "System";
+    public int Priority { get; set; }
 }
 
 public sealed class SubscriptionEntity
@@ -164,4 +166,19 @@ public sealed class AuditLogEntity
     public string EntityType { get; set; } = string.Empty;
     public string? EntityId { get; set; }
     public string? Detail { get; set; }
+}
+
+public sealed class ScopeConfigurationEntity
+{
+    public Guid Id { get; set; }
+    public string Level { get; set; } = "Global";
+    public Guid? BranchId { get; set; }
+    public Guid? InstanceId { get; set; }
+    public string TriggerSource { get; set; } = "Global";
+    public string TriggerConfigJson { get; set; } = "{}";
+    public string ComparerSource { get; set; } = "Global";
+    public string ComparisonOptionsJson { get; set; } = "{}";
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? UpdatedAt { get; set; }
+    public long Version { get; set; } = 1;
 }

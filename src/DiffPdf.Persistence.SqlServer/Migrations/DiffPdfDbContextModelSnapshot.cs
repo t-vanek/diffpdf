@@ -100,6 +100,10 @@ namespace DiffPdf.Persistence.SqlServer.Migrations
                         .HasColumnType("nvarchar(max)")
                         .HasColumnName("name");
 
+                    b.Property<bool>("QueuePaused")
+                        .HasColumnType("bit")
+                        .HasColumnName("queue_paused");
+
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("updated_at");
@@ -415,6 +419,10 @@ namespace DiffPdf.Persistence.SqlServer.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("locked_until");
 
+                    b.Property<int>("Priority")
+                        .HasColumnType("int")
+                        .HasColumnName("priority");
+
                     b.Property<int>("ProcessedCount")
                         .HasColumnType("int")
                         .HasColumnName("processed_count");
@@ -464,11 +472,85 @@ namespace DiffPdf.Persistence.SqlServer.Migrations
 
                     b.HasIndex("TriggerId");
 
+                    b.HasIndex("BranchId", "Status");
+
                     b.HasIndex("Status", "CreatedAt");
 
                     b.HasIndex("BranchId", "InstanceId", "CreatedAt");
 
                     b.ToTable("jobs", (string)null);
+                });
+
+            modelBuilder.Entity("DiffPdf.Persistence.SqlServer.Entities.ScopeConfigurationEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("BranchId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("branch_id");
+
+                    b.Property<string>("ComparerSource")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)")
+                        .HasColumnName("comparer_source");
+
+                    b.Property<string>("ComparisonOptionsJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("comparison_options_json");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("InstanceId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("instance_id");
+
+                    b.Property<string>("Level")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)")
+                        .HasColumnName("level");
+
+                    b.Property<string>("TriggerConfigJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("trigger_config_json");
+
+                    b.Property<string>("TriggerSource")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)")
+                        .HasColumnName("trigger_source");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long>("Version")
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BranchId")
+                        .IsUnique()
+                        .HasFilter("[branch_id] IS NOT NULL");
+
+                    b.HasIndex("InstanceId")
+                        .IsUnique()
+                        .HasFilter("[instance_id] IS NOT NULL");
+
+                    b.HasIndex("Level")
+                        .IsUnique()
+                        .HasFilter("[level] = 'Global'");
+
+                    b.ToTable("scope_configurations", (string)null);
                 });
 
             modelBuilder.Entity("DiffPdf.Persistence.SqlServer.Entities.SubscriptionEntity", b =>

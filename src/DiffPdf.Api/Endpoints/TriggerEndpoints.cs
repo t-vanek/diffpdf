@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using DiffPdf.Core.Models;
 using DiffPdf.Core.Storage;
+using DiffPdf.Messaging.Configuration;
 using DiffPdf.Messaging.Scheduling;
 using DiffPdf.Messaging.Triggers;
 using DiffPdf.Persistence;
@@ -17,9 +18,11 @@ public static class TriggerEndpoints
     public static void MapTriggerEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapPost("/triggers/{branchKey}/{instanceKey}", async (
-            string branchKey, string instanceKey, IBatchLauncher launcher, CancellationToken ct) =>
+            string branchKey, string instanceKey, IBatchLauncher launcher,
+            IBranchStore branches, IInstanceStore instances, IScopeConfigurationResolver resolver, CancellationToken ct) =>
         {
-            var result = await launcher.LaunchAsync(branchKey, instanceKey, LaunchSpec.Default, ct);
+            var spec = await ResolveInstanceSpecAsync(branches, instances, resolver, branchKey, instanceKey, ct);
+            var result = await launcher.LaunchAsync(branchKey, instanceKey, spec, ct: ct);
             var body = new TriggerResult(result.Outcome.ToString(), result.JobId, result.Detail);
             return result.Outcome switch
             {
@@ -36,7 +39,8 @@ public static class TriggerEndpoints
         .RequireRateLimiting("expensive");
 
         app.MapPost("/branches/{branchKey}/run", async (
-            string branchKey, IBranchStore branches, IInstanceStore instances, IBatchLauncher launcher, CancellationToken ct) =>
+            string branchKey, IBranchStore branches, IInstanceStore instances, IBatchLauncher launcher,
+            IScopeConfigurationResolver resolver, CancellationToken ct) =>
         {
             var branch = await branches.GetByKeyAsync(branchKey, ct);
             if (branch is null)
@@ -46,7 +50,9 @@ public static class TriggerEndpoints
             var results = new List<InstanceRunResult>();
             foreach (var instance in list.Where(i => i.Enabled))
             {
-                var r = await launcher.LaunchAsync(branchKey, instance.Key, LaunchSpec.Default, ct);
+                // Each instance launches with its own effective (inherited) configuration.
+                var eff = await resolver.ResolveForInstanceAsync(branch.Id, instance.Id, ct);
+                var r = await launcher.LaunchAsync(branchKey, instance.Key, LaunchSpec.FromEffective(eff), ct: ct);
                 results.Add(new InstanceRunResult(instance.Key, r.Outcome.ToString(), r.JobId, r.Detail));
             }
 
@@ -156,6 +162,22 @@ public static class TriggerEndpoints
         app.MapGet("/branches/{branchId:guid}/triggers", async (Guid branchId, ITriggerStore store, CancellationToken ct) =>
             Results.Ok((await store.ListAsync(new TriggerQuery { BranchId = branchId }, ct)).Select(TriggerResponse.From)))
             .WithTags("Triggers").WithSummary("List a branch's triggers").Produces<IEnumerable<TriggerResponse>>();
+    }
+
+    /// <summary>
+    /// Builds the launch spec for an on-demand instance run from its resolved effective configuration. Falls
+    /// back to defaults when the branch/instance is unknown — the launcher then reports the not-found outcome.
+    /// </summary>
+    private static async Task<LaunchSpec> ResolveInstanceSpecAsync(
+        IBranchStore branches, IInstanceStore instances, IScopeConfigurationResolver resolver,
+        string branchKey, string instanceKey, CancellationToken ct)
+    {
+        var branch = await branches.GetByKeyAsync(branchKey, ct);
+        if (branch is null) return LaunchSpec.Default;
+        var instance = await instances.GetByKeyAsync(branch.Id, instanceKey, ct);
+        if (instance is null) return LaunchSpec.Default;
+        var eff = await resolver.ResolveForInstanceAsync(branch.Id, instance.Id, ct);
+        return LaunchSpec.FromEffective(eff);
     }
 
     /// <summary>The acting principal for audit (token client id / subject), or null when unauthenticated.</summary>

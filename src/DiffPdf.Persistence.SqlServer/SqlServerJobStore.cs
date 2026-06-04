@@ -50,6 +50,39 @@ public sealed class SqlServerJobStore(DiffPdfDbContext db, EntityMapper mapper) 
             select j;
     }
 
+    public Task<int> CountActiveByBranchAsync(Guid branchId, CancellationToken ct = default) =>
+        db.Jobs.Where(j => j.BranchId == branchId
+            && (j.Status == "Queued" || j.Status == "Running" || j.Status == "Paused")).CountAsync(ct);
+
+    public async Task<ComparisonJob?> NextDraftForBranchAsync(Guid branchId, CancellationToken ct = default)
+    {
+        var e = await db.Jobs.AsNoTracking()
+            .Where(j => j.BranchId == branchId && j.Status == "Draft")
+            .OrderByDescending(j => j.Priority).ThenBy(j => j.CreatedAt)
+            .FirstOrDefaultAsync(ct);
+        return e is null ? null : mapper.ToDomain(e);
+    }
+
+    public async Task<IReadOnlyList<ComparisonJob>> ListActiveAndDraftByBranchAsync(Guid branchId, CancellationToken ct = default)
+    {
+        var rows = await db.Jobs.AsNoTracking()
+            .Where(j => j.BranchId == branchId
+                && (j.Status == "Draft" || j.Status == "Queued" || j.Status == "Running" || j.Status == "Paused"))
+            .OrderByDescending(j => j.Priority).ThenBy(j => j.CreatedAt)
+            .ToListAsync(ct);
+        return rows.Select(mapper.ToDomain).ToList();
+    }
+
+    public async Task<IReadOnlyList<ComparisonJob>> ListStaleUnindexedRunningAsync(DateTimeOffset leaseExpiredBefore, int limit, CancellationToken ct = default)
+    {
+        var rows = await db.Jobs.AsNoTracking()
+            .Where(j => j.Status == "Running" && j.TotalCount == 0 && j.LockedUntil != null && j.LockedUntil < leaseExpiredBefore)
+            .OrderBy(j => j.LockedUntil)
+            .Take(limit)
+            .ToListAsync(ct);
+        return rows.Select(mapper.ToDomain).ToList();
+    }
+
     public async Task<ComparisonJob?> TryStartAsync(Guid id, string workerId, TimeSpan lease, CancellationToken ct = default)
     {
         var now = DateTimeOffset.UtcNow;
@@ -241,6 +274,25 @@ public sealed class SqlServerJobStore(DiffPdfDbContext db, EntityMapper mapper) 
             .ExecuteUpdateAsync(s => s.SetProperty(j => j.ArtifactsPrunedAt, at), ct);
     }
 
+    public async Task<IReadOnlyList<Guid>> ListPrunableRowsAsync(DateTimeOffset completedBefore, int limit, CancellationToken ct = default) =>
+        await db.Jobs.AsNoTracking()
+            .Where(j => (j.Status == "Completed" || j.Status == "Failed" || j.Status == "Cancelled")
+                     && j.CompletedAt != null && j.CompletedAt < completedBefore
+                     && j.ArtifactsPrunedAt != null)
+            .OrderBy(j => j.CompletedAt)
+            .Take(limit)
+            .Select(j => j.Id)
+            .ToListAsync(ct);
+
+    public async Task<int> DeleteByIdsAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct = default)
+    {
+        if (ids.Count == 0) return 0;
+        int removed = 0;
+        foreach (var chunk in ids.Chunk(1000))
+            removed += await db.Jobs.Where(j => chunk.Contains(j.Id)).ExecuteDeleteAsync(ct);
+        return removed;
+    }
+
     public async Task<IReadOnlyDictionary<JobStatus, int>> CountByStatusAsync(CancellationToken ct = default)
     {
         var rows = await db.Jobs.AsNoTracking()
@@ -267,6 +319,7 @@ public sealed class SqlServerJobStore(DiffPdfDbContext db, EntityMapper mapper) 
         RequestJson = DiffPdfJson.Serialize(job.Request),
         TriggerId = job.TriggerId,
         Source = job.Source.ToString(),
+        Priority = job.Priority,
         Version = 1,
     };
 }

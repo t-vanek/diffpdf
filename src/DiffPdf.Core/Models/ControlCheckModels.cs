@@ -14,6 +14,12 @@ public enum CheckType
 
     /// <summary>Prunes on-disk report artifacts of finished jobs older than a retention window.</summary>
     Retention,
+
+    /// <summary>Prunes old database rows (finished jobs + their tasks, trigger-run and audit history) older than a retention window.</summary>
+    DbRowRetention,
+
+    /// <summary>Enqueues a comparison for each enabled instance in scope on a cron/interval schedule.</summary>
+    ScheduledComparison,
 }
 
 /// <summary>How widely a <see cref="ControlCheck"/> applies.</summary>

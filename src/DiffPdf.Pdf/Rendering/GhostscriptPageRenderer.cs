@@ -31,6 +31,8 @@ public sealed class GhostscriptPageRenderer(
     {
         using var _ = await limiter.AcquireAsync(ct);
         string tempOut = Path.Combine(Path.GetTempPath(), $"diffpdf_{Guid.NewGuid():N}.png");
+        var sw = Stopwatch.StartNew();
+        string outcome = "error";
         try
         {
             var psi = new ProcessStartInfo
@@ -57,8 +59,20 @@ public sealed class GhostscriptPageRenderer(
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeoutCts.CancelAfter(_options.Timeout);
 
-            string stderr = await process.StandardError.ReadToEndAsync(timeoutCts.Token);
-            await process.WaitForExitAsync(timeoutCts.Token);
+            string stderr;
+            try
+            {
+                stderr = await process.StandardError.ReadToEndAsync(timeoutCts.Token);
+                await process.WaitForExitAsync(timeoutCts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                // The render hung: kill the entire Ghostscript process tree so no gs.exe is left orphaned.
+                KillTree(process);
+                if (ct.IsCancellationRequested) { outcome = "cancelled"; throw; } // outer cancellation — propagate
+                outcome = "timeout";
+                throw new TimeoutException($"Ghostscript render of page {pageNumber} timed out after {_options.Timeout}.");
+            }
 
             if (process.ExitCode != 0)
                 throw new InvalidOperationException(
@@ -67,6 +81,7 @@ public sealed class GhostscriptPageRenderer(
             byte[] png = await File.ReadAllBytesAsync(tempOut, ct);
             using var bitmap = SKBitmap.Decode(png);
 
+            outcome = "ok";
             return new RenderedPage
             {
                 PageNumber = pageNumber,
@@ -78,11 +93,29 @@ public sealed class GhostscriptPageRenderer(
         }
         finally
         {
+            PdfRenderMetrics.Record(Backend, sw.Elapsed.TotalSeconds, outcome);
             if (File.Exists(tempOut))
             {
                 try { File.Delete(tempOut); }
                 catch (IOException ex) { logger.LogDebug(ex, "Could not delete temp file {File}", tempOut); }
             }
+        }
+    }
+
+    /// <summary>Best-effort kill of a timed-out Ghostscript process and its children, with a brief synchronous reap.</summary>
+    private void KillTree(Process process)
+    {
+        try
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+                process.WaitForExit(3000);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to kill timed-out Ghostscript process.");
         }
     }
 

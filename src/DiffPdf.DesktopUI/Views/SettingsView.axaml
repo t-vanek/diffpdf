@@ -1,0 +1,9 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:DiffPdf.DesktopUI.ViewModels"
+             xmlns:views="using:DiffPdf.DesktopUI.Views"
+             x:Class="DiffPdf.DesktopUI.Views.SettingsView"
+             x:DataType="vm:SettingsViewModel">
+
+  <views:ScopeSettingsView DataContext="{Binding Editor}"/>
+</UserControl>

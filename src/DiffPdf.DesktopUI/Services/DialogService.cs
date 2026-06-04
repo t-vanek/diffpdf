@@ -53,6 +53,27 @@ public sealed class DialogService
         return result;
     }
 
+    /// <summary>Opens the per-scope (branch / instance) trigger + comparer settings as a modal dialog.</summary>
+    public async Task ShowScopeSettingsAsync(ViewModels.ScopeSettingsViewModel vm)
+    {
+        if (Owner is null) return;
+
+        var dialog = new Window
+        {
+            Title = vm.WindowTitle,
+            Width = 760,
+            Height = 680,
+            CanResize = true,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Content = new Views.ScopeSettingsView { DataContext = vm },
+        };
+
+        void OnClose() => dialog.Close();
+        vm.CloseRequested += OnClose;
+        try { await dialog.ShowDialog(Owner); }
+        finally { vm.CloseRequested -= OnClose; }
+    }
+
     /// <summary>Prompts for a save location and writes <paramref name="content"/>. Returns the saved path, or null if cancelled.</summary>
     public async Task<string?> SaveBytesAsync(string suggestedName, byte[] content)
     {

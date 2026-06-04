@@ -1,6 +1,7 @@
 using DiffPdf.Core.Abstractions;
 using DiffPdf.Core.Models;
 using DiffPdf.Messaging.Messages;
+using DiffPdf.Messaging.Scheduling;
 using DiffPdf.Persistence;
 using Wolverine;
 
@@ -77,13 +78,15 @@ public static class JobEndpoints
             return report.Passed ? Results.Ok(payload) : Results.Json(payload, statusCode: StatusCodes.Status422UnprocessableEntity);
         }).WithSummary("CI gate verdict (200 pass / 422 fail)").ProducesProblem(StatusCodes.Status404NotFound);
 
-        group.MapPost("/{id:guid}/cancel", async (Guid id, IJobStore jobStore, CancellationToken ct) =>
+        group.MapPost("/{id:guid}/cancel", async (Guid id, IJobStore jobStore, IBranchQueueDispatcher dispatcher, CancellationToken ct) =>
         {
             if (await jobStore.GetAsync(id, ct) is null) return Results.NotFound();
             var cancelled = await jobStore.CancelAsync(id, ct);
-            return cancelled is null
-                ? Results.Problem("Job is not in a cancellable state.", statusCode: StatusCodes.Status409Conflict)
-                : Results.Ok(JobSummary.From(cancelled));
+            if (cancelled is null)
+                return Results.Problem("Job is not in a cancellable state.", statusCode: StatusCodes.Status409Conflict);
+            // Cancelling frees the branch — release the next pending run.
+            await dispatcher.DispatchBranchAsync(cancelled.BranchId, ct);
+            return Results.Ok(JobSummary.From(cancelled));
         }).WithSummary("Cancel a Draft/queued/running/paused job").Produces<JobSummary>().ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/{id:guid}/pause", async (
@@ -99,26 +102,13 @@ public static class JobEndpoints
         }).WithSummary("Pause a Running job (in-flight pairs finish; pending pairs wait for resume)")
           .Produces<JobSummary>().ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
 
-        group.MapPost("/{id:guid}/resume", async (
-            Guid id, IJobStore jobStore, IFilePairTaskStore taskStore,
-            IJobProgressPublisher progress, IMessageBus bus, CancellationToken ct) =>
+        group.MapPost("/{id:guid}/resume", async (Guid id, IJobStore jobStore, IJobResumeService resume, CancellationToken ct) =>
         {
             if (await jobStore.GetAsync(id, ct) is null) return Results.NotFound();
-            var resumed = await jobStore.ResumeAsync(id, ct);
-            if (resumed is null)
-                return Results.Problem("Only a Paused job can be resumed.", statusCode: StatusCodes.Status409Conflict);
-
-            // Re-dispatch the pending (Queued) pairs. If none remain — everything finished
-            // while paused — finalize directly, since nothing else would trigger it.
-            var tasks = await taskStore.ListByJobAsync(id, ct);
-            var pending = tasks.Where(t => t.Status == FilePairTaskStatus.Queued).ToList();
-            foreach (var t in pending)
-                await bus.PublishAsync(new CompareFilePair(id, t.Id));
-            if (pending.Count == 0)
-                await bus.PublishAsync(new FinalizeBatch(id));
-
-            await progress.PublishAsync(JobProgressChanged.From(resumed), ct);
-            return Results.Ok(new { resumed = pending.Count, job = JobSummary.From(resumed) });
+            var (resumed, redispatched) = await resume.ResumeAsync(id, ct);
+            return resumed is null
+                ? Results.Problem("Only a Paused job can be resumed.", statusCode: StatusCodes.Status409Conflict)
+                : Results.Ok(new { resumed = redispatched, job = JobSummary.From(resumed) });
         }).WithSummary("Resume a Paused job (re-dispatches the pending pairs)")
           .ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
 

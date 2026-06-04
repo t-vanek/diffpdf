@@ -398,6 +398,84 @@ public sealed class DiffPdfClient(HttpClient http)
     public Task<OperationalStatusResponse> GetStatusAsync(CancellationToken ct = default) =>
         JsonAsync<OperationalStatusResponse>(HttpMethod.Get, "/api/v1/status", null, ct);
 
+    // ---------------- Per-branch run queue ----------------
+
+    /// <summary>Get a branch's run-queue state (per-branch hold + per-instance status), or null if the branch is unknown.</summary>
+    public Task<BranchQueueState?> GetBranchQueueAsync(string branchKey, CancellationToken ct = default) =>
+        GetOrNullAsync<BranchQueueState>($"/api/v1/branches/{Esc(branchKey)}/queue", ct);
+
+    /// <summary>Run a queue action (enqueue/run/pause/resume/stop) for a single instance; returns the updated state + note.</summary>
+    public Task<QueueActionOutcome> QueueInstanceAsync(string branchKey, string instanceKey, QueueAction action, CancellationToken ct = default) =>
+        JsonAsync<QueueActionOutcome>(HttpMethod.Post, $"/api/v1/branches/{Esc(branchKey)}/instances/{Esc(instanceKey)}/queue", new QueueActionRequest(action), ct);
+
+    /// <summary>Run a queue action for a whole branch (cascades to all enabled instances); returns the updated state + note.</summary>
+    public Task<QueueActionOutcome> QueueBranchAsync(string branchKey, QueueAction action, CancellationToken ct = default) =>
+        JsonAsync<QueueActionOutcome>(HttpMethod.Post, $"/api/v1/branches/{Esc(branchKey)}/queue", new QueueActionRequest(action), ct);
+
+    /// <summary>
+    /// Opens a SignalR connection, joins a branch's group and invokes <paramref name="onState"/> for each
+    /// <c>queueState</c> push. Dispose the returned <see cref="HubConnection"/> to stop.
+    /// </summary>
+    public async Task<HubConnection> SubscribeToBranchQueueAsync(
+        string branchKey, Action<BranchQueueState> onState, Func<Task<string?>>? accessTokenProvider = null, CancellationToken ct = default)
+    {
+        if (http.BaseAddress is null)
+            throw new InvalidOperationException("The HttpClient has no BaseAddress to derive the hub URL from.");
+
+        var hubUrl = new Uri($"{http.BaseAddress.GetLeftPart(UriPartial.Authority)}/hubs/jobs");
+        var connection = new HubConnectionBuilder()
+            .WithUrl(hubUrl, o => { if (accessTokenProvider is not null) o.AccessTokenProvider = accessTokenProvider; })
+            .WithAutomaticReconnect()
+            .Build();
+
+        connection.On<BranchQueueState>("queueState", onState);
+        await connection.StartAsync(ct);
+        await connection.InvokeAsync("JoinBranch", branchKey, ct);
+        return connection;
+    }
+
+    // ---------------- Scope configuration (triggers + comparers) ----------------
+
+    /// <summary>Get the global trigger + comparer configuration (stored + server-resolved effective).</summary>
+    public Task<ScopeConfigResponse> GetGlobalConfigAsync(CancellationToken ct = default) =>
+        JsonAsync<ScopeConfigResponse>(HttpMethod.Get, "/api/v1/config/global", null, ct);
+
+    /// <summary>Update the global trigger + comparer configuration.</summary>
+    public Task<ScopeConfigResponse> UpdateGlobalConfigAsync(UpsertScopeConfigRequest request, CancellationToken ct = default) =>
+        JsonAsync<ScopeConfigResponse>(HttpMethod.Put, "/api/v1/config/global", request, ct);
+
+    /// <summary>Get a branch's configuration (stored + effective), or null when the branch does not exist.</summary>
+    public Task<ScopeConfigResponse?> GetBranchConfigAsync(string branchKey, CancellationToken ct = default) =>
+        GetOrNullAsync<ScopeConfigResponse>($"/api/v1/branches/{Esc(branchKey)}/config", ct);
+
+    /// <summary>Update a branch's configuration.</summary>
+    public Task<ScopeConfigResponse> UpdateBranchConfigAsync(string branchKey, UpsertScopeConfigRequest request, CancellationToken ct = default) =>
+        JsonAsync<ScopeConfigResponse>(HttpMethod.Put, $"/api/v1/branches/{Esc(branchKey)}/config", request, ct);
+
+    /// <summary>Get an instance's configuration (stored + effective), or null when the instance does not exist.</summary>
+    public Task<ScopeConfigResponse?> GetInstanceConfigAsync(string branchKey, string instanceKey, CancellationToken ct = default) =>
+        GetOrNullAsync<ScopeConfigResponse>($"/api/v1/branches/{Esc(branchKey)}/instances/{Esc(instanceKey)}/config", ct);
+
+    /// <summary>Update an instance's configuration.</summary>
+    public Task<ScopeConfigResponse> UpdateInstanceConfigAsync(string branchKey, string instanceKey, UpsertScopeConfigRequest request, CancellationToken ct = default) =>
+        JsonAsync<ScopeConfigResponse>(HttpMethod.Put, $"/api/v1/branches/{Esc(branchKey)}/instances/{Esc(instanceKey)}/config", request, ct);
+
+    /// <summary>Get a branch's scheduled-run setting, or null when the branch does not exist.</summary>
+    public Task<ScheduleResponse?> GetBranchScheduleAsync(string branchKey, CancellationToken ct = default) =>
+        GetOrNullAsync<ScheduleResponse>($"/api/v1/branches/{Esc(branchKey)}/schedule", ct);
+
+    /// <summary>Enable/disable a branch's scheduled run.</summary>
+    public Task<ScheduleResponse> SetBranchScheduleAsync(string branchKey, SetScheduleRequest request, CancellationToken ct = default) =>
+        JsonAsync<ScheduleResponse>(HttpMethod.Put, $"/api/v1/branches/{Esc(branchKey)}/schedule", request, ct);
+
+    /// <summary>Get an instance's scheduled-run setting, or null when the instance does not exist.</summary>
+    public Task<ScheduleResponse?> GetInstanceScheduleAsync(string branchKey, string instanceKey, CancellationToken ct = default) =>
+        GetOrNullAsync<ScheduleResponse>($"/api/v1/branches/{Esc(branchKey)}/instances/{Esc(instanceKey)}/schedule", ct);
+
+    /// <summary>Enable/disable an instance's scheduled run.</summary>
+    public Task<ScheduleResponse> SetInstanceScheduleAsync(string branchKey, string instanceKey, SetScheduleRequest request, CancellationToken ct = default) =>
+        JsonAsync<ScheduleResponse>(HttpMethod.Put, $"/api/v1/branches/{Esc(branchKey)}/instances/{Esc(instanceKey)}/schedule", request, ct);
+
     // ---------------- plumbing ----------------
 
     private sealed record JobActionResult(int Resumed, int Retried, JobSummary Job);

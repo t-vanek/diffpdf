@@ -23,4 +23,19 @@ public sealed class WorkerOptions
     public int StaleRecoveryIntervalSeconds { get; set; } = 30;
 
     public TimeSpan StaleRecoveryInterval => TimeSpan.FromSeconds(StaleRecoveryIntervalSeconds);
+
+    /// <summary>
+    /// Hard wall-clock cap on comparing a single file pair (probe + extract + all page renders + highlight).
+    /// On expiry the pair is recorded as an error and the batch moves on — a corrupt/huge input can never
+    /// wedge a worker indefinitely. Distinct from <see cref="JobLease"/> (which governs stale-job recovery).
+    /// </summary>
+    public int FilePairComparisonTimeoutMinutes { get; set; } = 10;
+
+    public TimeSpan FilePairComparisonTimeout => TimeSpan.FromMinutes(FilePairComparisonTimeoutMinutes);
+
+    /// <summary>
+    /// Maximum size of an input PDF (bytes). A file larger than this is rejected as an error before it is
+    /// opened, so a pathologically large document can't exhaust memory. Default 500 MB; 0 disables the check.
+    /// </summary>
+    public long MaxPdfSizeBytes { get; set; } = 500L * 1024 * 1024;
 }

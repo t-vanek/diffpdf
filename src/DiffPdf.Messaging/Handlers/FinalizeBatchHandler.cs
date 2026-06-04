@@ -2,6 +2,7 @@ using DiffPdf.Core.Abstractions;
 using DiffPdf.Core.Models;
 using DiffPdf.Core.Storage;
 using DiffPdf.Messaging.Messages;
+using DiffPdf.Messaging.Observability;
 using DiffPdf.Persistence;
 using Microsoft.Extensions.Logging;
 
@@ -20,6 +21,7 @@ public sealed class FinalizeBatchHandler
         IFilePairTaskStore taskStore,
         IJobProgressPublisher progressPublisher,
         ITriggerEventPublisher triggerEvents,
+        DiffPdfMetrics metrics,
         ILogger<FinalizeBatchHandler> logger,
         CancellationToken ct)
     {
@@ -51,6 +53,7 @@ public sealed class FinalizeBatchHandler
         {
             var completed = await jobStore.CompleteAsync(job.Id, report, job.Version, ct);
             await progressPublisher.PublishAsync(JobProgressChanged.From(completed), ct);
+            metrics.RecordJobFinished(report.Passed ? "passed" : "gate_violated", report.CompletedAt - report.StartedAt);
 
             // Real-time comparison.completed for trigger-launched batches (after the completion is committed).
             if (completed.TriggerId is { } triggerId)

@@ -21,6 +21,22 @@ public interface IJobStore
     /// <summary>Atomically claims a Queued job for a worker (Queued → Running). Null if it could not be claimed.</summary>
     Task<ComparisonJob?> TryStartAsync(Guid id, string workerId, TimeSpan lease, CancellationToken ct = default);
 
+    /// <summary>Count of a branch's "active" jobs (Queued/Running/Paused) — the per-branch sequential queue's busy check.</summary>
+    Task<int> CountActiveByBranchAsync(Guid branchId, CancellationToken ct = default);
+
+    /// <summary>The next pending (Draft) job to release for a branch, ordered by Priority DESC then CreatedAt ASC. Null if none.</summary>
+    Task<ComparisonJob?> NextDraftForBranchAsync(Guid branchId, CancellationToken ct = default);
+
+    /// <summary>A branch's pending + active jobs (Draft/Queued/Running/Paused), for the queue-state read and branch "stop".</summary>
+    Task<IReadOnlyList<ComparisonJob>> ListActiveAndDraftByBranchAsync(Guid branchId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Running jobs that never finished indexing (TotalCount 0) and whose worker lease expired — stuck
+    /// (the worker died during/before indexing, so there are no file-pair tasks for task recovery to revive).
+    /// Recovering these frees the per-branch queue.
+    /// </summary>
+    Task<IReadOnlyList<ComparisonJob>> ListStaleUnindexedRunningAsync(DateTimeOffset leaseExpiredBefore, int limit, CancellationToken ct = default);
+
     /// <summary>Updates progress on a Running job; throws ConcurrencyConflictException on version/state mismatch.</summary>
     Task<ComparisonJob> UpdateProgressAsync(Guid id, int processedCount, int totalCount, long expectedVersion, CancellationToken ct = default);
 
@@ -54,6 +70,16 @@ public interface IJobStore
 
     /// <summary>Marks a job's on-disk artifacts as pruned, so retention skips it on the next pass.</summary>
     Task MarkArtifactsPrunedAsync(Guid id, DateTimeOffset at, CancellationToken ct = default);
+
+    /// <summary>
+    /// IDs of finished jobs (Completed/Failed/Cancelled) completed before the cutoff <b>whose artifacts have
+    /// already been pruned</b> — the DB-row retention prune set. Requiring artifacts-pruned guarantees row
+    /// deletion can never orphan on-disk reports. Bounded by <paramref name="limit"/>.
+    /// </summary>
+    Task<IReadOnlyList<Guid>> ListPrunableRowsAsync(DateTimeOffset completedBefore, int limit, CancellationToken ct = default);
+
+    /// <summary>Bulk-deletes the given jobs. Returns the number of rows removed. (Delete their file-pair tasks first.)</summary>
+    Task<int> DeleteByIdsAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct = default);
 
     /// <summary>Counts jobs grouped by status (for the operational backlog view). Doubles as a cheap DB ping.</summary>
     Task<IReadOnlyDictionary<JobStatus, int>> CountByStatusAsync(CancellationToken ct = default);

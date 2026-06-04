@@ -15,6 +15,7 @@ public sealed class DiffPdfDbContext(DbContextOptions<DiffPdfDbContext> options)
     public DbSet<TriggerEntity> Triggers => Set<TriggerEntity>();
     public DbSet<TriggerRunEntity> TriggerRuns => Set<TriggerRunEntity>();
     public DbSet<AuditLogEntity> AuditLog => Set<AuditLogEntity>();
+    public DbSet<ScopeConfigurationEntity> ScopeConfigurations => Set<ScopeConfigurationEntity>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -26,6 +27,7 @@ public sealed class DiffPdfDbContext(DbContextOptions<DiffPdfDbContext> options)
             e.Property(x => x.Key).HasColumnName("key").HasMaxLength(256);
             e.Property(x => x.Name).HasColumnName("name");
             e.Property(x => x.Enabled).HasColumnName("enabled");
+            e.Property(x => x.QueuePaused).HasColumnName("queue_paused");
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
             e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
             e.Property(x => x.Version).HasColumnName("version");
@@ -72,8 +74,10 @@ public sealed class DiffPdfDbContext(DbContextOptions<DiffPdfDbContext> options)
             e.Property(x => x.ArtifactsPrunedAt).HasColumnName("artifacts_pruned_at");
             e.Property(x => x.TriggerId).HasColumnName("trigger_id");
             e.Property(x => x.Source).HasColumnName("source").HasMaxLength(32);
+            e.Property(x => x.Priority).HasColumnName("priority");
             e.HasIndex(x => new { x.BranchId, x.InstanceId, x.CreatedAt });
             e.HasIndex(x => new { x.Status, x.CreatedAt });
+            e.HasIndex(x => new { x.BranchId, x.Status });
             e.HasIndex(x => x.TriggerId);
         });
 
@@ -220,6 +224,27 @@ public sealed class DiffPdfDbContext(DbContextOptions<DiffPdfDbContext> options)
             e.Property(x => x.Detail).HasColumnName("detail");
             e.HasIndex(x => new { x.EntityType, x.EntityId, x.At });
             e.HasIndex(x => x.At);
+        });
+
+        b.Entity<ScopeConfigurationEntity>(e =>
+        {
+            e.ToTable("scope_configurations");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.Level).HasColumnName("level").HasMaxLength(32);
+            e.Property(x => x.BranchId).HasColumnName("branch_id");
+            e.Property(x => x.InstanceId).HasColumnName("instance_id");
+            e.Property(x => x.TriggerSource).HasColumnName("trigger_source").HasMaxLength(32);
+            e.Property(x => x.TriggerConfigJson).HasColumnName("trigger_config_json");
+            e.Property(x => x.ComparerSource).HasColumnName("comparer_source").HasMaxLength(32);
+            e.Property(x => x.ComparisonOptionsJson).HasColumnName("comparison_options_json");
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
+            e.Property(x => x.Version).HasColumnName("version");
+            // Exactly one global row; at most one row per branch; at most one row per instance.
+            e.HasIndex(x => x.Level).IsUnique().HasFilter("[level] = 'Global'");
+            e.HasIndex(x => x.BranchId).IsUnique().HasFilter("[branch_id] IS NOT NULL");
+            e.HasIndex(x => x.InstanceId).IsUnique().HasFilter("[instance_id] IS NOT NULL");
         });
 
         // OpenIddict's applications/authorizations/scopes/tokens tables share this context, so the

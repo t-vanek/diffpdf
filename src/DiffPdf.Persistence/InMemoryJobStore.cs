@@ -51,6 +51,30 @@ public sealed class InMemoryJobStore : IJobStore
         return q;
     }
 
+    public Task<int> CountActiveByBranchAsync(Guid branchId, CancellationToken ct = default) =>
+        Task.FromResult(_jobs.Values.Count(j => j.BranchId == branchId
+            && j.Status is JobStatus.Queued or JobStatus.Running or JobStatus.Paused));
+
+    public Task<ComparisonJob?> NextDraftForBranchAsync(Guid branchId, CancellationToken ct = default) =>
+        Task.FromResult(_jobs.Values
+            .Where(j => j.BranchId == branchId && j.Status == JobStatus.Draft)
+            .OrderByDescending(j => j.Priority).ThenBy(j => j.CreatedAt)
+            .FirstOrDefault());
+
+    public Task<IReadOnlyList<ComparisonJob>> ListActiveAndDraftByBranchAsync(Guid branchId, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<ComparisonJob>>(_jobs.Values
+            .Where(j => j.BranchId == branchId
+                && j.Status is JobStatus.Draft or JobStatus.Queued or JobStatus.Running or JobStatus.Paused)
+            .OrderByDescending(j => j.Priority).ThenBy(j => j.CreatedAt)
+            .ToList());
+
+    public Task<IReadOnlyList<ComparisonJob>> ListStaleUnindexedRunningAsync(DateTimeOffset leaseExpiredBefore, int limit, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<ComparisonJob>>(_jobs.Values
+            .Where(j => j.Status == JobStatus.Running && j.TotalCount == 0 && j.LockedUntil is { } l && l < leaseExpiredBefore)
+            .OrderBy(j => j.LockedUntil)
+            .Take(limit)
+            .ToList());
+
     public Task<ComparisonJob?> TryStartAsync(Guid id, string workerId, TimeSpan lease, CancellationToken ct = default)
     {
         lock (_gate)
@@ -282,6 +306,27 @@ public sealed class InMemoryJobStore : IJobStore
             .GroupBy(j => j.Status)
             .ToDictionary(g => g.Key, g => g.Count());
         return Task.FromResult<IReadOnlyDictionary<JobStatus, int>>(counts);
+    }
+
+    public Task<IReadOnlyList<Guid>> ListPrunableRowsAsync(DateTimeOffset completedBefore, int limit, CancellationToken ct = default)
+    {
+        var ids = _jobs.Values
+            .Where(j => j.Status is JobStatus.Completed or JobStatus.Failed or JobStatus.Cancelled
+                     && j.CompletedAt is { } c && c < completedBefore
+                     && j.ArtifactsPrunedAt is not null)
+            .OrderBy(j => j.CompletedAt)
+            .Take(limit)
+            .Select(j => j.Id)
+            .ToList();
+        return Task.FromResult<IReadOnlyList<Guid>>(ids);
+    }
+
+    public Task<int> DeleteByIdsAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct = default)
+    {
+        int removed = 0;
+        foreach (var id in ids)
+            if (_jobs.TryRemove(id, out _)) removed++;
+        return Task.FromResult(removed);
     }
 
     private ComparisonJob Guard(Guid id, long expectedVersion, params JobStatus[] allowed)

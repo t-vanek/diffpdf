@@ -41,8 +41,22 @@ public sealed class InMemoryBranchStore : IBranchStore
     public Task<Branch?> GetByKeyAsync(string key, CancellationToken ct = default) =>
         Task.FromResult(_byKey.TryGetValue(key, out var b) ? b : null);
 
+    public Task<Branch?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
+        Task.FromResult<Branch?>(_byKey.Values.FirstOrDefault(b => b.Id == id));
+
     public Task<IReadOnlyList<Branch>> ListAsync(CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<Branch>>(_byKey.Values.OrderBy(b => b.Key).ToList());
+
+    public Task SetQueuePausedAsync(Guid branchId, bool paused, CancellationToken ct = default)
+    {
+        lock (_gate)
+        {
+            var existing = _byKey.Values.FirstOrDefault(b => b.Id == branchId);
+            if (existing is not null)
+                _byKey[existing.Key] = existing with { QueuePaused = paused, UpdatedAt = DateTimeOffset.UtcNow };
+        }
+        return Task.CompletedTask;
+    }
 
     public Task<bool> DeleteByKeyAsync(string key, CancellationToken ct = default) =>
         Task.FromResult(_byKey.TryRemove(key, out _));

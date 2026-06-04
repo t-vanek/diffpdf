@@ -31,6 +31,9 @@ public sealed class SqlServerTriggerRunStore(DiffPdfDbContext db, EntityMapper m
         return e is null ? null : mapper.ToDomain(e);
     }
 
+    public Task<int> DeleteStartedBeforeAsync(DateTimeOffset startedBefore, CancellationToken ct = default) =>
+        db.TriggerRuns.Where(x => x.StartedAt < startedBefore).ExecuteDeleteAsync(ct);
+
     private static TriggerRunEntity ToEntity(TriggerRun r) => new()
     {
         Id = r.Id,

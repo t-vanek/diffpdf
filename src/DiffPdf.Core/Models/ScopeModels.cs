@@ -10,6 +10,10 @@ public sealed record Branch
     public required string Key { get; init; }
     public required string Name { get; init; }
     public bool Enabled { get; init; } = true;
+
+    /// <summary>When true, the branch's sequential job queue is held: no new instance is released until resumed.</summary>
+    public bool QueuePaused { get; init; }
+
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? UpdatedAt { get; init; }
     public long Version { get; init; } = 1;

@@ -15,7 +15,11 @@ public interface IBranchStore
     Task<Branch> UpdateAsync(Branch branch, long expectedVersion, CancellationToken ct = default);
 
     Task<Branch?> GetByKeyAsync(string key, CancellationToken ct = default);
+    Task<Branch?> GetByIdAsync(Guid id, CancellationToken ct = default);
     Task<IReadOnlyList<Branch>> ListAsync(CancellationToken ct = default);
+
+    /// <summary>Holds/releases the branch's sequential job queue (sets the QueuePaused flag). Best-effort, no version guard.</summary>
+    Task SetQueuePausedAsync(Guid branchId, bool paused, CancellationToken ct = default);
 
     /// <summary>
     /// Deletes a branch by key; returns false if it does not exist. The caller must first ensure the

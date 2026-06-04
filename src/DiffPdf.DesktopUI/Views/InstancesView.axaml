@@ -51,12 +51,38 @@
 
     <Grid ColumnDefinitions="*,420">
       <DataGrid Grid.Column="0" Margin="0,0,8,0" x:CompileBindings="False" ItemsSource="{Binding Instances}"
-                SelectedItem="{Binding SelectedInstance}" IsReadOnly="True" AutoGenerateColumns="False" CanUserResizeColumns="True">
+                SelectedItem="{Binding SelectedRow}" IsReadOnly="True" AutoGenerateColumns="False" CanUserResizeColumns="True">
         <DataGrid.Columns>
-          <DataGridTextColumn Header="Klíč" Binding="{Binding Key}" Width="150"/>
-          <DataGridTextColumn Header="Název" Binding="{Binding Name}" Width="150"/>
-          <DataGridTextColumn Header="Základní cesta" Binding="{Binding BasePath}" Width="*"/>
-          <DataGridTextColumn Header="Povoleno" Binding="{Binding Enabled}" Width="90"/>
+          <DataGridTemplateColumn Header="" Width="48">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate>
+                <Button Content="⚙" Padding="6,2" Margin="2" ToolTip.Tip="Konfigurace (triggery a porovnávače)"
+                        Command="{Binding #Root.DataContext.OpenSettingsCommand}" CommandParameter="{Binding}"/>
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+          <DataGridTemplateColumn Header="Akce" Width="Auto">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate>
+                <StackPanel Orientation="Horizontal" Spacing="2">
+                  <Button Content="▶" ToolTip.Tip="Spustit" Padding="6,2" IsEnabled="{Binding CanRun}"
+                          Command="{Binding #Root.DataContext.RunInstanceCommand}" CommandParameter="{Binding}"/>
+                  <Button Content="➕" ToolTip.Tip="Přidat do fronty" Padding="6,2" IsEnabled="{Binding CanEnqueue}"
+                          Command="{Binding #Root.DataContext.EnqueueInstanceCommand}" CommandParameter="{Binding}"/>
+                  <Button Content="⏸" ToolTip.Tip="Pozastavit" Padding="6,2" IsEnabled="{Binding CanPause}"
+                          Command="{Binding #Root.DataContext.PauseInstanceCommand}" CommandParameter="{Binding}"/>
+                  <Button Content="↻" ToolTip.Tip="Obnovit" Padding="6,2" IsEnabled="{Binding CanResume}"
+                          Command="{Binding #Root.DataContext.ResumeInstanceCommand}" CommandParameter="{Binding}"/>
+                  <Button Content="⏹" ToolTip.Tip="Zastavit" Padding="6,2" IsEnabled="{Binding CanStop}"
+                          Command="{Binding #Root.DataContext.StopInstanceCommand}" CommandParameter="{Binding}"/>
+                </StackPanel>
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+          <DataGridTextColumn Header="Klíč" Binding="{Binding Instance.Key}" Width="140"/>
+          <DataGridTextColumn Header="Název" Binding="{Binding Instance.Name}" Width="140"/>
+          <DataGridTextColumn Header="Základní cesta" Binding="{Binding Instance.BasePath}" Width="*"/>
+          <DataGridTextColumn Header="Fronta" Binding="{Binding StatusText}" Width="120"/>
         </DataGrid.Columns>
       </DataGrid>
 
@@ -107,15 +133,14 @@
             <!-- Spouštěče této instance -->
             <Border BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="4" Padding="10">
               <StackPanel Spacing="6">
-                <Grid ColumnDefinitions="*,Auto">
-                  <TextBlock Grid.Column="0" Text="Spouštěče" FontWeight="Bold" VerticalAlignment="Center"/>
-                  <Button Grid.Column="1" Content="Spravovat spouštěče" Command="{Binding ManageTriggersCommand}"/>
-                </Grid>
+                <TextBlock Text="Spouštěče" FontWeight="Bold"/>
+                <TextBlock Foreground="#808080" TextWrapping="Wrap"
+                           Text="Konfigurace triggerů a porovnávačů je dostupná přes ⚙ u řádku instance."/>
                 <TextBlock Text="Žádné spouštěče." Foreground="#808080" IsVisible="{Binding !Triggers.Count}"/>
                 <ItemsControl x:CompileBindings="False" ItemsSource="{Binding Triggers}">
                   <ItemsControl.ItemTemplate>
                     <DataTemplate>
-                      <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,2">
+                      <Grid ColumnDefinitions="*,Auto" Margin="0,2">
                         <StackPanel Grid.Column="0" VerticalAlignment="Center">
                           <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
                           <TextBlock Foreground="#808080" FontSize="12"
@@ -123,8 +148,6 @@
                         </StackPanel>
                         <TextBlock Grid.Column="1" VerticalAlignment="Center" Margin="6,0" Foreground="#6A9955"
                                    Text="výchozí" IsVisible="{Binding IsDefault}"/>
-                        <Button Grid.Column="2" Content="▶ Spustit" Margin="2"
-                                Command="{Binding #Root.DataContext.RunTriggerCommand}" CommandParameter="{Binding}"/>
                       </Grid>
                     </DataTemplate>
                   </ItemsControl.ItemTemplate>

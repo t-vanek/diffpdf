@@ -39,6 +39,29 @@ public sealed record UpdateTriggerRequest
     public long? Version { get; init; }
 }
 
+/// <summary>
+/// Upsert a scope's configuration: the source selectors plus this level's custom payloads. <see cref="Version"/>
+/// guards concurrent edits (null = overwrite the latest).
+/// </summary>
+public sealed record UpsertScopeConfigRequest
+{
+    public ConfigSource TriggerSource { get; init; }
+    public TriggerConfig TriggerConfig { get; init; } = new();
+    public ConfigSource ComparerSource { get; init; }
+    public ComparisonOptions ComparisonOptions { get; init; } = new();
+    public long? Version { get; init; }
+}
+
+/// <summary>Enable/disable a scope's scheduled comparison. <see cref="Cron"/> is a 5-field UTC cron (required when enabled).</summary>
+public sealed record SetScheduleRequest
+{
+    public bool Enabled { get; init; }
+    public string? Cron { get; init; }
+}
+
+/// <summary>A run-queue control request (enqueue/run/pause/resume/stop) for an instance or a whole branch.</summary>
+public sealed record QueueActionRequest(QueueAction Action);
+
 /// <summary>Compare a single old/new PDF pair synchronously.</summary>
 public sealed record SingleComparisonRequest
 {

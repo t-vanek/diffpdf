@@ -19,7 +19,7 @@ public sealed class ReadinessCheckExecutor(
 
     public async Task<CheckResult> ExecuteAsync(ControlCheck check, CancellationToken ct)
     {
-        var targets = await ResolveTargetsAsync(check, ct);
+        var targets = await ControlCheckScope.ResolveEnabledInstancesAsync(check, branches, instances, ct);
         if (targets.Count == 0)
             return CheckResult.Warning("No instances in scope.");
 
@@ -48,45 +48,5 @@ public sealed class ReadinessCheckExecutor(
         return problems.Count == 0
             ? CheckResult.Ok($"{targets.Count} instance(s) ready.")
             : CheckResult.Failed($"{problems.Count}/{targets.Count} instance(s) not ready:\n  - {string.Join("\n  - ", problems)}");
-    }
-
-    private async Task<IReadOnlyList<(string BranchKey, ComparisonInstance Instance)>> ResolveTargetsAsync(ControlCheck check, CancellationToken ct)
-    {
-        var result = new List<(string, ComparisonInstance)>();
-
-        switch (check.ScopeKind)
-        {
-            case CheckScopeKind.Instance when check.BranchKey is { } bk && check.InstanceKey is { } ik:
-            {
-                var branch = await branches.GetByKeyAsync(bk, ct);
-                if (branch is null) break;
-                var instance = await instances.GetByKeyAsync(branch.Id, ik, ct);
-                if (instance is { Enabled: true })
-                    result.Add((bk, instance));
-                break;
-            }
-            case CheckScopeKind.Branch when check.BranchKey is { } bk:
-            {
-                var branch = await branches.GetByKeyAsync(bk, ct);
-                if (branch is null) break;
-                foreach (var instance in await instances.ListAsync(branch.Id, ct))
-                    if (instance.Enabled)
-                        result.Add((bk, instance));
-                break;
-            }
-            default: // Global
-            {
-                foreach (var branch in await branches.ListAsync(ct))
-                {
-                    if (!branch.Enabled) continue;
-                    foreach (var instance in await instances.ListAsync(branch.Id, ct))
-                        if (instance.Enabled)
-                            result.Add((branch.Key, instance));
-                }
-                break;
-            }
-        }
-
-        return result;
     }
 }

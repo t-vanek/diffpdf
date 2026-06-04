@@ -43,6 +43,7 @@ public sealed class ControlCheckProvisioner(
 {
     internal const string HealthKey = "health";
     internal const string RetentionKey = "retention";
+    internal const string DbRowRetentionKey = "db-row-retention";
     internal const string StructureSyncKey = "structure-sync";
     internal static string ReadinessKey(string branchKey) => $"readiness-{branchKey}";
 
@@ -110,6 +111,16 @@ public sealed class ControlCheckProvisioner(
             Parameters = new Dictionary<string, string>
             {
                 ["retentionDays"] = Options.RetentionDays.ToString(CultureInfo.InvariantCulture),
+            },
+        }, ct);
+
+        await EnsureAsync(new ControlCheck
+        {
+            Id = Guid.NewGuid(), Key = DbRowRetentionKey, Name = "Database row retention", Type = CheckType.DbRowRetention,
+            ScopeKind = CheckScopeKind.Global, Cron = Options.DbRowRetentionCron,
+            Parameters = new Dictionary<string, string>
+            {
+                ["retentionDays"] = Options.DbRowRetentionDays.ToString(CultureInfo.InvariantCulture),
             },
         }, ct);
 

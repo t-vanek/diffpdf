@@ -15,12 +15,14 @@ internal static class PageRegistration
         Add<BranchesViewModel>(services);
         Add<InstancesViewModel>(services);
         Add<AutomationsViewModel>(services);
-        Add<TriggerManagementViewModel>(services);
         Add<SubscriptionsViewModel>(services);
         Add<DiscoveryViewModel>(services);
         Add<TriggersViewModel>(services);
         Add<SingleCompareViewModel>(services);
         Add<JobsViewModel>(services);
+        // Trigger + comparer configuration is no longer a central page; it lives per-scope behind the gear
+        // button on each branch/instance, with the global level edited here.
+        Add<SettingsViewModel>(services);
 
         // Content view-models hosted inside a section (not nav pages themselves).
         services.AddSingleton<ControlChecksViewModel>();

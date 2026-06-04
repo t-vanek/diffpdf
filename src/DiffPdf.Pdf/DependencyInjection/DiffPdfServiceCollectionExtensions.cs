@@ -13,6 +13,7 @@ public static class DiffPdfServiceCollectionExtensions
     public static IServiceCollection AddDiffPdf(this IServiceCollection services)
     {
         services.AddOptions<GhostscriptOptions>();
+        services.AddOptions<PdfiumOptions>();
         services.AddOptions<PdfWorkLimiterOptions>();
         services.AddOptions<NetworkOptions>();
 

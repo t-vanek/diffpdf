@@ -15,4 +15,7 @@ public interface ITriggerRunStore
 
     /// <summary>An earlier run with the same idempotency key for this trigger (for dedupe), or null.</summary>
     Task<TriggerRun?> GetByIdempotencyKeyAsync(Guid triggerId, string idempotencyKey, CancellationToken ct = default);
+
+    /// <summary>Bulk-deletes trigger runs started before the cutoff (DB-row retention). Returns rows removed.</summary>
+    Task<int> DeleteStartedBeforeAsync(DateTimeOffset startedBefore, CancellationToken ct = default);
 }

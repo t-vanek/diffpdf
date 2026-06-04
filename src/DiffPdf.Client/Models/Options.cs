@@ -33,6 +33,16 @@ public sealed record NetworkCredentials
     public string? Domain { get; init; }
 }
 
+/// <summary>The non-comparison launch knobs of a trigger (search pattern, recursion, parallelism, gate),
+/// configured per scope independently of the comparer chain.</summary>
+public sealed record TriggerConfig
+{
+    public string SearchPattern { get; init; } = "*.pdf";
+    public bool Recursive { get; init; } = true;
+    public int MaxDegreeOfParallelism { get; init; }
+    public BatchGate? Gate { get; init; }
+}
+
 /// <summary>Tunable knobs for a comparison run (mirrors the server's options).</summary>
 public sealed record ComparisonOptions
 {

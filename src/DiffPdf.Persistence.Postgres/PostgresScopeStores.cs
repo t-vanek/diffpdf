@@ -45,10 +45,24 @@ public sealed class PostgresBranchStore(DiffPdfDbContext db, EntityMapper mapper
         return e is null ? null : mapper.ToDomain(e);
     }
 
+    public async Task<Branch?> GetByIdAsync(Guid id, CancellationToken ct = default)
+    {
+        var e = await db.Branches.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
+        return e is null ? null : mapper.ToDomain(e);
+    }
+
     public async Task<IReadOnlyList<Branch>> ListAsync(CancellationToken ct = default)
     {
         var rows = await db.Branches.AsNoTracking().OrderBy(x => x.Key).ToListAsync(ct);
         return rows.Select(mapper.ToDomain).ToList();
+    }
+
+    public async Task SetQueuePausedAsync(Guid branchId, bool paused, CancellationToken ct = default)
+    {
+        await db.Branches.Where(x => x.Id == branchId)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(x => x.QueuePaused, paused)
+                .SetProperty(x => x.UpdatedAt, DateTimeOffset.UtcNow), ct);
     }
 
     public async Task<bool> DeleteByKeyAsync(string key, CancellationToken ct = default)

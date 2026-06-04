@@ -11,7 +11,9 @@ using DiffPdf.Core.Abstractions;
 using DiffPdf.Core.Network;
 using DiffPdf.Core.Storage;
 using DiffPdf.Messaging;
+using DiffPdf.Messaging.Configuration;
 using DiffPdf.Messaging.ControlPlane;
+using DiffPdf.Messaging.Observability;
 using DiffPdf.Messaging.Scheduling;
 using DiffPdf.Messaging.ScopeSync;
 using DiffPdf.Messaging.Triggers;
@@ -68,20 +70,31 @@ builder.Services.ConfigureHttpJsonOptions(o =>
 
 builder.Services.AddOpenApi();
 
-// OpenTelemetry: traces + metrics for ASP.NET Core, outbound HTTP and the .NET runtime. Exported via OTLP
-// only when OTEL_EXPORTER_OTLP_ENDPOINT is set; otherwise collected with negligible overhead and ready to
-// export once a collector is configured.
+// OpenTelemetry: traces + metrics for ASP.NET Core, outbound HTTP, EF Core, Wolverine and the .NET runtime,
+// plus our own DiffPdf.Queue meter. Always scrapable at /metrics (Prometheus); additionally exported via OTLP
+// when OTEL_EXPORTER_OTLP_ENDPOINT is set. The Wolverine *metrics* meter is named "Wolverine:{AppName}", so it
+// must be matched with the wildcard "Wolverine*" (a bare "Wolverine" captures nothing); the *trace* source is
+// just "Wolverine".
 bool otlpConfigured = !string.IsNullOrWhiteSpace(builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"]);
 builder.Services.AddOpenTelemetry()
     .ConfigureResource(r => r.AddService("DiffPdf.Api", serviceVersion: BuildInfo.Version))
     .WithTracing(t =>
     {
-        t.AddAspNetCoreInstrumentation().AddHttpClientInstrumentation();
+        t.AddAspNetCoreInstrumentation()
+            .AddHttpClientInstrumentation()
+            .AddEntityFrameworkCoreInstrumentation()
+            .AddSource("Wolverine");
         if (otlpConfigured) t.AddOtlpExporter();
     })
     .WithMetrics(m =>
     {
-        m.AddAspNetCoreInstrumentation().AddHttpClientInstrumentation().AddRuntimeInstrumentation();
+        m.AddAspNetCoreInstrumentation()
+            .AddHttpClientInstrumentation()
+            .AddRuntimeInstrumentation()
+            .AddMeter("Wolverine*")
+            .AddMeter(DiffPdfMetrics.MeterName)
+            .AddMeter("DiffPdf.Render");
+        m.AddPrometheusExporter(); // exposes /metrics (mapped below)
         if (otlpConfigured) m.AddOtlpExporter();
     });
 builder.Services.AddProblemDetails();
@@ -107,6 +120,7 @@ builder.Services.Configure<NetworkOptions>(builder.Configuration.GetSection(Netw
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<IJobProgressPublisher, SignalRJobProgressPublisher>();
 builder.Services.AddSingleton<ITriggerEventPublisher, SignalRTriggerEventPublisher>();
+builder.Services.AddSingleton<IBranchQueueStatePublisher, SignalRBranchQueueStatePublisher>();
 
 builder.Services.AddDiffPdf();
 builder.Services.AddDiffPdfWorker();
@@ -150,6 +164,7 @@ else
     builder.Services.AddSingleton<ITriggerStore, InMemoryTriggerStore>();
     builder.Services.AddSingleton<ITriggerRunStore, InMemoryTriggerRunStore>();
     builder.Services.AddSingleton<IAuditLogStore, InMemoryAuditLogStore>();
+    builder.Services.AddSingleton<IScopeConfigurationStore, InMemoryScopeConfigurationStore>();
     builder.Services.AddSingleton<ILeaderElection, InMemoryLeaderElection>();
     builder.Services.AddScoped<IJobSubmissionService, SimpleJobSubmissionService>();
     builder.Host.UseWolverine(opts =>
@@ -180,6 +195,8 @@ builder.Services.AddDiffPdfNotifications(builder.Configuration);
 builder.Services.AddScoped<IBatchLauncher, BatchLauncher>();
 builder.Services.AddScoped<ITriggerService, TriggerService>();
 builder.Services.AddScoped<ITriggerProvisioner, TriggerProvisioner>();
+builder.Services.AddDiffPdfScopeConfiguration();
+builder.Services.AddDiffPdfBranchQueue();
 builder.Services.AddDiffPdfScopeSync(builder.Configuration);
 
 // Unified control/monitoring mechanism: runtime-configured checks (readiness, health, structure-sync,
@@ -202,6 +219,9 @@ if ((builder.Configuration.GetSection(DiscoveryOptions.SectionName).Get<Discover
 
 var app = builder.Build();
 
+// Turn unhandled exceptions into clean RFC-7807 ProblemDetails (no stack-trace leak); pairs with AddProblemDetails().
+app.UseExceptionHandler();
+
 app.UseSerilogRequestLogging();
 app.UseRateLimiter();
 
@@ -222,6 +242,9 @@ app.UseSwaggerUI(o =>
 // Root endpoints (anonymous health/info).
 app.MapHealthEndpoints();
 
+// Prometheus scrape endpoint (/metrics) — anonymous, for a local collector on the private LAN.
+app.MapPrometheusScrapingEndpoint();
+
 // Versioned API surface.
 var api = app.MapGroup("/api/v1");
 api.MapComparisonEndpoints();
@@ -233,6 +256,8 @@ api.MapDiscoveryEndpoints();
 api.MapTriggerEndpoints();
 api.MapStatusEndpoints();
 api.MapControlCheckEndpoints();
+api.MapScopeConfigurationEndpoints();
+api.MapBranchQueueEndpoints();
 
 app.MapHub<JobsHub>("/hubs/jobs");
 

@@ -94,6 +94,10 @@ namespace DiffPdf.Persistence.Postgres.Migrations
                         .HasColumnType("text")
                         .HasColumnName("name");
 
+                    b.Property<bool>("QueuePaused")
+                        .HasColumnType("boolean")
+                        .HasColumnName("queue_paused");
+
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
@@ -397,6 +401,10 @@ namespace DiffPdf.Persistence.Postgres.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("locked_until");
 
+                    b.Property<int>("Priority")
+                        .HasColumnType("integer")
+                        .HasColumnName("priority");
+
                     b.Property<int>("ProcessedCount")
                         .HasColumnType("integer")
                         .HasColumnName("processed_count");
@@ -444,11 +452,82 @@ namespace DiffPdf.Persistence.Postgres.Migrations
 
                     b.HasIndex("TriggerId");
 
+                    b.HasIndex("BranchId", "Status");
+
                     b.HasIndex("Status", "CreatedAt");
 
                     b.HasIndex("BranchId", "InstanceId", "CreatedAt");
 
                     b.ToTable("jobs", (string)null);
+                });
+
+            modelBuilder.Entity("DiffPdf.Persistence.Postgres.Entities.ScopeConfigurationEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("BranchId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("branch_id");
+
+                    b.Property<string>("ComparerSource")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("comparer_source");
+
+                    b.Property<string>("ComparisonOptionsJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("comparison_options_json");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("InstanceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("instance_id");
+
+                    b.Property<string>("Level")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("level");
+
+                    b.Property<string>("TriggerConfigJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("trigger_config_json");
+
+                    b.Property<string>("TriggerSource")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("trigger_source");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long>("Version")
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BranchId")
+                        .IsUnique()
+                        .HasFilter("branch_id IS NOT NULL");
+
+                    b.HasIndex("InstanceId")
+                        .IsUnique()
+                        .HasFilter("instance_id IS NOT NULL");
+
+                    b.HasIndex("Level")
+                        .IsUnique()
+                        .HasFilter("level = 'Global'");
+
+                    b.ToTable("scope_configurations", (string)null);
                 });
 
             modelBuilder.Entity("DiffPdf.Persistence.Postgres.Entities.SubscriptionEntity", b =>
