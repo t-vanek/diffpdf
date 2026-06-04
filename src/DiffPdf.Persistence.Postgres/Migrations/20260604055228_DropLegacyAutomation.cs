@@ -11,14 +11,20 @@ namespace DiffPdf.Persistence.Postgres.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "comparison_schedules");
-
+            // Drop child tables before parents. schedule_runs has a FK to comparison_schedules
+            // (schedule_id ... references comparison_schedules(id) on delete cascade), defined in raw
+            // SQL in InitialCreate and never tracked by the EF model snapshot — so DropTable cannot
+            // auto-order it. Dropping the parent first fails because the table is still referenced by
+            // a foreign key constraint. folder_watches only references branches/instances (not dropped
+            // here), so it is independent.
             migrationBuilder.DropTable(
                 name: "folder_watches");
 
             migrationBuilder.DropTable(
                 name: "schedule_runs");
+
+            migrationBuilder.DropTable(
+                name: "comparison_schedules");
         }
 
         /// <inheritdoc />

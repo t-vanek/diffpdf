@@ -147,5 +147,9 @@ public sealed class DiffPdfDbContext(DbContextOptions<DiffPdfDbContext> options)
             e.Property(x => x.Detail).HasColumnName("detail");
             e.HasIndex(x => new { x.CheckId, x.StartedAt });
         });
+
+        // OpenIddict's applications/authorizations/scopes/tokens tables share this context, so the
+        // existing migration runner creates and versions them (replaces the old AuthDbContext + EnsureCreated).
+        b.UseOpenIddict();
     }
 }
