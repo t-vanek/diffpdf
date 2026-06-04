@@ -158,9 +158,6 @@ public static class TriggerEndpoints
             .WithTags("Triggers").WithSummary("List a branch's triggers").Produces<IEnumerable<TriggerResponse>>();
     }
 
-    /// <summary>The acting principal for audit (token client id / subject), or null when unauthenticated.</summary>
-    private static string? Actor(ClaimsPrincipal user) =>
-        user.Identity?.IsAuthenticated == true
-            ? user.FindFirst("client_id")?.Value ?? user.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? user.Identity.Name
-            : null;
+    /// <summary>The acting principal for audit (token client id / API-key name / subject), or null when unauthenticated.</summary>
+    private static string? Actor(ClaimsPrincipal user) => Auth.PrincipalExtensions.Actor(user);
 }

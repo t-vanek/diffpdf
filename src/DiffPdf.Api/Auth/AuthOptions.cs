@@ -11,6 +11,10 @@ public sealed class AuthOptions
     public string ClientSecret { get; set; } = "diffpdf-secret";
     public string Scope { get; set; } = "diffpdf.api";
 
+    /// <summary>Role granted to the seeded M2M client's tokens (Viewer / Operator / Admin). Default Admin
+    /// so the desktop/CI keep full access; lower it to restrict the built-in client.</summary>
+    public string Role { get; set; } = "Admin";
+
     /// <summary>Access-token lifetime (minutes).</summary>
     public int AccessTokenMinutes { get; set; } = 60;
 }
