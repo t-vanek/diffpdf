@@ -65,28 +65,6 @@ public sealed class JobEntity
     public DateTimeOffset? ArtifactsPrunedAt { get; set; }
 }
 
-public sealed class ScheduleEntity
-{
-    public Guid Id { get; set; }
-    public Guid BranchId { get; set; }
-    public Guid InstanceId { get; set; }
-    public string BranchKey { get; set; } = string.Empty;
-    public string InstanceKey { get; set; } = string.Empty;
-    public string Key { get; set; } = string.Empty;
-    public string Name { get; set; } = string.Empty;
-    public string Cron { get; set; } = string.Empty;
-    public string OptionsJson { get; set; } = string.Empty;
-    public string? GateJson { get; set; }
-    public string SearchPattern { get; set; } = "*.pdf";
-    public bool Recursive { get; set; } = true;
-    public int MaxDegreeOfParallelism { get; set; }
-    public bool Enabled { get; set; } = true;
-    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
-    public DateTimeOffset? UpdatedAt { get; set; }
-    public DateTimeOffset? LastRunAt { get; set; }
-    public long Version { get; set; } = 1;
-}
-
 public sealed class SubscriptionEntity
 {
     public Guid Id { get; set; }
@@ -98,37 +76,6 @@ public sealed class SubscriptionEntity
     public bool Enabled { get; set; } = true;
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? UpdatedAt { get; set; }
-    public long Version { get; set; } = 1;
-}
-
-public sealed class ScheduleRunEntity
-{
-    public Guid Id { get; set; }
-    public Guid ScheduleId { get; set; }
-    public Guid JobId { get; set; }
-    public DateTimeOffset StartedAt { get; set; } = DateTimeOffset.UtcNow;
-    public DateTimeOffset? CompletedAt { get; set; }
-    public string Outcome { get; set; } = "Pending";
-    public int Differing { get; set; }
-    public int Errors { get; set; }
-    public int FilesWithContentErrors { get; set; }
-    public bool Passed { get; set; }
-    public string? GateViolationsJson { get; set; }
-    public string? Error { get; set; }
-}
-
-public sealed class WatchEntity
-{
-    public Guid Id { get; set; }
-    public Guid BranchId { get; set; }
-    public Guid InstanceId { get; set; }
-    public string BranchKey { get; set; } = string.Empty;
-    public string InstanceKey { get; set; } = string.Empty;
-    public int StabilitySeconds { get; set; } = 30;
-    public bool Enabled { get; set; } = true;
-    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
-    public DateTimeOffset? UpdatedAt { get; set; }
-    public DateTimeOffset? LastTriggeredAt { get; set; }
     public long Version { get; set; } = 1;
 }
 

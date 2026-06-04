@@ -19,17 +19,8 @@ public sealed partial class EntityMapper
     [MapProperty(nameof(FilePairTaskEntity.ResultJson), nameof(FilePairTask.Result))]
     public partial FilePairTask ToDomain(FilePairTaskEntity entity);
 
-    [MapProperty(nameof(ScheduleEntity.OptionsJson), nameof(ComparisonSchedule.Options))]
-    [MapProperty(nameof(ScheduleEntity.GateJson), nameof(ComparisonSchedule.Gate))]
-    public partial ComparisonSchedule ToDomain(ScheduleEntity entity);
-
     [MapProperty(nameof(SubscriptionEntity.EventsJson), nameof(NotificationSubscription.Events))]
     public partial NotificationSubscription ToDomain(SubscriptionEntity entity);
-
-    [MapProperty(nameof(ScheduleRunEntity.GateViolationsJson), nameof(ScheduleRun.GateViolations))]
-    public partial ScheduleRun ToDomain(ScheduleRunEntity entity);
-
-    public partial FolderWatch ToDomain(WatchEntity entity);
 
     [MapProperty(nameof(ControlCheckEntity.ParametersJson), nameof(ControlCheck.Parameters))]
     [MapProperty(nameof(ControlCheckEntity.EventsJson), nameof(ControlCheck.Events))]
@@ -47,17 +38,8 @@ public sealed partial class EntityMapper
     private static FilePairResult? MapResult(string? json) =>
         string.IsNullOrEmpty(json) ? null : DiffPdfJson.Deserialize<FilePairResult>(json);
 
-    private static ComparisonOptions MapOptions(string json) =>
-        DiffPdfJson.Deserialize<ComparisonOptions>(json);
-
-    private static BatchGate? MapGate(string? json) =>
-        string.IsNullOrEmpty(json) ? null : DiffPdfJson.Deserialize<BatchGate>(json);
-
     private static IReadOnlyList<NotificationEvent> MapEvents(string json) =>
         DiffPdfJson.Deserialize<IReadOnlyList<NotificationEvent>>(json);
-
-    private static IReadOnlyList<string> MapGateViolations(string? json) =>
-        string.IsNullOrEmpty(json) ? [] : DiffPdfJson.Deserialize<IReadOnlyList<string>>(json);
 
     private static IReadOnlyDictionary<string, string> MapParameters(string json) =>
         string.IsNullOrEmpty(json) ? new Dictionary<string, string>() : DiffPdfJson.Deserialize<IReadOnlyDictionary<string, string>>(json);

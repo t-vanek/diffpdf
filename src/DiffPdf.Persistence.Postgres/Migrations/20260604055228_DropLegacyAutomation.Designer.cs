@@ -3,6 +3,7 @@ using System;
 using DiffPdf.Persistence.Postgres;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace DiffPdf.Persistence.Postgres.Migrations
 {
     [DbContext(typeof(DiffPdfDbContext))]
-    partial class DiffPdfDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260604055228_DropLegacyAutomation")]
+    partial class DropLegacyAutomation
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

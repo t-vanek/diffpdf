@@ -181,55 +181,37 @@ public sealed record TokenResponse
     [JsonPropertyName("expires_in")] public int ExpiresIn { get; init; }
 }
 
-/// <summary>A recurring schedule as returned by the API.</summary>
-public sealed record ScheduleResponse
+/// <summary>A control check as returned by the API.</summary>
+public sealed record CheckResponse
 {
     public Guid Id { get; init; }
-    public string BranchKey { get; init; } = "";
-    public string InstanceKey { get; init; } = "";
     public string Key { get; init; } = "";
     public string Name { get; init; } = "";
-    public string Cron { get; init; } = "";
-    public ComparisonOptions Options { get; init; } = new();
-    public BatchGate? Gate { get; init; }
-    public string SearchPattern { get; init; } = "*.pdf";
-    public bool Recursive { get; init; }
-    public int MaxDegreeOfParallelism { get; init; }
+    public CheckType Type { get; init; }
+    public CheckScopeKind ScopeKind { get; init; }
+    public string? BranchKey { get; init; }
+    public string? InstanceKey { get; init; }
+    public string? Cron { get; init; }
+    public int? IntervalSeconds { get; init; }
+    public IReadOnlyDictionary<string, string> Parameters { get; init; } = new Dictionary<string, string>();
+    public IReadOnlyList<NotificationEvent> Events { get; init; } = [];
     public bool Enabled { get; init; }
     public DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset? UpdatedAt { get; init; }
     public DateTimeOffset? LastRunAt { get; init; }
+    public CheckRunOutcome? LastOutcome { get; init; }
     public long Version { get; init; }
 }
 
-/// <summary>One run of a schedule (the batch it launched) as returned by the API.</summary>
-public sealed record ScheduleRunResponse
+/// <summary>One run of a control check as returned by the API.</summary>
+public sealed record CheckRunResponse
 {
     public Guid Id { get; init; }
-    public Guid JobId { get; init; }
+    public Guid CheckId { get; init; }
     public DateTimeOffset StartedAt { get; init; }
     public DateTimeOffset? CompletedAt { get; init; }
-    public ScheduleRunOutcome Outcome { get; init; }
-    public int Differing { get; init; }
-    public int Errors { get; init; }
-    public int FilesWithContentErrors { get; init; }
-    public bool Passed { get; init; }
-    public IReadOnlyList<string> GateViolations { get; init; } = [];
-    public string? Error { get; init; }
-}
-
-/// <summary>An instance's folder-watch as returned by the API.</summary>
-public sealed record WatchResponse
-{
-    public Guid Id { get; init; }
-    public string BranchKey { get; init; } = "";
-    public string InstanceKey { get; init; } = "";
-    public int StabilitySeconds { get; init; }
-    public bool Enabled { get; init; }
-    public DateTimeOffset CreatedAt { get; init; }
-    public DateTimeOffset? UpdatedAt { get; init; }
-    public DateTimeOffset? LastTriggeredAt { get; init; }
-    public long Version { get; init; }
+    public CheckRunOutcome Outcome { get; init; }
+    public string? Detail { get; init; }
 }
 
 /// <summary>A notification subscription as returned by the API.</summary>
@@ -341,9 +323,7 @@ public sealed record OperationalStatusResponse
     public LeaderInfo Leader { get; init; } = new();
     public IReadOnlyList<ServiceHealthInfo> Services { get; init; } = [];
     public BacklogInfo Backlog { get; init; } = new();
-    public int EnabledSchedules { get; init; }
-    public int EnabledWatches { get; init; }
-    public bool RetentionEnabled { get; init; }
+    public int EnabledChecks { get; init; }
     public DependenciesInfo Dependencies { get; init; } = new();
 }
 

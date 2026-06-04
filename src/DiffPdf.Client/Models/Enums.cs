@@ -79,19 +79,39 @@ public enum IgnoreUnit
     Points,
 }
 
-/// <summary>The kind of batch outcome a notification subscription can fire on.</summary>
+/// <summary>The kind of event a notification subscription can fire on (batch outcome or control-check result).</summary>
 public enum NotificationEvent
 {
     Completed,
     GateViolated,
     Failed,
+    ReadinessFailed,
+    HealthDegraded,
+    StructureDrift,
+    CheckRecovered,
 }
 
-/// <summary>Outcome of one schedule run (the batch it launched).</summary>
-public enum ScheduleRunOutcome
+/// <summary>What a control check does.</summary>
+public enum CheckType
 {
-    Pending,
-    Passed,
-    GateViolated,
+    Readiness,
+    Health,
+    StructureSync,
+    Retention,
+}
+
+/// <summary>How widely a control check applies.</summary>
+public enum CheckScopeKind
+{
+    Global,
+    Branch,
+    Instance,
+}
+
+/// <summary>Outcome of one control-check run.</summary>
+public enum CheckRunOutcome
+{
+    Ok,
+    Warning,
     Failed,
 }

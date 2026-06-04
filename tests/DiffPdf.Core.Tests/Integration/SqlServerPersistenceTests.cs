@@ -1,7 +1,6 @@
 using DiffPdf.Core.Models;
 using DiffPdf.Core.Network;
 using DiffPdf.Core.Storage;
-using DiffPdf.Messaging.Automation;
 using DiffPdf.Messaging.ScopeSync;
 using DiffPdf.Persistence.SqlServer;
 using DiffPdf.Persistence.SqlServer.Mapping;
@@ -31,13 +30,12 @@ public class SqlServerPersistenceTests(LocalDbFixture db)
     }
 
     [LocalDbFact]
-    public async Task Branch_Instance_Schedule_Watch_RoundTrip()
+    public async Task Branch_Instance_Check_RoundTrip()
     {
         await using var ctx = db.NewContext();
         var branches = new SqlServerBranchStore(ctx, _mapper);
         var instances = new SqlServerInstanceStore(ctx, _mapper);
-        var schedules = new SqlServerScheduleStore(ctx, _mapper);
-        var watches = new SqlServerWatchStore(ctx, _mapper);
+        var checks = new SqlServerControlCheckStore(ctx, _mapper);
 
         string bKey = "b_" + Guid.NewGuid().ToString("N")[..8];
         string basePath = $@"C:\root\{bKey}\inst1";
@@ -50,23 +48,20 @@ public class SqlServerPersistenceTests(LocalDbFixture db)
         var fetchedInstance = await instances.GetByKeyAsync(branch.Id, "inst1");
         Assert.Equal(basePath, fetchedInstance!.BasePath);
 
-        await schedules.CreateAsync(new ComparisonSchedule
+        string checkKey = "rd_" + Guid.NewGuid().ToString("N")[..8];
+        await checks.CreateAsync(new ControlCheck
         {
-            Id = Guid.NewGuid(), BranchId = branch.Id, InstanceId = instance.Id,
-            BranchKey = branch.Key, InstanceKey = instance.Key,
-            Key = "nightly", Name = "Nightly", Cron = "0 2 * * *", Enabled = false,
+            Id = Guid.NewGuid(), Key = checkKey, Name = "Readiness", Type = CheckType.Readiness,
+            ScopeKind = CheckScopeKind.Instance, BranchKey = branch.Key, InstanceKey = instance.Key,
+            IntervalSeconds = 300, Events = [NotificationEvent.ReadinessFailed],
+            Parameters = new Dictionary<string, string> { ["k"] = "v" }, Enabled = false,
         });
-        var fetchedSchedule = await schedules.GetByKeyAsync(instance.Id, "nightly");
-        Assert.False(fetchedSchedule!.Enabled);
-        Assert.Equal("0 2 * * *", fetchedSchedule.Cron);
 
-        await watches.UpsertAsync(new FolderWatch
-        {
-            Id = Guid.NewGuid(), BranchId = branch.Id, InstanceId = instance.Id,
-            BranchKey = branch.Key, InstanceKey = instance.Key, StabilitySeconds = 45, Enabled = false,
-        });
-        var fetchedWatch = await watches.GetByInstanceAsync(instance.Id);
-        Assert.Equal(45, fetchedWatch!.StabilitySeconds);
+        var fetched = await checks.GetByKeyAsync(checkKey);
+        Assert.False(fetched!.Enabled);
+        Assert.Equal(CheckType.Readiness, fetched.Type);
+        Assert.Equal("v", fetched.Parameters["k"]);
+        Assert.Contains(NotificationEvent.ReadinessFailed, fetched.Events);
     }
 
     [LocalDbFact]
@@ -80,7 +75,7 @@ public class SqlServerPersistenceTests(LocalDbFixture db)
     }
 
     [LocalDbFact]
-    public async Task ScopeSync_Apply_RegistersAndProvisionsDefaultsInRealDb()
+    public async Task ScopeSync_Apply_RegistersInRealDb()
     {
         string root = Path.Combine(Path.GetTempPath(), "diffpdf-it-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(Path.Combine(root, "alfa", "inst1", "old"));
@@ -90,20 +85,13 @@ public class SqlServerPersistenceTests(LocalDbFixture db)
             await using var ctx = db.NewContext();
             var branches = new SqlServerBranchStore(ctx, _mapper);
             var instances = new SqlServerInstanceStore(ctx, _mapper);
-            var schedules = new SqlServerScheduleStore(ctx, _mapper);
-            var watches = new SqlServerWatchStore(ctx, _mapper);
 
             var net = Options.Create(new NetworkOptions());
             var resolver = new NetworkShareResolver(net);
             var connector = new PlatformShareConnector(net, NullLogger<PlatformShareConnector>.Instance);
             var structure = new InstanceStructureService(resolver, connector, NullLogger<InstanceStructureService>.Instance);
 
-            // Default automation enabled: a disabled schedule + watch should be provisioned (no initial trigger here).
-            var provisioner = new DefaultAutomationProvisioner(schedules, watches, new StubBatchLauncher(),
-                Options.Create(new DefaultAutomationOptions { Enabled = true, FireInitialTrigger = false }),
-                NullLogger<DefaultAutomationProvisioner>.Instance);
-
-            var sync = new ScopeSyncService(resolver, connector, branches, instances, structure, provisioner,
+            var sync = new ScopeSyncService(resolver, connector, branches, instances, structure,
                 Options.Create(new ScopeSyncOptions { RootPath = root }), NullLogger<ScopeSyncService>.Instance);
 
             var report = await sync.SynchronizeAsync(apply: true);
@@ -113,9 +101,8 @@ public class SqlServerPersistenceTests(LocalDbFixture db)
             Assert.NotNull(branch);
             var instance = await instances.GetByKeyAsync(branch!.Id, "inst1");
             Assert.NotNull(instance);
-            // Default automation landed the disabled schedule + watch in the real database.
-            Assert.NotNull(await schedules.GetByKeyAsync(instance!.Id, "default"));
-            Assert.NotNull(await watches.GetByInstanceAsync(instance.Id));
+            // The reports/ skeleton was created on disk for the newly registered instance.
+            Assert.True(Directory.Exists(Path.Combine(root, "alfa", "inst1", "reports")));
         }
         finally
         {

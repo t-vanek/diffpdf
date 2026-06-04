@@ -42,9 +42,7 @@
           <TextBlock Text="{Binding Status.Backlog.RunningJobs, StringFormat='Running joby: {0}'}"/>
           <TextBlock Text="{Binding Status.Backlog.PausedJobs, StringFormat='Paused joby: {0}'}"/>
           <TextBlock Text="{Binding Status.Backlog.ActiveTasks, StringFormat='Aktivní tasky: {0}'}"/>
-          <TextBlock Text="{Binding Status.EnabledSchedules, StringFormat='Aktivní rozvrhy: {0}'}"/>
-          <TextBlock Text="{Binding Status.EnabledWatches, StringFormat='Aktivní watche: {0}'}"/>
-          <TextBlock Text="{Binding Status.RetentionEnabled, StringFormat='Retence zapnutá: {0}'}"/>
+          <TextBlock Text="{Binding Status.EnabledChecks, StringFormat='Aktivní kontroly: {0}'}"/>
         </StackPanel>
       </Border>
 
