@@ -3,6 +3,7 @@ using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
 using DiffPdf.Api;
 using DiffPdf.Api.Auth;
+using DiffPdf.Api.Discovery;
 using DiffPdf.Api.Endpoints;
 using DiffPdf.Api.Hubs;
 using DiffPdf.Api.Operational;
@@ -178,10 +179,16 @@ builder.Services.AddDiffPdfControlPlane(builder.Configuration);
 var auth = builder.Configuration.GetSection("Auth").Get<AuthOptions>() ?? new AuthOptions();
 builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection("Auth"));
 bool authEnabled = auth.Enabled && !string.IsNullOrWhiteSpace(relational);
+builder.Services.AddSingleton(new ServerAuthInfo(authEnabled));
 if (auth.Enabled && string.IsNullOrWhiteSpace(relational))
     Log.Warning("Auth:Enabled is set but no PostgreSQL/SQL Server connection is configured — authentication is disabled.");
 if (authEnabled)
     builder.Services.AddDiffPdfAuth(relational!, useSqlServer, auth);
+
+// LAN server discovery: answer UDP broadcast probes so the desktop client can auto-find this server.
+builder.Services.Configure<DiscoveryOptions>(builder.Configuration.GetSection(DiscoveryOptions.SectionName));
+if ((builder.Configuration.GetSection(DiscoveryOptions.SectionName).Get<DiscoveryOptions>() ?? new DiscoveryOptions()).Enabled)
+    builder.Services.AddHostedService<ServerDiscoveryResponder>();
 
 var app = builder.Build();
 

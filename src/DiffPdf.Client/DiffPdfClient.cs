@@ -259,6 +259,23 @@ public sealed class DiffPdfClient(HttpClient http)
         return resp.IsSuccessStatusCode;
     }
 
+    /// <summary>Reads the anonymous <c>/health</c> body (version, uptime, whether auth is required).
+    /// Returns null if the server does not respond 200 (unreachable or error), so callers can probe safely.</summary>
+    public async Task<ServerInfo?> GetServerInfoAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            using var resp = await http.SendAsync(new HttpRequestMessage(HttpMethod.Get, "/health"), ct);
+            return resp.IsSuccessStatusCode
+                ? await resp.Content.ReadFromJsonAsync<ServerInfo>(Json, ct)
+                : null;
+        }
+        catch (HttpRequestException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>Readiness: dependency checks (database / renderer / storage). Returns the body for both 200 (ready) and 503 (degraded).</summary>
     public async Task<ReadinessResponse> GetReadinessAsync(CancellationToken ct = default)
     {
