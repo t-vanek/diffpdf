@@ -84,6 +84,21 @@ public sealed class SqlServerFilePairTaskStore(DiffPdfDbContext db, EntityMapper
                 .SetProperty(t => t.Version, t => t.Version + 1), ct);
     }
 
+    public Task<int> SkipPendingForTerminalJobsAsync(CancellationToken ct = default)
+    {
+        var now = DateTimeOffset.UtcNow;
+        return db.FilePairTasks
+            .Where(t => t.Status == "Queued"
+                && db.Jobs.Any(j => j.Id == t.JobId
+                    && (j.Status == "Cancelled" || j.Status == "Failed" || j.Status == "Completed")))
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(t => t.Status, "Skipped")
+                .SetProperty(t => t.CompletedAt, now)
+                .SetProperty(t => t.LockedBy, (string?)null)
+                .SetProperty(t => t.LockedUntil, (DateTimeOffset?)null)
+                .SetProperty(t => t.Version, t => t.Version + 1), ct);
+    }
+
     public async Task<IReadOnlyList<(Guid JobId, Guid TaskId)>> RequeueStaleAsync(CancellationToken ct = default)
     {
         var now = DateTimeOffset.UtcNow;

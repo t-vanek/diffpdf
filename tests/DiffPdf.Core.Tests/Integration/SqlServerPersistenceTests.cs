@@ -205,4 +205,56 @@ public class SqlServerPersistenceTests(LocalDbFixture db)
         Assert.Equal(report.Differing, after.Differing);
         Assert.Equal(report.Errors, after.Errors);
     }
+
+    [LocalDbFact]
+    public async Task SkipPendingForTerminalJobs_HealsStrandedQueuedPairs_NotRunningOnes()
+    {
+        Guid cancelledJobId, runningJobId;
+        await using (var ctx = db.NewContext())
+        {
+            var branches = new SqlServerBranchStore(ctx, _mapper);
+            var instances = new SqlServerInstanceStore(ctx, _mapper);
+            var jobs = new SqlServerJobStore(ctx, _mapper);
+            var tasks = new SqlServerFilePairTaskStore(ctx, _mapper);
+
+            string bKey = "b_" + Guid.NewGuid().ToString("N")[..8];
+            var branch = await branches.CreateAsync(bKey, bKey);
+            var instance = await instances.CreateAsync(branch.Id, "i1", "I1", @"C:\x\1", null);
+
+            ComparisonJob NewJob() => new()
+            {
+                Id = Guid.NewGuid(), BranchId = branch.Id, InstanceId = instance.Id, Status = JobStatus.Queued,
+                Request = new BatchComparisonRequest { Scope = new JobScope(branch.Key, instance.Key) },
+            };
+
+            var cancelled = await jobs.CreateAsync(NewJob());
+            await jobs.TryStartAsync(cancelled.Id, "w1", TimeSpan.FromMinutes(5));
+            await jobs.CancelAsync(cancelled.Id);
+            cancelledJobId = cancelled.Id;
+
+            var running = await jobs.CreateAsync(NewJob());
+            await jobs.TryStartAsync(running.Id, "w2", TimeSpan.FromMinutes(5)); // stays Running
+            runningJobId = running.Id;
+
+            await tasks.CreateManyAsync(
+            [
+                new FilePairTask { Id = Guid.NewGuid(), JobId = cancelledJobId, RelativePath = "a.pdf", Status = FilePairTaskStatus.Queued },
+                new FilePairTask { Id = Guid.NewGuid(), JobId = cancelledJobId, RelativePath = "b.pdf", Status = FilePairTaskStatus.Completed },
+                new FilePairTask { Id = Guid.NewGuid(), JobId = runningJobId, RelativePath = "c.pdf", Status = FilePairTaskStatus.Queued },
+            ]);
+        }
+
+        // Fresh context (mirrors the startup runner; avoids EF change-tracker staleness after the set-based update).
+        await using (var sweep = db.NewContext())
+            Assert.True(await new SqlServerFilePairTaskStore(sweep, _mapper).SkipPendingForTerminalJobsAsync() >= 1);
+
+        await using var verify = db.NewContext();
+        var taskStore = new SqlServerFilePairTaskStore(verify, _mapper);
+        var cancelledTasks = await taskStore.ListByJobAsync(cancelledJobId);
+        Assert.DoesNotContain(cancelledTasks, t => t.Status == FilePairTaskStatus.Queued); // stranded → skipped
+        Assert.Contains(cancelledTasks, t => t.Status == FilePairTaskStatus.Skipped);
+        Assert.Contains(cancelledTasks, t => t.Status == FilePairTaskStatus.Completed);    // untouched
+        // The still-Running job keeps its Queued pair — only terminal jobs are swept.
+        Assert.Contains(await taskStore.ListByJobAsync(runningJobId), t => t.Status == FilePairTaskStatus.Queued);
+    }
 }
