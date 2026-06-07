@@ -20,6 +20,11 @@
               ToolTip.Tip="Povolí všechny zaškrtnuté větve"/>
       <Button Content="🚫 Zakázat" Command="{Binding DisableSelectedCommand}" IsEnabled="{Binding CanDeleteSelected}"
               ToolTip.Tip="Zakáže všechny zaškrtnuté větve"/>
+      <Border Width="1" Background="#3F3F46" Margin="4,2"/>
+      <Button Content="👁 Náhled synchr." Command="{Binding PreviewSyncCommand}"
+              ToolTip.Tip="Náhled: co by se zaregistrovalo ze složkové struktury (bez zápisu)"/>
+      <Button Content="🔁 Synchronizovat" Command="{Binding ApplySyncCommand}"
+              ToolTip.Tip="Zaregistruje větve a instance ze složkové struktury &lt;kořen&gt;/&lt;větev&gt;/&lt;instance&gt;"/>
       <TextBox Width="200" VerticalAlignment="Center" Text="{Binding SearchText}"
                PlaceholderText="Hledat (klíč/název)…"/>
       <TextBlock Text="{Binding Info}" Foreground="#9CDCFE" VerticalAlignment="Center"/>

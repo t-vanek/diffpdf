@@ -7,18 +7,47 @@
         Title="DiffPDF Remote Manager">
 
   <DockPanel>
-    <!-- Connection bar -->
-    <Border DockPanel.Dock="Top" Padding="10" Background="#252526">
-      <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-        <TextBlock Text="Server" VerticalAlignment="Center" Foreground="White"/>
-        <TextBox Width="280" Text="{Binding ServerUrl}" PlaceholderText="http://localhost:5275"/>
-        <TextBox Width="150" Text="{Binding ClientId}" PlaceholderText="ClientId" IsVisible="{Binding AuthEnabled}"/>
-        <TextBox Width="130" Text="{Binding ClientSecret}" PlaceholderText="Secret" PasswordChar="•" IsVisible="{Binding AuthEnabled}"/>
-        <Button Content="Připojit" Command="{Binding ConnectCommand}" IsVisible="{Binding !IsConnected}"/>
-        <Button Content="Odpojit" Command="{Binding DisconnectCommand}" IsVisible="{Binding IsConnected}"/>
-        <TextBlock Text="{Binding ConnectionStatus}" VerticalAlignment="Center" Foreground="#9CDCFE"/>
-        <TextBlock Text="{Binding Error}" VerticalAlignment="Center" Foreground="#FF6B6B"/>
-      </StackPanel>
+    <!-- Header: title · connection status · connection gear (server config lives in the gear, not a top bar) -->
+    <Border DockPanel.Dock="Top" Padding="10,8" Background="#252526">
+      <Grid ColumnDefinitions="*,Auto,Auto">
+        <TextBlock Grid.Column="0" Text="DiffPDF Remote Manager" FontWeight="Bold" FontSize="14"
+                   Foreground="White" VerticalAlignment="Center"/>
+
+        <!-- Live connection status -->
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,0,10,0">
+          <Ellipse Width="9" Height="9" Fill="#6FCF73" VerticalAlignment="Center" IsVisible="{Binding IsConnected}"/>
+          <Ellipse Width="9" Height="9" Fill="#888888" VerticalAlignment="Center" IsVisible="{Binding !IsConnected}"/>
+          <TextBlock Text="{Binding ConnectionStatus}" Foreground="#9CDCFE" VerticalAlignment="Center"/>
+        </StackPanel>
+
+        <!-- Connection gear: configure / connect / remember -->
+        <Button Grid.Column="2" VerticalAlignment="Center" Padding="8,4" ToolTip.Tip="Připojení k serveru">
+          <TextBlock Text="⚙" FontSize="16"/>
+          <Button.Flyout>
+            <Flyout Placement="BottomEdgeAlignedRight">
+              <StackPanel Width="330" Spacing="8" Margin="4" x:CompileBindings="False">
+                <TextBlock Text="Připojení k serveru" FontWeight="Bold" FontSize="14"/>
+                <TextBlock Text="Adresa serveru" FontSize="12" Foreground="#AAAAAA"/>
+                <TextBox Text="{Binding ServerUrl}" PlaceholderText="http://localhost:5275"/>
+                <StackPanel Spacing="6" IsVisible="{Binding AuthEnabled}">
+                  <TextBox Text="{Binding ClientId}" PlaceholderText="ClientId"/>
+                  <TextBox Text="{Binding ClientSecret}" PlaceholderText="Secret" PasswordChar="•"/>
+                </StackPanel>
+                <CheckBox Content="Připojovat automaticky při startu" IsChecked="{Binding AutoConnect}"/>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <Button Content="Připojit" Command="{Binding ConnectCommand}" IsVisible="{Binding !IsConnected}"/>
+                  <Button Content="Odpojit" Command="{Binding DisconnectCommand}" IsVisible="{Binding IsConnected}"/>
+                  <Button Content="💾 Uložit" Command="{Binding SaveSettingsCommand}"/>
+                </StackPanel>
+                <TextBlock Text="{Binding ConnectionStatus}" Foreground="#9CDCFE" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding SaveNote}" Foreground="#6FCF73" TextWrapping="Wrap"
+                           IsVisible="{Binding SaveNote, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+                <TextBlock Text="{Binding Error}" Foreground="#FF6B6B" TextWrapping="Wrap"/>
+              </StackPanel>
+            </Flyout>
+          </Button.Flyout>
+        </Button>
+      </Grid>
     </Border>
 
     <!-- Nav rail -->
@@ -28,7 +57,10 @@
              IsEnabled="{Binding IsConnected}">
       <ListBox.ItemTemplate>
         <DataTemplate x:DataType="vm:PageViewModel">
-          <TextBlock Text="{Binding Title}" Padding="6,4"/>
+          <StackPanel Orientation="Horizontal" Spacing="8" Margin="2,4">
+            <TextBlock Text="{Binding Icon}" FontSize="15" Width="22" TextAlignment="Center" VerticalAlignment="Center"/>
+            <TextBlock Text="{Binding Title}" VerticalAlignment="Center"/>
+          </StackPanel>
         </DataTemplate>
       </ListBox.ItemTemplate>
     </ListBox>

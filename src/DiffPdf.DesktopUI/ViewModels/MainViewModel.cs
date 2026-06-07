@@ -12,6 +12,7 @@ public partial class MainViewModel : ViewModelBase
     private readonly JobProgressHubClient _hub;
     private readonly ClientConfig _config;
     private readonly ServerDiscoveryClient _discovery;
+    private readonly ClientSettingsStore _settings;
 
     public IReadOnlyList<PageViewModel> Pages { get; }
 
@@ -23,22 +24,40 @@ public partial class MainViewModel : ViewModelBase
     // Drives visibility of the ClientId/Secret fields — only shown when the connected server requires auth.
     [ObservableProperty] private bool _authEnabled;
     [ObservableProperty] private string _connectionStatus = "Nepřipojeno";
+    // Persist + auto-connect on next start (the connection gear's "remember" toggle).
+    [ObservableProperty] private bool _autoConnect = true;
+    [ObservableProperty] private string? _saveNote;
 
     public MainViewModel(ServerSession session, JobProgressHubClient hub, NavigationService navigation,
-        ClientConfig config, ServerDiscoveryClient discovery, IEnumerable<PageViewModel> pages)
+        ClientConfig config, ServerDiscoveryClient discovery, ClientSettingsStore settings, IEnumerable<PageViewModel> pages)
     {
         _session = session;
         _hub = hub;
         _config = config;
         _discovery = discovery;
+        _settings = settings;
         Pages = pages.OrderBy(p => p.NavOrder).ToList();
         navigation.Navigated += page => SelectedPage = page;
 
-        // Seed the connection bar from config: explicit URL + optional credentials for an auth server.
+        // Seed the connection settings from config: explicit URL + optional credentials + the auto-connect flag.
         if (!string.IsNullOrWhiteSpace(config.Server.Url))
             ServerUrl = config.Server.Url!.Trim();
         ClientId = config.Auth.ClientId ?? string.Empty;
         ClientSecret = config.Auth.ClientSecret ?? string.Empty;
+        AutoConnect = config.Server.AutoConnect;
+    }
+
+    /// <summary>Persists the connection settings so the client reconnects automatically on the next start.</summary>
+    [RelayCommand]
+    private void SaveSettings()
+    {
+        _settings.Save(ServerUrl, AutoConnect, ClientId, ClientSecret);
+        // Mirror into the in-memory config so this session matches what was persisted.
+        _config.Server.Url = string.IsNullOrWhiteSpace(ServerUrl) ? null : ServerUrl.Trim();
+        _config.Server.AutoConnect = AutoConnect;
+        _config.Auth.ClientId = string.IsNullOrWhiteSpace(ClientId) ? null : ClientId;
+        _config.Auth.ClientSecret = string.IsNullOrWhiteSpace(ClientSecret) ? null : ClientSecret;
+        SaveNote = AutoConnect ? "Uloženo — připojí se automaticky při startu." : "Uloženo.";
     }
 
     /// <summary>Connects automatically on startup: an explicit configured URL wins, otherwise LAN discovery.</summary>

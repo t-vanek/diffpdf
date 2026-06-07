@@ -32,6 +32,6 @@ public class StatGroupTests
         var compFailed = groups[1].Lines.Single(l => l.Label == "Selhané");
         Assert.Equal(0, jobsFailedZero.Count);
         Assert.Equal(3, compFailed.Count);
-        Assert.NotEqual(((SolidColorBrush)jobsFailedZero.Foreground).Color, ((SolidColorBrush)compFailed.Foreground).Color);
+        Assert.NotEqual(((ISolidColorBrush)jobsFailedZero.Foreground).Color, ((ISolidColorBrush)compFailed.Foreground).Color);
     }
 }

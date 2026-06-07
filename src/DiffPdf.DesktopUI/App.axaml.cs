@@ -41,12 +41,15 @@ public partial class App : Application
         var configuration = new ConfigurationBuilder()
             .SetBasePath(AppContext.BaseDirectory)
             .AddJsonFile("appsettings.json", optional: true)
+            // User-saved connection settings (written by the connection gear) override appsettings.json.
+            .AddJsonFile(ClientSettingsStore.DefaultFilePath, optional: true, reloadOnChange: false)
             .AddEnvironmentVariables("DIFFPDF_")
             .Build();
         services.AddSingleton(configuration.Get<ClientConfig>() ?? new ClientConfig());
 
         // Core services (singletons shared across the app).
         services.AddSingleton<ServerSession>();
+        services.AddSingleton<ClientSettingsStore>();
         services.AddSingleton<TokenSource>();
         services.AddSingleton<JobProgressHubClient>();
         services.AddSingleton<DialogService>();

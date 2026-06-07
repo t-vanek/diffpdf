@@ -25,6 +25,7 @@ public partial class JobsViewModel : PageViewModel
     private readonly SemaphoreSlim _loadGate = new(1, 1);
 
     public override string Title => "Úlohy";
+    public override string Icon => "☰";
     public override int NavOrder => 4;
 
     public ObservableCollection<JobRowViewModel> Jobs { get; } = [];
@@ -124,19 +125,12 @@ public partial class JobsViewModel : PageViewModel
 
     /// <summary>Merges fetched jobs into <see cref="Jobs"/> by id (updates in place, inserts new, drops gone) so the
     /// selection survives a realtime refresh. Order is the server's (newest first); existing rows are not reshuffled.</summary>
-    private void Reconcile(IReadOnlyList<JobSummary> list)
-    {
-        var incoming = list.Select(j => j.Id).ToHashSet();
-        for (int i = Jobs.Count - 1; i >= 0; i--)
-            if (!incoming.Contains(Jobs[i].Id)) Jobs.RemoveAt(i);
-
-        var byId = Jobs.ToDictionary(r => r.Id);
-        for (int i = 0; i < list.Count; i++)
-        {
-            if (byId.TryGetValue(list[i].Id, out var row)) row.Apply(list[i]);
-            else Jobs.Insert(Math.Min(i, Jobs.Count), new JobRowViewModel(list[i]));
-        }
-    }
+    private void Reconcile(IReadOnlyList<JobSummary> list) =>
+        ListReconciler.Reconcile(Jobs, list,
+            keyOf: j => j.Id.ToString(),
+            rowKeyOf: r => r.Id.ToString(),
+            create: j => new JobRowViewModel(j),
+            update: (r, j) => r.Apply(j));
 
     [RelayCommand]
     private Task RefreshAsync() => RunAsync(LoadJobsAsync);

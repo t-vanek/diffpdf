@@ -13,6 +13,7 @@ public partial class DashboardViewModel : PageViewModel
     private readonly DispatcherTimer _timer;
 
     public override string Title => "Přehled";
+    public override string Icon => "⌂";
     public override int NavOrder => 0;
 
     [ObservableProperty] private bool? _healthy;

@@ -29,6 +29,7 @@ public partial class BranchesViewModel : PageViewModel
     private readonly SemaphoreSlim _loadGate = new(1, 1);
 
     public override string Title => "Větve";
+    public override string Icon => "⋔";
     public override int NavOrder => 1;
 
     public ObservableCollection<BranchRowViewModel> Branches { get; } = [];
@@ -127,62 +128,36 @@ public partial class BranchesViewModel : PageViewModel
         catch { /* best-effort realtime refresh */ }
     }
 
-    /// <summary>Reloads the branch list, reconciling the existing rows in place (see <see cref="ReconcileAsync"/>).</summary>
+    /// <summary>Reloads the branch list, reconciling the existing rows in place (see <see cref="Reconcile"/>).</summary>
     private async Task LoadAsync()
     {
         await _loadGate.WaitAsync();
-        try
-        {
-            await ReconcileAsync(await _session.Require().ListBranchSummariesAsync());
-        }
-        finally
-        {
-            _loadGate.Release();
-        }
+        try { Reconcile(await _session.Require().ListBranchSummariesAsync()); }
+        finally { _loadGate.Release(); }
     }
 
     /// <summary>
-    /// Merges the fetched summaries into <see cref="Branches"/> in place — updating existing rows (name/enabled,
-    /// instance count, queue state), appending new ones, and dropping removed ones — instead of clearing and
-    /// rebuilding. This keeps the selection + per-row checkbox state across an auto-refresh and avoids flicker.
-    /// Queue + instance count come from the single summary call, so there is no per-branch round-trip (N+1).
+    /// Merges the fetched summaries into <see cref="Branches"/> in place via <see cref="ListReconciler"/>:
+    /// updates existing rows (name/enabled, instance count, queue), inserts new ones (wiring selection + joining
+    /// their SignalR group), drops removed — keeping selection + checkbox state across an auto-refresh. Queue +
+    /// instance count come from the single summary call, so there is no per-branch round-trip (N+1).
     /// </summary>
-    private async Task ReconcileAsync(IReadOnlyList<BranchSummary> summaries)
+    private void Reconcile(IReadOnlyList<BranchSummary> summaries)
     {
-        var incoming = new HashSet<string>(summaries.Select(s => s.Branch.Key), StringComparer.Ordinal);
-
-        for (int i = Branches.Count - 1; i >= 0; i--)
-        {
-            if (!incoming.Contains(Branches[i].Branch.Key))
-            {
-                Branches[i].PropertyChanged -= OnRowChanged;
-                Branches.RemoveAt(i);
-            }
-        }
-
-        var byKey = Branches.ToDictionary(r => r.Branch.Key, StringComparer.Ordinal);
-        foreach (var s in summaries)
-        {
-            if (byKey.TryGetValue(s.Branch.Key, out var row))
-            {
-                row.Branch = s.Branch; // refresh name/enabled (key is the immutable identity)
-                row.InstanceCount = s.InstanceCount;
-                row.Apply(s.Queue);
-            }
-            else
-            {
-                var added = new BranchRowViewModel(s.Branch) { InstanceCount = s.InstanceCount };
-                added.Apply(s.Queue);
-                added.PropertyChanged += OnRowChanged;
-                Branches.Add(added);
-                // Join the branch's SignalR group so later live queue pushes reach this row.
-                try { await _hub.JoinBranchAsync(s.Branch.Key); }
-                catch { /* live pushes are best-effort */ }
-            }
-        }
-
+        ListReconciler.Reconcile(Branches, summaries,
+            keyOf: s => s.Branch.Key,
+            rowKeyOf: r => r.Branch.Key,
+            create: s => { var row = new BranchRowViewModel(s.Branch) { InstanceCount = s.InstanceCount }; row.Apply(s.Queue); return row; },
+            update: (r, s) => { r.Branch = s.Branch; r.InstanceCount = s.InstanceCount; r.Apply(s.Queue); },
+            onAdded: r => { r.PropertyChanged += OnRowChanged; _ = JoinBranchQuietlyAsync(r.Branch.Key); },
+            onRemoved: r => r.PropertyChanged -= OnRowChanged);
         RecomputeDeleteSelection();
         OnPropertyChanged(nameof(HasNoBranches));
+    }
+
+    private async Task JoinBranchQuietlyAsync(string key)
+    {
+        try { await _hub.JoinBranchAsync(key); } catch { /* live queue pushes are best-effort */ }
     }
 
     private void OnRowChanged(object? sender, PropertyChangedEventArgs e)
@@ -225,6 +200,33 @@ public partial class BranchesViewModel : PageViewModel
 
     [RelayCommand]
     private Task RefreshAsync() => RunAsync(LoadAsync);
+
+    /// <summary>Dry-run scope sync: report what the on-disk &lt;root&gt;/&lt;branch&gt;/&lt;instance&gt; tree would change (no writes).</summary>
+    [RelayCommand]
+    private Task PreviewSyncAsync() => RunAsync(async () =>
+        Info = SummarizeSync(await _session.Require().SyncScopeAsync(apply: false)));
+
+    /// <summary>Apply scope sync: register discovered branches/instances + create the missing skeleton, then reload the list.</summary>
+    [RelayCommand]
+    private Task ApplySyncAsync() => RunAsync(async () =>
+    {
+        if (!await _dialogs.ConfirmAsync("Synchronizovat větve a instance",
+                "Zaregistruje nalezené složky (větve a instance) do databáze a vytvoří chybějící old/new/reports na disku. Pokračovat?"))
+            return;
+        Info = SummarizeSync(await _session.Require().SyncScopeAsync(apply: true));
+        await LoadAsync(); // nově zaregistrované větve/instance se objeví v seznamu
+    });
+
+    private static string SummarizeSync(ScopeSyncReport r)
+    {
+        if (!r.Reachable)
+            return $"Kořen nedostupný: {r.Error}";
+        int branches = r.Branches.Count(b => b.State == BranchSyncState.Registered);
+        int instances = r.Branches.Sum(b => b.Instances.Count(i => i.State == InstanceSyncState.Registered));
+        string verb = r.Applied ? "zaregistrováno" : "k registraci";
+        return $"{r.Root}: {branches} větv(í), {instances} instancí {verb}; "
+             + $"{r.MissingFolders.Count} chybějících složek, {r.OutOfRoot.Count} mimo kořen.";
+    }
 
     partial void OnSelectedRowChanged(BranchRowViewModel? value)
     {

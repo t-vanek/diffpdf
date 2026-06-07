@@ -14,6 +14,7 @@ public partial class SingleCompareViewModel : PageViewModel
     private readonly ServerSession _session;
 
     public override string Title => "Jednorázové porovnání";
+    public override string Icon => "⇄";
     public override int NavOrder => 6;
 
     public ComparisonOptionsViewModel Options { get; } = new();

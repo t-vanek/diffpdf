@@ -28,28 +28,19 @@ public sealed record StatLine(string Label, int Count)
     };
 
     /// <summary>Whole-line brush: a zero count is muted; otherwise the tone's colour.</summary>
-    public IBrush Foreground => Count == 0 ? _muted : Tone switch
+    public IBrush Foreground => Count == 0 ? Palette.Faint : Tone switch
     {
-        StatTone.Good => _green,
-        StatTone.Running => _blue,
-        StatTone.Waiting => _amber,
-        StatTone.Paused => _orange,
-        StatTone.Failed => _red,
-        StatTone.Skipped => _gray,
-        StatTone.Warning => _amber,
-        _ => _normal,
+        StatTone.Good => Palette.Good,
+        StatTone.Running => Palette.Info,
+        StatTone.Waiting => Palette.Warning,
+        StatTone.Paused => Palette.Paused,
+        StatTone.Failed => Palette.Bad,
+        StatTone.Skipped => Palette.Skipped,
+        StatTone.Warning => Palette.Warning,
+        _ => Palette.Text,
     };
 
     public FontWeight Weight => Count > 0 ? FontWeight.SemiBold : FontWeight.Normal;
-
-    private static readonly IBrush _muted = new SolidColorBrush(Color.Parse("#5A5A5A"));
-    private static readonly IBrush _normal = new SolidColorBrush(Color.Parse("#CCCCCC"));
-    private static readonly IBrush _green = new SolidColorBrush(Color.Parse("#6FCF73"));
-    private static readonly IBrush _blue = new SolidColorBrush(Color.Parse("#9CDCFE"));
-    private static readonly IBrush _amber = new SolidColorBrush(Color.Parse("#D8A657"));
-    private static readonly IBrush _orange = new SolidColorBrush(Color.Parse("#E5A050"));
-    private static readonly IBrush _red = new SolidColorBrush(Color.Parse("#E06C75"));
-    private static readonly IBrush _gray = new SolidColorBrush(Color.Parse("#9A9A9A"));
 }
 
 /// <summary>A named group of counts shown as a card in a branch/instance detail (e.g. "Úlohy").</summary>

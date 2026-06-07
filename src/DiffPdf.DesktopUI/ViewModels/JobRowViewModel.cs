@@ -33,8 +33,8 @@ public partial class JobRowViewModel(JobSummary job) : ObservableObject
 
     public IBrush StatusBrush => Job.Status switch
     {
-        JobStatus.Running => Blue, JobStatus.Completed => Green, JobStatus.Failed => Red,
-        JobStatus.Paused => Amber, JobStatus.Cancelled => Gray, _ => Muted,
+        JobStatus.Running => Palette.Info, JobStatus.Completed => Palette.Good, JobStatus.Failed => Palette.Bad,
+        JobStatus.Paused => Palette.Paused, JobStatus.Cancelled => Palette.Skipped, _ => Palette.Muted,
     };
 
     public double Progress => Job.Progress;
@@ -57,20 +57,13 @@ public partial class JobRowViewModel(JobSummary job) : ObservableObject
 
     public IBrush VerdictBrush => Job.Status switch
     {
-        JobStatus.Completed when Job.GatePassed == true => Green,
-        JobStatus.Completed when (Job.Differing ?? 0) == 0 && (Job.Errors ?? 0) > 0 => Amber,
-        JobStatus.Completed => Red,
-        JobStatus.Failed => Red,
-        JobStatus.Cancelled => Gray,
-        _ => Muted,
+        JobStatus.Completed when Job.GatePassed == true => Palette.Good,
+        JobStatus.Completed when (Job.Differing ?? 0) == 0 && (Job.Errors ?? 0) > 0 => Palette.Warning,
+        JobStatus.Completed => Palette.Bad,
+        JobStatus.Failed => Palette.Bad,
+        JobStatus.Cancelled => Palette.Skipped,
+        _ => Palette.Muted,
     };
 
     public void Apply(JobSummary updated) => Job = updated;
-
-    private static readonly IBrush Blue = new SolidColorBrush(Color.Parse("#9CDCFE"));
-    private static readonly IBrush Green = new SolidColorBrush(Color.Parse("#6FCF73"));
-    private static readonly IBrush Red = new SolidColorBrush(Color.Parse("#E06C75"));
-    private static readonly IBrush Amber = new SolidColorBrush(Color.Parse("#D8A657"));
-    private static readonly IBrush Gray = new SolidColorBrush(Color.Parse("#9A9A9A"));
-    private static readonly IBrush Muted = new SolidColorBrush(Color.Parse("#7A7A7A"));
 }
