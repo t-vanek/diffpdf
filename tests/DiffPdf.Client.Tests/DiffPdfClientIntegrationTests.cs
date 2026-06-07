@@ -70,7 +70,7 @@ public class DiffPdfClientIntegrationTests(InMemoryApiFactory factory)
     {
         var diff = NewClient();
         var (bk, ik) = FreshKeys();
-        await diff.CreateBranchAsync(new(bk, "Branch"));
+        await diff.CreateBranchAsync(new(bk, bk));
 
         string basePath = Path.Combine(Path.GetTempPath(), "diffpdf-sdk-" + Guid.NewGuid().ToString("N"));
         try
@@ -157,7 +157,7 @@ public class DiffPdfClientIntegrationTests(InMemoryApiFactory factory)
         string bk = "B" + Guid.NewGuid().ToString("N")[..8];
         string ik = "I" + Guid.NewGuid().ToString("N")[..8];
 
-        await diff.CreateBranchAsync(new(bk, "Branch"));
+        await diff.CreateBranchAsync(new(bk, bk));
         string basePath = Path.Combine(Path.GetTempPath(), "diffpdf-trig-" + Guid.NewGuid().ToString("N"));
         try
         {
@@ -244,7 +244,7 @@ public class DiffPdfClientIntegrationTests(InMemoryApiFactory factory)
     {
         var diff = NewClient();
         var (bk, ik) = FreshKeys();
-        await diff.CreateBranchAsync(new(bk, "B"));
+        await diff.CreateBranchAsync(new(bk, bk));
         string basePath = Path.Combine(Path.GetTempPath(), "diffpdf-idel-" + Guid.NewGuid().ToString("N"));
         try
         {
@@ -265,6 +265,88 @@ public class DiffPdfClientIntegrationTests(InMemoryApiFactory factory)
             var ex = await Assert.ThrowsAsync<DiffPdfApiException>(() => diff.DeleteInstanceAsync(bk, ik));
             Assert.Equal(HttpStatusCode.Conflict, ex.StatusCode);
             Assert.NotNull(await diff.GetInstanceAsync(bk, ik));
+        }
+        finally
+        {
+            try { Directory.Delete(basePath, recursive: true); } catch (IOException) { }
+        }
+    }
+
+    [Fact]
+    public async Task BranchSummaries_Include_InstanceCount_And_QueueState()
+    {
+        var diff = NewClient();
+        var (bk, ik1) = FreshKeys();
+        var (_, ik2) = FreshKeys();
+        await diff.CreateBranchAsync(new(bk, bk));
+        await diff.CreateInstanceAsync(bk, new(ik1, ik1, @"C:\x\1"), ensureStructure: false);
+        await diff.CreateInstanceAsync(bk, new(ik2, ik2, @"C:\x\2"), ensureStructure: false);
+
+        var summary = (await diff.ListBranchSummariesAsync()).Single(s => s.Branch.Key == bk);
+        Assert.Equal(2, summary.InstanceCount);
+        Assert.Equal(bk, summary.Queue.BranchKey);
+        Assert.Equal(0, summary.Queue.Running); // nothing queued
+    }
+
+    [Fact]
+    public async Task Scope_CRUD_Writes_AuditEntries()
+    {
+        var diff = NewClient();
+        var (bk, _) = FreshKeys();
+        var created = await diff.CreateBranchAsync(new(bk, bk));
+        await diff.UpdateBranchAsync(bk, new UpdateBranchRequest(bk, false, created.Version));
+
+        var audit = await diff.ListBranchAuditAsync(bk);
+        Assert.Contains(audit, a => a.Action == "branch.created" && a.EntityType == "Branch");
+        Assert.Contains(audit, a => a.Action == "branch.updated");
+        Assert.All(audit, a => Assert.Equal("Manager", a.Source));
+    }
+
+    [Fact]
+    public async Task Branch_CascadeDelete_RemovesBranchAndInstances()
+    {
+        var diff = NewClient();
+        var (bk, ik) = FreshKeys();
+        await diff.CreateBranchAsync(new(bk, bk));
+        await diff.CreateInstanceAsync(bk, new(ik, ik, @"C:\x\1"), ensureStructure: false);
+
+        // Plain delete is blocked while the branch still holds an instance.
+        var blocked = await Assert.ThrowsAsync<DiffPdfApiException>(() => diff.DeleteBranchAsync(bk));
+        Assert.Equal(HttpStatusCode.Conflict, blocked.StatusCode);
+
+        // Cascade removes the instance + the branch.
+        await diff.DeleteBranchAsync(bk, cascade: true);
+        Assert.Null(await diff.GetBranchAsync(bk));
+        Assert.Null(await diff.GetInstanceAsync(bk, ik));
+    }
+
+    [Fact]
+    public async Task Branch_DuplicateName_Is_Rejected_409()
+    {
+        var diff = NewClient();
+        var (bk1, _) = FreshKeys();
+        var (bk2, _) = FreshKeys();
+        var name = "Dup-" + Guid.NewGuid().ToString("N")[..8];
+        await diff.CreateBranchAsync(new(bk1, name));
+
+        var ex = await Assert.ThrowsAsync<DiffPdfApiException>(() => diff.CreateBranchAsync(new(bk2, name)));
+        Assert.Equal(HttpStatusCode.Conflict, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task Instance_DuplicateName_InSameBranch_Is_Rejected_409()
+    {
+        var diff = NewClient();
+        var (bk, ik1) = FreshKeys();
+        var (_, ik2) = FreshKeys();
+        await diff.CreateBranchAsync(new(bk, bk));
+        string basePath = Path.Combine(Path.GetTempPath(), "diffpdf-dup-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            const string name = "DupInst";
+            await diff.CreateInstanceAsync(bk, new(ik1, name, basePath));
+            var ex = await Assert.ThrowsAsync<DiffPdfApiException>(() => diff.CreateInstanceAsync(bk, new(ik2, name, basePath)));
+            Assert.Equal(HttpStatusCode.Conflict, ex.StatusCode);
         }
         finally
         {
@@ -296,7 +378,7 @@ public class DiffPdfClientIntegrationTests(InMemoryApiFactory factory)
     {
         var diff = NewClient();
         var (bk, ik) = FreshKeys();
-        await diff.CreateBranchAsync(new(bk, "B"));
+        await diff.CreateBranchAsync(new(bk, bk));
         string basePath = Path.Combine(Path.GetTempPath(), "diffpdf-iu-" + Guid.NewGuid().ToString("N"));
         try
         {
@@ -321,7 +403,7 @@ public class DiffPdfClientIntegrationTests(InMemoryApiFactory factory)
     {
         var diff = NewClient();
         var (bk, ik) = FreshKeys();
-        await diff.CreateBranchAsync(new(bk, "B"));
+        await diff.CreateBranchAsync(new(bk, bk));
         string basePath = Path.Combine(Path.GetTempPath(), "diffpdf-st-" + Guid.NewGuid().ToString("N"));
         try
         {
@@ -352,7 +434,7 @@ public class DiffPdfClientIntegrationTests(InMemoryApiFactory factory)
     {
         var diff = NewClient();
         var (bk, ik) = FreshKeys();
-        await diff.CreateBranchAsync(new(bk, "Branch"));
+        await diff.CreateBranchAsync(new(bk, bk));
         string basePath = Path.Combine(Path.GetTempPath(), "diffpdf-trg-" + Guid.NewGuid().ToString("N"));
         try
         {
@@ -397,7 +479,7 @@ public class DiffPdfClientIntegrationTests(InMemoryApiFactory factory)
     {
         var diff = NewClient();
         var (bk, ik) = FreshKeys();
-        await diff.CreateBranchAsync(new(bk, "B"));
+        await diff.CreateBranchAsync(new(bk, bk));
         string basePath = Path.Combine(Path.GetTempPath(), "diffpdf-tc-" + Guid.NewGuid().ToString("N"));
         try
         {

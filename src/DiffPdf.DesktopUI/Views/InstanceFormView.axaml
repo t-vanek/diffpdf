@@ -1,0 +1,58 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:DiffPdf.DesktopUI.ViewModels"
+             x:Class="DiffPdf.DesktopUI.Views.InstanceFormView"
+             x:DataType="vm:InstanceFormViewModel">
+
+  <StackPanel Margin="18" Spacing="12" Width="460">
+    <TextBlock Text="{Binding WindowTitle}" FontWeight="Bold" FontSize="16"/>
+
+    <StackPanel Spacing="4">
+      <TextBlock Text="Klíč" Foreground="#CCC"/>
+      <TextBox Text="{Binding Key}" PlaceholderText="Klíč (např. LamaEnergy)" IsEnabled="{Binding !IsEditMode}"/>
+      <TextBlock Text="Klíč je neměnná identita a po vytvoření ho nelze změnit."
+                 Foreground="#808080" FontSize="11" TextWrapping="Wrap" IsVisible="{Binding IsEditMode}"/>
+    </StackPanel>
+
+    <StackPanel Spacing="4">
+      <TextBlock Text="Název" Foreground="#CCC"/>
+      <TextBox Text="{Binding Name}" PlaceholderText="Název"/>
+    </StackPanel>
+
+    <!-- Create: manual root (only when the server has no structure root) + derived base-path preview -->
+    <StackPanel Spacing="4" IsVisible="{Binding RootInputVisible}">
+      <TextBlock Text="Kořenová složka" Foreground="#CCC"/>
+      <TextBox Text="{Binding Root}" PlaceholderText="Kořenová složka (např. D:\diffpdf)"/>
+      <TextBlock Foreground="#808080" FontSize="11" TextWrapping="Wrap"
+                 Text="Server nemá nastavený kořen struktury (ScopeSync:RootPath) — zadej kořenovou složku ručně."/>
+    </StackPanel>
+
+    <!-- Edit: base path edited directly -->
+    <StackPanel Spacing="4" IsVisible="{Binding IsEditMode}">
+      <TextBlock Text="Základní cesta" Foreground="#CCC"/>
+      <TextBox Text="{Binding BasePath}" PlaceholderText="Základní cesta"/>
+    </StackPanel>
+
+    <StackPanel Spacing="4">
+      <TextBlock Text="Profil přihlášení (volitelné)" Foreground="#CCC"/>
+      <TextBox Text="{Binding CredentialProfile}" PlaceholderText="Profil přihlášení (volitelné)"/>
+    </StackPanel>
+
+    <CheckBox Content="Založit složky old/new/reports" IsChecked="{Binding EnsureStructure}" IsVisible="{Binding IsCreateMode}"/>
+    <CheckBox Content="Povoleno" IsChecked="{Binding Enabled}" IsVisible="{Binding IsEditMode}"/>
+
+    <TextBlock Foreground="#9CDCFE" TextWrapping="Wrap"
+               Text="{Binding BasePathPreview, StringFormat='Instance vznikne v: {0} (a v ní složky old/new/reports)'}"
+               IsVisible="{Binding BasePathPreview, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+
+    <TextBlock Text="{Binding ValidationError}" Foreground="#C0392B" TextWrapping="Wrap"
+               IsVisible="{Binding ValidationError, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+    <TextBlock Text="{Binding Error}" Foreground="#C0392B" TextWrapping="Wrap"
+               IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+
+    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+      <Button Content="{Binding SaveButtonText}" Command="{Binding SaveCommand}" IsDefault="True" MinWidth="100"/>
+      <Button Content="Zrušit" Command="{Binding CancelCommand}" IsCancel="True" MinWidth="80"/>
+    </StackPanel>
+  </StackPanel>
+</UserControl>

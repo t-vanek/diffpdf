@@ -59,6 +59,10 @@ public sealed class JobEntity
     public int TotalCount { get; set; }
     public string RequestJson { get; set; } = string.Empty;
     public string? ReportJson { get; set; }
+    // Verdict denormalized from the report on completion, so the list query needn't deserialize ReportJson.
+    public int? DifferingCount { get; set; }
+    public int? ErrorCount { get; set; }
+    public bool? GatePassed { get; set; }
     public string? Error { get; set; }
     public long Version { get; set; } = 1;
     public string? LockedBy { get; set; }

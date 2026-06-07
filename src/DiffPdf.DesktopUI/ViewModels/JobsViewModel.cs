@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.IO;
+using Avalonia.Collections;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DiffPdf.Client;
@@ -7,38 +8,74 @@ using DiffPdf.DesktopUI.Services;
 
 namespace DiffPdf.DesktopUI.ViewModels;
 
-/// <summary>Jobs: list + filter, detail (live progress via SignalR, tasks, report, CI result, artifacts), lifecycle actions.</summary>
+/// <summary>
+/// Úlohy: realtime list of comparison jobs (status chip + progress + outcome verdict) and a unified detail that
+/// auto-loads on selection — summary chips, CI-gate verdict and ONE file-pair list (results + diff PDF when
+/// finished, task progress while running) with a "jen odlišné" filter. Lifecycle actions are state-aware.
+/// </summary>
 public partial class JobsViewModel : PageViewModel
 {
     private readonly ServerSession _session;
     private readonly JobProgressHubClient _hub;
     private readonly DialogService _dialogs;
+    private bool _subscribed;
     private Guid? _pendingJobId;
+
+    // Serializes list reloads (manual / realtime / filter) so they never race the shared Jobs collection.
+    private readonly SemaphoreSlim _loadGate = new(1, 1);
 
     public override string Title => "Úlohy";
     public override int NavOrder => 4;
 
-    public ObservableCollection<JobSummary> Jobs { get; } = [];
-    public ObservableCollection<FilePairTaskSummary> Tasks { get; } = [];
+    public ObservableCollection<JobRowViewModel> Jobs { get; } = [];
     public JobStatus?[] StatusFilters { get; } = [null, .. Enum.GetValues<JobStatus>().Cast<JobStatus?>()];
 
-    [ObservableProperty] private string _filterBranch = string.Empty;
-    [ObservableProperty] private string _filterInstance = string.Empty;
+    /// <summary>Filter dropdowns; the first entry ("— vše —") means "no filter".</summary>
+    public const string AllFilter = "— vše —";
+    public ObservableCollection<string> BranchOptions { get; } = [AllFilter];
+    public ObservableCollection<string> InstanceOptions { get; } = [AllFilter];
+
+    /// <summary>Unified file-pair list of the selected job; <see cref="FilesView"/> applies the "jen odlišné" filter.</summary>
+    public ObservableCollection<FilePairLine> Files { get; } = [];
+    public DataGridCollectionView FilesView { get; }
+
+    /// <summary>Selected job's report counts, as coloured chips.</summary>
+    public ObservableCollection<StatLine> Summary { get; } = [];
+
+    [ObservableProperty] private string _filterBranch = AllFilter;
+    [ObservableProperty] private string _filterInstance = AllFilter;
     [ObservableProperty] private JobStatus? _filterStatus;
-    [ObservableProperty] private JobSummary? _selectedJob;
-    [ObservableProperty] private BatchComparisonReport? _report;
-    [ObservableProperty] private JobResult? _result;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SelectedSummary), nameof(CanPause), nameof(CanResume), nameof(CanCancel), nameof(CanRetry))]
+    private JobRowViewModel? _selectedJob;
+
+    public JobSummary? SelectedSummary => SelectedJob?.Job;
+
     [ObservableProperty] private double _liveProgress;
     [ObservableProperty] private string? _liveStatus;
+    [ObservableProperty] private JobResult? _result;
     [ObservableProperty] private string? _info;
+    [ObservableProperty] private bool _showOnlyDiffering;
+
+    // State-aware lifecycle actions: only what the current status allows is enabled.
+    public bool CanPause => SelectedSummary?.Status == JobStatus.Running;
+    public bool CanResume => SelectedSummary?.Status == JobStatus.Paused;
+    public bool CanCancel => SelectedSummary?.Status is JobStatus.Draft or JobStatus.Queued or JobStatus.Running or JobStatus.Paused;
+    public bool CanRetry => SelectedSummary?.Status is JobStatus.Completed or JobStatus.Failed or JobStatus.Cancelled;
 
     public JobsViewModel(ServerSession session, JobProgressHubClient hub, DialogService dialogs)
     {
         _session = session;
         _hub = hub;
         _dialogs = dialogs;
-        _hub.ProgressReceived += OnProgress;
+        FilesView = new DataGridCollectionView(Files)
+        {
+            Filter = o => !ShowOnlyDiffering || (o is FilePairLine f && f.IsDiffering),
+        };
     }
+
+    partial void OnShowOnlyDifferingChanged(bool value) => FilesView.Refresh();
 
     /// <summary>Called via navigation (e.g. from a trigger) to open a specific job after the list loads.</summary>
     public void OpenJob(Guid id) => _pendingJobId = id;
@@ -46,71 +83,191 @@ public partial class JobsViewModel : PageViewModel
     public override Task ActivateAsync() => RunAsync(async () =>
     {
         try { await _hub.EnsureStartedAsync(); } catch { /* live progress is best-effort */ }
+        if (!_subscribed)
+        {
+            _hub.ProgressReceived += OnProgress;
+            _hub.Reconnected += OnReconnected;
+            _subscribed = true;
+        }
+        // Join the scope group so any job finishing anywhere refreshes the list live.
+        try { await _hub.JoinScopeAsync(); } catch { /* realtime is best-effort */ }
+
+        await LoadBranchOptionsAsync();
         await LoadJobsAsync();
 
         if (_pendingJobId is { } id)
         {
             _pendingJobId = null;
-            var match = Jobs.FirstOrDefault(j => j.Id == id) ?? await _session.Require().GetJobAsync(id);
-            if (match is not null)
+            var row = Jobs.FirstOrDefault(j => j.Id == id);
+            if (row is null && await _session.Require().GetJobAsync(id) is { } s)
             {
-                if (Jobs.All(j => j.Id != match.Id)) Jobs.Insert(0, match);
-                SelectedJob = Jobs.First(j => j.Id == match.Id);
+                row = new JobRowViewModel(s);
+                Jobs.Insert(0, row);
             }
+            SelectedJob = row;
         }
     });
 
     private async Task LoadJobsAsync()
     {
-        var list = await _session.Require().ListJobsAsync(
-            string.IsNullOrWhiteSpace(FilterBranch) ? null : FilterBranch,
-            string.IsNullOrWhiteSpace(FilterInstance) ? null : FilterInstance,
-            FilterStatus);
-        Jobs.Clear();
-        foreach (var j in list) Jobs.Add(j);
+        await _loadGate.WaitAsync();
+        try
+        {
+            var list = await _session.Require().ListJobsAsync(
+                FilterBranch == AllFilter ? null : FilterBranch,
+                FilterInstance == AllFilter ? null : FilterInstance,
+                FilterStatus);
+            Reconcile(list);
+        }
+        finally { _loadGate.Release(); }
+    }
+
+    /// <summary>Merges fetched jobs into <see cref="Jobs"/> by id (updates in place, inserts new, drops gone) so the
+    /// selection survives a realtime refresh. Order is the server's (newest first); existing rows are not reshuffled.</summary>
+    private void Reconcile(IReadOnlyList<JobSummary> list)
+    {
+        var incoming = list.Select(j => j.Id).ToHashSet();
+        for (int i = Jobs.Count - 1; i >= 0; i--)
+            if (!incoming.Contains(Jobs[i].Id)) Jobs.RemoveAt(i);
+
+        var byId = Jobs.ToDictionary(r => r.Id);
+        for (int i = 0; i < list.Count; i++)
+        {
+            if (byId.TryGetValue(list[i].Id, out var row)) row.Apply(list[i]);
+            else Jobs.Insert(Math.Min(i, Jobs.Count), new JobRowViewModel(list[i]));
+        }
     }
 
     [RelayCommand]
     private Task RefreshAsync() => RunAsync(LoadJobsAsync);
 
-    partial void OnSelectedJobChanged(JobSummary? value)
-    {
-        Report = null;
-        Result = null;
-        Tasks.Clear();
-        if (value is null) { LiveStatus = null; LiveProgress = 0; return; }
+    partial void OnFilterStatusChanged(JobStatus? value) => _ = RunAsync(LoadJobsAsync);
+    partial void OnFilterInstanceChanged(string value) => _ = RunAsync(LoadJobsAsync);
 
-        LiveProgress = value.Progress;
-        LiveStatus = value.Status.ToString();
-        _ = RunAsync(async () =>
-        {
-            await _hub.JoinJobAsync(value.Id);
-            await LoadTasksAsync(value.Id);
-        });
+    // Picking a branch repopulates the instance dropdown (cascading) and refreshes the list.
+    partial void OnFilterBranchChanged(string value) => _ = RunAsync(async () =>
+    {
+        InstanceOptions.Clear();
+        InstanceOptions.Add(AllFilter);
+        if (value != AllFilter)
+            foreach (var i in await _session.Require().ListInstancesAsync(value)) InstanceOptions.Add(i.Key);
+        if (!InstanceOptions.Contains(FilterInstance)) FilterInstance = AllFilter; // may re-trigger a (gated) reload
+        await LoadJobsAsync();
+    });
+
+    private async Task LoadBranchOptionsAsync()
+    {
+        var branches = await _session.Require().ListBranchesAsync();
+        BranchOptions.Clear();
+        BranchOptions.Add(AllFilter);
+        foreach (var b in branches) BranchOptions.Add(b.Key);
+        if (!BranchOptions.Contains(FilterBranch)) FilterBranch = AllFilter;
     }
 
-    private async Task LoadTasksAsync(Guid id)
+    private void OnReconnected() => _ = ReloadQuietlyAsync();
+
+    private async Task ReloadQuietlyAsync()
     {
-        Tasks.Clear();
-        foreach (var t in await _session.Require().GetTasksAsync(id)) Tasks.Add(t);
+        try { await LoadJobsAsync(); }
+        catch { /* best-effort realtime refresh */ }
     }
 
     private void OnProgress(JobProgress p)
     {
-        if (SelectedJob?.Id != p.JobId) return;
+        bool terminal = p.Status is "Completed" or "Failed" or "Cancelled";
+        bool selected = SelectedJob?.Id == p.JobId;
+        var row = Jobs.FirstOrDefault(r => r.Id == p.JobId);
+        if (row is null)
+        {
+            _ = ReloadQuietlyAsync(); // a job we don't have yet (started elsewhere) → fetch it into the list
+        }
+        else if (terminal || selected)
+        {
+            // Update the open job live, or any job that just finished. Skip per-tick churn for the rest: jobProgress
+            // is broadcast to every client, so re-applying every running tick of every job would be needless work.
+            row.Apply(row.Job with
+            {
+                Status = Enum.TryParse<JobStatus>(p.Status, out var st) ? st : row.Job.Status,
+                Progress = p.Progress, ProcessedCount = p.ProcessedCount, TotalCount = p.TotalCount,
+            });
+            if (terminal) _ = ReloadQuietlyAsync(); // refresh the verdict (counts come from the now-written report)
+        }
+
+        if (!selected) return;
         LiveProgress = p.Progress;
         LiveStatus = p.Status;
         Info = $"{p.Status}: {p.ProcessedCount}/{p.TotalCount}";
+        OnPropertyChanged(nameof(CanPause)); OnPropertyChanged(nameof(CanResume));
+        OnPropertyChanged(nameof(CanCancel)); OnPropertyChanged(nameof(CanRetry));
+        if (terminal) _ = LoadDetailAsync(p.JobId); // pull the report/files/verdict into the open detail
     }
 
-    [RelayCommand]
-    private Task LoadTasksCmdAsync() => RunAsync(async () => { if (SelectedJob is { } j) await LoadTasksAsync(j.Id); });
+    partial void OnSelectedJobChanged(JobRowViewModel? value)
+    {
+        Files.Clear();
+        Summary.Clear();
+        Result = null;
+        if (value is null) { LiveStatus = null; LiveProgress = 0; return; }
 
-    [RelayCommand]
-    private Task LoadReportAsync() => RunAsync(async () => { if (SelectedJob is { } j) Report = await _session.Require().GetReportAsync(j.Id); });
+        LiveProgress = value.Job.Progress;
+        LiveStatus = value.StatusText;
+        _ = RunAsync(async () =>
+        {
+            await _hub.JoinJobAsync(value.Id);
+            await LoadDetailAsync(value.Id);
+        });
+    }
 
-    [RelayCommand]
-    private Task LoadResultAsync() => RunAsync(async () => { if (SelectedJob is { } j) Result = await _session.Require().GetResultAsync(j.Id); });
+    /// <summary>Auto-loads everything for the selected job: the finished report (summary + files + diff PDFs) or,
+    /// while it is still running, the live task list — plus the CI-gate result.</summary>
+    private async Task LoadDetailAsync(Guid id)
+    {
+        var client = _session.Require();
+        bool finished = SelectedJob?.Job.Status == JobStatus.Completed;
+
+        Files.Clear();
+        Summary.Clear();
+
+        // A completed job has the rich report (per-file results + diff PDFs). Only then do we ask for it —
+        // requesting a report/result for a running job would 404, so we avoid using exceptions as control flow.
+        if (finished)
+        {
+            try
+            {
+                var report = await client.GetReportAsync(id);
+                if (SelectedJob?.Id != id) return; // selection moved on while we awaited
+                foreach (var f in report.Files) Files.Add(FilePairLine.FromResult(f));
+                BuildSummary(report);
+            }
+            catch { /* report pruned by retention → fall back to task-level state below */ }
+        }
+
+        if (Files.Count == 0) // running / failed / cancelled / pruned → show task progress
+        {
+            try
+            {
+                foreach (var t in await client.GetTasksAsync(id))
+                    if (SelectedJob?.Id == id) Files.Add(FilePairLine.FromTask(t));
+            }
+            catch { /* best-effort */ }
+        }
+        FilesView.Refresh();
+
+        if (finished)
+            try { var r = await client.GetResultAsync(id); if (SelectedJob?.Id == id) Result = r; }
+            catch { /* CI result is best-effort */ }
+    }
+
+    private void BuildSummary(BatchComparisonReport r)
+    {
+        Summary.Clear();
+        Summary.Add(new("Celkem", r.Total));
+        Summary.Add(new("Shodné", r.Identical) { Tone = StatTone.Good });
+        Summary.Add(new("Odlišné", r.Differing) { Tone = StatTone.Failed });
+        Summary.Add(new("Jen ve staré", r.OnlyInOld) { Tone = StatTone.Warning });
+        Summary.Add(new("Jen v nové", r.OnlyInNew) { Tone = StatTone.Warning });
+        Summary.Add(new("Chyby", r.Errors) { Tone = StatTone.Failed });
+    }
 
     [RelayCommand] private Task PauseAsync() => ActAsync(c => c.PauseJobAsync(SelectedJob!.Id));
     [RelayCommand] private Task ResumeAsync() => ActAsync(c => c.ResumeJobAsync(SelectedJob!.Id));
@@ -121,25 +278,19 @@ public partial class JobsViewModel : PageViewModel
     {
         if (SelectedJob is null) throw new InvalidOperationException("Vyber úlohu.");
         var updated = await action(_session.Require());
-        ReplaceJob(updated);
-        Info = $"Úloha {updated.Id}: {updated.Status}.";
+        SelectedJob.Apply(updated);
+        OnPropertyChanged(nameof(SelectedSummary));
+        OnPropertyChanged(nameof(CanPause)); OnPropertyChanged(nameof(CanResume));
+        OnPropertyChanged(nameof(CanCancel)); OnPropertyChanged(nameof(CanRetry));
+        Info = $"Úloha: {updated.Status}.";
     });
 
-    private void ReplaceJob(JobSummary updated)
-    {
-        for (int i = 0; i < Jobs.Count; i++)
-        {
-            if (Jobs[i].Id == updated.Id) { Jobs[i] = updated; break; }
-        }
-        SelectedJob = updated;
-    }
-
     [RelayCommand]
-    private Task DownloadAsync(FilePairResult? file) => RunAsync(async () =>
+    private Task DownloadAsync(FilePairLine? line) => RunAsync(async () =>
     {
-        if (SelectedJob is null || file?.HighlightedPdfPath is null)
+        if (SelectedJob is null || line?.Diff?.HighlightedPdfPath is null)
             throw new InvalidOperationException("Pro tuto dvojici není diff-artefakt.");
-        var relativePath = Path.GetFileName(file.HighlightedPdfPath);
+        var relativePath = Path.GetFileName(line.Diff.HighlightedPdfPath);
         var bytes = await _session.Require().DownloadArtifactAsync(SelectedJob.Id, relativePath);
         var saved = await _dialogs.SaveBytesAsync(relativePath, bytes);
         Info = saved is null ? "Stažení zrušeno." : $"Uloženo: {saved}";

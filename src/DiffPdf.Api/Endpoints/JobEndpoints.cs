@@ -27,7 +27,8 @@ public static class JobEndpoints
                 Limit = Math.Clamp(limit ?? 100, 1, 500),
                 Offset = Math.Max(0, offset ?? 0),
             };
-            var jobs = await jobStore.ListAsync(query, ct);
+            // Lightweight projection: scalar columns + denormalized verdict, no request/report JSON deserialized.
+            var jobs = await jobStore.ListSummariesAsync(query, ct);
             // Non-breaking pagination: the body stays a plain array; the matching total is in a header.
             response.Headers["X-Total-Count"] = (await jobStore.CountAsync(query, ct)).ToString();
             return Results.Ok(jobs.Select(JobSummary.From));

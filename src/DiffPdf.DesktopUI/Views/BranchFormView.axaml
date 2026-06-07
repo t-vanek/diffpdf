@@ -1,0 +1,38 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:DiffPdf.DesktopUI.ViewModels"
+             x:Class="DiffPdf.DesktopUI.Views.BranchFormView"
+             x:DataType="vm:BranchFormViewModel">
+
+  <StackPanel Margin="18" Spacing="12">
+    <TextBlock Text="{Binding WindowTitle}" FontWeight="Bold" FontSize="16"/>
+
+    <StackPanel Spacing="4">
+      <TextBlock Text="Klíč" Foreground="#CCC"/>
+      <TextBox Text="{Binding Key}" PlaceholderText="Klíč (např. Alfa)" IsEnabled="{Binding !IsEditMode}"/>
+      <TextBlock Text="Klíč je neměnná identita a po vytvoření ho nelze změnit."
+                 Foreground="#808080" FontSize="11" TextWrapping="Wrap" IsVisible="{Binding IsEditMode}"/>
+    </StackPanel>
+
+    <StackPanel Spacing="4">
+      <TextBlock Text="Název" Foreground="#CCC"/>
+      <TextBox Text="{Binding Name}" PlaceholderText="Název"/>
+    </StackPanel>
+
+    <CheckBox Content="Povoleno" IsChecked="{Binding Enabled}" IsVisible="{Binding IsEditMode}"/>
+
+    <TextBlock Foreground="#9CDCFE" TextWrapping="Wrap"
+               Text="{Binding FolderPreview, StringFormat='Složka větve vznikne v: {0}'}"
+               IsVisible="{Binding FolderPreview, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+
+    <TextBlock Text="{Binding ValidationError}" Foreground="#C0392B" TextWrapping="Wrap"
+               IsVisible="{Binding ValidationError, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+    <TextBlock Text="{Binding Error}" Foreground="#C0392B" TextWrapping="Wrap"
+               IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+
+    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+      <Button Content="{Binding SaveButtonText}" Command="{Binding SaveCommand}" IsDefault="True" MinWidth="100"/>
+      <Button Content="Zrušit" Command="{Binding CancelCommand}" IsCancel="True" MinWidth="80"/>
+    </StackPanel>
+  </StackPanel>
+</UserControl>

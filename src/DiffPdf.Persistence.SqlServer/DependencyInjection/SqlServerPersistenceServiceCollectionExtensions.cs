@@ -79,13 +79,18 @@ internal sealed class EfCoreMigrationBackgroundService(
                 if (pending.Count == 0)
                 {
                     logger.LogInformation("Database schema is up to date; no migrations to apply.");
-                    return;
+                }
+                else
+                {
+                    logger.LogInformation("Applying {Count} pending database migration(s): {Migrations}",
+                        pending.Count, string.Join(", ", pending));
+                    await db.Database.MigrateAsync(stoppingToken);
+                    logger.LogInformation("Database migration complete.");
                 }
 
-                logger.LogInformation("Applying {Count} pending database migration(s): {Migrations}",
-                    pending.Count, string.Join(", ", pending));
-                await db.Database.MigrateAsync(stoppingToken);
-                logger.LogInformation("Database migration complete.");
+                // One-time (idempotent) backfill of denormalized verdict counts for jobs completed before the
+                // AddJobVerdictColumns migration — so the jobs list keeps showing their verdict without the report.
+                await BackfillJobVerdictsAsync(scope.ServiceProvider, stoppingToken);
                 return;
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -99,6 +104,22 @@ internal sealed class EfCoreMigrationBackgroundService(
                 catch (OperationCanceledException) { return; }
                 delay = NextDelay(delay);
             }
+        }
+    }
+
+    private async Task BackfillJobVerdictsAsync(IServiceProvider services, CancellationToken ct)
+    {
+        try
+        {
+            var jobs = services.GetRequiredService<IJobStore>();
+            int total = 0, batch;
+            do { batch = await jobs.BackfillVerdictsAsync(500, ct); total += batch; }
+            while (batch > 0 && !ct.IsCancellationRequested);
+            if (total > 0) logger.LogInformation("Backfilled verdict counts for {Count} completed job(s).", total);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Job verdict backfill failed (non-fatal; the list falls back to a null verdict).");
         }
     }
 

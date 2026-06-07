@@ -47,6 +47,30 @@ public sealed record ComparisonInstance
     public long Version { get; init; } = 1;
 }
 
+/// <summary>
+/// A lightweight job row for the list view: scalar columns + the denormalized verdict counts, with the branch/
+/// instance keys joined in — so the list query never deserializes the (potentially large) request/report JSON.
+/// </summary>
+public sealed record JobListItem
+{
+    public Guid Id { get; init; }
+    public string BranchKey { get; init; } = "";
+    public string InstanceKey { get; init; } = "";
+    public JobStatus Status { get; init; }
+    public int ProcessedCount { get; init; }
+    public int TotalCount { get; init; }
+    public DateTimeOffset CreatedAt { get; init; }
+    public DateTimeOffset? CompletedAt { get; init; }
+    public string? Error { get; init; }
+
+    /// <summary>Verdict, denormalized from the report on completion (null while running / for pre-backfill rows).</summary>
+    public int? Differing { get; init; }
+    public int? Errors { get; init; }
+    public bool? GatePassed { get; init; }
+
+    public double Progress => TotalCount == 0 ? 0 : (double)ProcessedCount / TotalCount;
+}
+
 /// <summary>Filter and paging window for listing jobs (newest first).</summary>
 public sealed record JobListQuery
 {

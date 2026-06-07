@@ -8,109 +8,149 @@
   <DockPanel>
     <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
       <TextBlock Text="Úlohy" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
-      <TextBox Width="130" Text="{Binding FilterBranch}" PlaceholderText="Větev"/>
-      <TextBox Width="130" Text="{Binding FilterInstance}" PlaceholderText="Instance"/>
-      <ComboBox Width="130" ItemsSource="{Binding StatusFilters}" SelectedItem="{Binding FilterStatus}"/>
-      <Button Content="Obnovit" Command="{Binding RefreshCommand}"/>
+      <ComboBox Width="140" ItemsSource="{Binding BranchOptions}" SelectedItem="{Binding FilterBranch}"/>
+      <ComboBox Width="150" ItemsSource="{Binding InstanceOptions}" SelectedItem="{Binding FilterInstance}"/>
+      <ComboBox Width="120" ItemsSource="{Binding StatusFilters}" SelectedItem="{Binding FilterStatus}"/>
+      <Button Content="🔄 Obnovit" Command="{Binding RefreshCommand}"/>
       <TextBlock Text="{Binding Info}" Foreground="#9CDCFE" VerticalAlignment="Center"/>
       <TextBlock Text="{Binding Error}" Foreground="#C0392B" VerticalAlignment="Center"/>
     </StackPanel>
 
-    <Grid ColumnDefinitions="*,540">
+    <Grid ColumnDefinitions="*,560">
+      <!-- Seznam úloh -->
       <DataGrid Grid.Column="0" Margin="0,0,8,0" x:CompileBindings="False" ItemsSource="{Binding Jobs}"
                 SelectedItem="{Binding SelectedJob}" IsReadOnly="True" AutoGenerateColumns="False" CanUserResizeColumns="True">
         <DataGrid.Columns>
-          <DataGridTextColumn Header="Stav" Binding="{Binding Status}" Width="90"/>
-          <DataGridTextColumn Header="Větev" Binding="{Binding BranchKey}" Width="110"/>
-          <DataGridTextColumn Header="Instance" Binding="{Binding InstanceKey}" Width="110"/>
-          <DataGridTextColumn Header="Průběh" Binding="{Binding Progress, StringFormat='{}{0:P0}'}" Width="80"/>
-          <DataGridTextColumn Header="Vytvořeno" Binding="{Binding CreatedAt}" Width="170"/>
-          <DataGridTextColumn Header="Id" Binding="{Binding Id}" Width="*"/>
+          <DataGridTemplateColumn Header="Stav" Width="120">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate>
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <TextBlock Text="{Binding StatusIcon}" Foreground="{Binding StatusBrush}"/>
+                  <TextBlock Text="{Binding StatusText}" Foreground="{Binding StatusBrush}"/>
+                </StackPanel>
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+          <DataGridTextColumn Header="Instance" Binding="{Binding Job.InstanceKey}" Width="130"/>
+          <DataGridTextColumn Header="Větev" Binding="{Binding Job.BranchKey}" Width="100"/>
+          <DataGridTemplateColumn Header="Průběh" Width="130">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate>
+                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                  <ProgressBar Width="60" Height="6" Minimum="0" Maximum="1" Value="{Binding Progress}" VerticalAlignment="Center"/>
+                  <TextBlock Text="{Binding ProgressText}" VerticalAlignment="Center" FontSize="12"/>
+                </StackPanel>
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+          <DataGridTemplateColumn Header="Výsledek" Width="150">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate>
+                <TextBlock Text="{Binding VerdictText}" Foreground="{Binding VerdictBrush}" IsVisible="{Binding HasVerdict}" VerticalAlignment="Center"/>
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+          <DataGridTextColumn Header="Vytvořeno" Binding="{Binding Job.CreatedAt, StringFormat='{}{0:dd.MM HH:mm}'}" Width="*"/>
         </DataGrid.Columns>
       </DataGrid>
 
-      <ScrollViewer Grid.Column="1">
-        <StackPanel Spacing="8">
-          <!-- Souhrn + živý průběh -->
-          <Border BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="4" Padding="10"
-                  IsVisible="{Binding SelectedJob, Converter={x:Static ObjectConverters.IsNotNull}}">
-            <StackPanel Spacing="4">
-              <TextBlock Text="{Binding SelectedJob.Id, StringFormat='Úloha {0}'}" FontWeight="Bold"/>
-              <TextBlock Text="{Binding LiveStatus, StringFormat='Stav: {0}'}"/>
-              <ProgressBar Minimum="0" Maximum="1" Value="{Binding LiveProgress}"/>
-              <TextBlock Text="{Binding LiveProgress, StringFormat='{}{0:P0}'}"/>
-              <TextBlock Text="{Binding SelectedJob.CreatedAt, StringFormat='Vytvořeno: {0}'}"/>
-              <TextBlock Text="{Binding SelectedJob.CompletedAt, StringFormat='Dokončeno: {0}'}"/>
-              <TextBlock Text="{Binding SelectedJob.Error}" Foreground="#C0392B" TextWrapping="Wrap"/>
+      <ScrollViewer Grid.Column="1"
+                    IsVisible="{Binding SelectedSummary, Converter={x:Static ObjectConverters.IsNotNull}}">
+        <StackPanel Spacing="10">
+          <!-- Hlavička: instance · větev + stav -->
+          <StackPanel Spacing="2">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="{Binding SelectedSummary.InstanceKey}" FontWeight="Bold" FontSize="16"/>
+              <TextBlock Text="{Binding SelectedSummary.BranchKey, StringFormat='· {0}'}" Foreground="#888" VerticalAlignment="Center"/>
+              <TextBlock Text="{Binding SelectedJob.StatusIcon}" Foreground="{Binding SelectedJob.StatusBrush}" VerticalAlignment="Center"/>
+              <TextBlock Text="{Binding SelectedJob.StatusText}" Foreground="{Binding SelectedJob.StatusBrush}" FontWeight="SemiBold" VerticalAlignment="Center"/>
             </StackPanel>
-          </Border>
+            <TextBlock Foreground="#808080" FontSize="12"
+                       Text="{Binding SelectedSummary.CreatedAt, StringFormat='Vytvořeno {0:dd.MM.yyyy HH:mm}'}"/>
+            <TextBlock Foreground="#808080" FontSize="12"
+                       IsVisible="{Binding SelectedSummary.CompletedAt, Converter={x:Static ObjectConverters.IsNotNull}}"
+                       Text="{Binding SelectedSummary.CompletedAt, StringFormat='Dokončeno {0:dd.MM.yyyy HH:mm}'}"/>
+          </StackPanel>
 
+          <!-- Živý průběh -->
+          <StackPanel Spacing="3">
+            <ProgressBar Minimum="0" Maximum="1" Value="{Binding LiveProgress}"/>
+            <TextBlock FontSize="12" Foreground="#CCC"
+                       Text="{Binding SelectedSummary.ProcessedCount, StringFormat='{}{0} porovnáno'}"/>
+            <TextBlock Text="{Binding SelectedSummary.Error}" Foreground="#E06C75" TextWrapping="Wrap"
+                       IsVisible="{Binding SelectedSummary.Error, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+          </StackPanel>
+
+          <!-- Stavově řízené akce -->
           <WrapPanel>
-            <Button Content="Pozastavit" Command="{Binding PauseCommand}" Margin="0,0,6,6"/>
-            <Button Content="Pokračovat" Command="{Binding ResumeCommand}" Margin="0,0,6,6"/>
-            <Button Content="Zrušit" Command="{Binding CancelCommand}" Margin="0,0,6,6"/>
-            <Button Content="Opakovat" Command="{Binding RetryCommand}" Margin="0,0,6,6"/>
-            <Button Content="Porovnání" Command="{Binding LoadTasksCmdCommand}" Margin="0,0,6,6"/>
-            <Button Content="Souhrn" Command="{Binding LoadReportCommand}" Margin="0,0,6,6"/>
-            <Button Content="Výsledek" Command="{Binding LoadResultCommand}" Margin="0,0,6,6"/>
+            <Button Content="⏸ Pozastavit" Command="{Binding PauseCommand}" IsVisible="{Binding CanPause}" Margin="0,0,6,6"/>
+            <Button Content="↻ Pokračovat" Command="{Binding ResumeCommand}" IsVisible="{Binding CanResume}" Margin="0,0,6,6"/>
+            <Button Content="⏹ Zrušit" Command="{Binding CancelCommand}" IsVisible="{Binding CanCancel}" Margin="0,0,6,6"/>
+            <Button Content="🔁 Opakovat" Command="{Binding RetryCommand}" IsVisible="{Binding CanRetry}" Margin="0,0,6,6"/>
           </WrapPanel>
 
-          <TextBlock Text="Porovnání (dvojice souborů)" FontWeight="Bold"/>
-          <DataGrid x:CompileBindings="False" ItemsSource="{Binding Tasks}" IsReadOnly="True" Height="160"
-                    AutoGenerateColumns="False" CanUserResizeColumns="True">
-            <DataGrid.Columns>
-              <DataGridTextColumn Header="Soubor" Binding="{Binding RelativePath}" Width="*"/>
-              <DataGridTextColumn Header="Stav" Binding="{Binding Status}" Width="90"/>
-              <DataGridTextColumn Header="Pokus" Binding="{Binding AttemptCount}" Width="60"/>
-              <DataGridTextColumn Header="Výsledek" Binding="{Binding ResultStatus}" Width="90"/>
-            </DataGrid.Columns>
-          </DataGrid>
+          <!-- Souhrn (barevné chipy) + CI brána -->
+          <ItemsControl ItemsSource="{Binding Summary}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:StatLine">
+                <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,0,14,4">
+                  <TextBlock Text="{Binding Icon}" Foreground="{Binding Foreground}"/>
+                  <TextBlock Text="{Binding Label}" Foreground="{Binding Foreground}"/>
+                  <TextBlock Text="{Binding Count}" Foreground="{Binding Foreground}" FontWeight="{Binding Weight}"/>
+                </StackPanel>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
 
-          <!-- Souhrn porovnání -->
-          <Border BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="4" Padding="10"
-                  IsVisible="{Binding Report, Converter={x:Static ObjectConverters.IsNotNull}}">
-            <StackPanel Spacing="4">
-              <TextBlock Text="Souhrn porovnání" FontWeight="Bold"/>
-              <TextBlock Text="{Binding Report.Total, StringFormat='Celkem: {0}'}"/>
-              <TextBlock Text="{Binding Report.Identical, StringFormat='Shodné: {0}'}"/>
-              <TextBlock Text="{Binding Report.Differing, StringFormat='Odlišné: {0}'}"/>
-              <TextBlock Text="{Binding Report.OnlyInOld, StringFormat='Jen ve staré: {0}'}"/>
-              <TextBlock Text="{Binding Report.OnlyInNew, StringFormat='Jen v nové: {0}'}"/>
-              <TextBlock Text="{Binding Report.Errors, StringFormat='Chyby: {0}'}"/>
-              <TextBlock Text="{Binding Report.Passed, StringFormat='Prošlo: {0}'}"/>
-              <DataGrid x:CompileBindings="False" ItemsSource="{Binding Report.Files}" IsReadOnly="True" Height="200"
-                        AutoGenerateColumns="False" CanUserResizeColumns="True">
-                <DataGrid.Columns>
-                  <DataGridTextColumn Header="Soubor" Binding="{Binding RelativePath}" Width="*"/>
-                  <DataGridTextColumn Header="Stav" Binding="{Binding Status}" Width="90"/>
-                  <DataGridTextColumn Header="Shoda" Binding="{Binding Similarity, StringFormat='{}{0:P0}'}" Width="70"/>
-                  <DataGridTextColumn Header="Δstran" Binding="{Binding DifferingPages}" Width="70"/>
-                  <DataGridTemplateColumn Header="Diff" Width="80">
-                    <DataGridTemplateColumn.CellTemplate>
-                      <DataTemplate>
-                        <Button Content="PDF" Command="{Binding DataContext.DownloadCommand, ElementName=Root}" CommandParameter="{Binding}"/>
-                      </DataTemplate>
-                    </DataGridTemplateColumn.CellTemplate>
-                  </DataGridTemplateColumn>
-                </DataGrid.Columns>
-              </DataGrid>
-            </StackPanel>
-          </Border>
-
-          <!-- Výsledek CI brány -->
-          <Border BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="4" Padding="10"
+          <Border BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="4" Padding="8"
                   IsVisible="{Binding Result, Converter={x:Static ObjectConverters.IsNotNull}}">
             <StackPanel Spacing="4">
-              <TextBlock Text="Výsledek CI brány" FontWeight="Bold"/>
-              <TextBlock Text="{Binding Result.Passed, StringFormat='Prošlo: {0}'}"/>
-              <TextBlock Text="{Binding Result.Gated, StringFormat='S bránou: {0}'}"/>
-              <ItemsControl x:CompileBindings="False" ItemsSource="{Binding Result.Violations}">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <TextBlock Text="CI brána:" Foreground="#888"/>
+                <TextBlock Text="✓ Prošlo" Foreground="#6FCF73" FontWeight="SemiBold" IsVisible="{Binding Result.Passed}"/>
+                <TextBlock Text="✗ Neprošlo" Foreground="#E06C75" FontWeight="SemiBold" IsVisible="{Binding !Result.Passed}"/>
+              </StackPanel>
+              <ItemsControl ItemsSource="{Binding Result.Violations}">
                 <ItemsControl.ItemTemplate>
-                  <DataTemplate><TextBlock Text="{Binding}" Foreground="#C0392B"/></DataTemplate>
+                  <DataTemplate><TextBlock Text="{Binding}" Foreground="#E06C75" FontSize="12" TextWrapping="Wrap"/></DataTemplate>
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
             </StackPanel>
           </Border>
+
+          <!-- Soubory (sjednocený seznam) -->
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Grid.Column="0" Text="Soubory" FontWeight="Bold" VerticalAlignment="Center"/>
+            <CheckBox Grid.Column="1" Content="Jen odlišné" IsChecked="{Binding ShowOnlyDiffering}"/>
+          </Grid>
+          <DataGrid x:CompileBindings="False" ItemsSource="{Binding FilesView}" IsReadOnly="True" Height="320"
+                    AutoGenerateColumns="False" CanUserResizeColumns="True">
+            <DataGrid.Columns>
+              <DataGridTemplateColumn Header="Stav" Width="120">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate>
+                    <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                      <TextBlock Text="{Binding Icon}" Foreground="{Binding Brush}"/>
+                      <TextBlock Text="{Binding StatusText}" Foreground="{Binding Brush}"/>
+                    </StackPanel>
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+              <DataGridTextColumn Header="Soubor" Binding="{Binding Name}" Width="*"/>
+              <DataGridTextColumn Header="Detail" Binding="{Binding Detail}" Width="120"/>
+              <DataGridTemplateColumn Header="Diff" Width="70">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate>
+                    <Button Content="PDF" Padding="8,2" IsVisible="{Binding HasDiff}"
+                            Command="{Binding DataContext.DownloadCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+            </DataGrid.Columns>
+          </DataGrid>
         </StackPanel>
       </ScrollViewer>
     </Grid>

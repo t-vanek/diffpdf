@@ -36,6 +36,54 @@ public sealed class SqlServerJobStore(DiffPdfDbContext db, EntityMapper mapper) 
     public Task<int> CountAsync(JobListQuery query, CancellationToken ct = default) =>
         FilteredQuery(query).CountAsync(ct);
 
+    public async Task<IReadOnlyList<JobListItem>> ListSummariesAsync(JobListQuery query, CancellationToken ct = default)
+    {
+        string? status = query.Status?.ToString();
+        var rows = await (
+            from j in db.Jobs.AsNoTracking()
+            join br in db.Branches.AsNoTracking() on j.BranchId equals br.Id
+            join inst in db.Instances.AsNoTracking() on j.InstanceId equals inst.Id
+            where (query.BranchKey == null || br.Key == query.BranchKey)
+               && (query.InstanceKey == null || inst.Key == query.InstanceKey)
+               && (status == null || j.Status == status)
+               && (query.TriggerId == null || j.TriggerId == query.TriggerId)
+            orderby j.CreatedAt descending
+            select new
+            {
+                j.Id, BranchKey = br.Key, InstanceKey = inst.Key, j.Status,
+                j.ProcessedCount, j.TotalCount, j.CreatedAt, j.CompletedAt, j.Error,
+                j.DifferingCount, j.ErrorCount, j.GatePassed,
+            })
+            .Skip(Math.Max(0, query.Offset))
+            .Take(query.Limit)
+            .ToListAsync(ct);
+
+        return rows.Select(r => new JobListItem
+        {
+            Id = r.Id, BranchKey = r.BranchKey, InstanceKey = r.InstanceKey,
+            Status = Enum.TryParse<JobStatus>(r.Status, out var s) ? s : JobStatus.Queued,
+            ProcessedCount = r.ProcessedCount, TotalCount = r.TotalCount,
+            CreatedAt = r.CreatedAt, CompletedAt = r.CompletedAt, Error = r.Error,
+            Differing = r.DifferingCount, Errors = r.ErrorCount, GatePassed = r.GatePassed,
+        }).ToList();
+    }
+
+    public async Task<int> BackfillVerdictsAsync(int max, CancellationToken ct = default)
+    {
+        var rows = await db.Jobs
+            .Where(j => j.Status == "Completed" && j.ReportJson != null && j.DifferingCount == null)
+            .OrderBy(j => j.CreatedAt).Take(max).ToListAsync(ct);
+        foreach (var e in rows)
+        {
+            if (DiffPdfJson.Deserialize<BatchComparisonReport>(e.ReportJson!) is not { } report) continue;
+            e.DifferingCount = report.Differing;
+            e.ErrorCount = report.Errors;
+            e.GatePassed = report.Passed;
+        }
+        if (rows.Count > 0) await db.SaveChangesAsync(ct);
+        return rows.Count;
+    }
+
     private IQueryable<JobEntity> FilteredQuery(JobListQuery query)
     {
         string? status = query.Status?.ToString();
@@ -56,6 +104,14 @@ public sealed class SqlServerJobStore(DiffPdfDbContext db, EntityMapper mapper) 
             .Where(j => j.BranchId == branchId
                 && (j.Status == "Draft" || j.Status == "Queued" || j.Status == "Running" || j.Status == "Paused"))
             .OrderByDescending(j => j.Priority).ThenBy(j => j.CreatedAt)
+            .ToListAsync(ct);
+        return rows.Select(mapper.ToDomain).ToList();
+    }
+
+    public async Task<IReadOnlyList<ComparisonJob>> ListAllActiveAndDraftAsync(CancellationToken ct = default)
+    {
+        var rows = await db.Jobs.AsNoTracking()
+            .Where(j => j.Status == "Draft" || j.Status == "Queued" || j.Status == "Running" || j.Status == "Paused")
             .ToListAsync(ct);
         return rows.Select(mapper.ToDomain).ToList();
     }
@@ -116,6 +172,9 @@ public sealed class SqlServerJobStore(DiffPdfDbContext db, EntityMapper mapper) 
                 .SetProperty(j => j.ProcessedCount, report.Total)
                 .SetProperty(j => j.TotalCount, report.Total)
                 .SetProperty(j => j.ReportJson, reportJson)
+                .SetProperty(j => j.DifferingCount, (int?)report.Differing)
+                .SetProperty(j => j.ErrorCount, (int?)report.Errors)
+                .SetProperty(j => j.GatePassed, (bool?)report.Passed)
                 .SetProperty(j => j.Error, (string?)null)
                 .SetProperty(j => j.LockedBy, (string?)null)
                 .SetProperty(j => j.LockedUntil, (DateTimeOffset?)null)

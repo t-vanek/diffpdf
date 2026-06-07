@@ -14,6 +14,10 @@ public sealed partial class EntityMapper
 
     [MapProperty(nameof(JobEntity.RequestJson), nameof(ComparisonJob.Request))]
     [MapProperty(nameof(JobEntity.ReportJson), nameof(ComparisonJob.Report))]
+    // List-only denormalized verdict columns; the domain model derives these from Report.
+    [MapperIgnoreSource(nameof(JobEntity.DifferingCount))]
+    [MapperIgnoreSource(nameof(JobEntity.ErrorCount))]
+    [MapperIgnoreSource(nameof(JobEntity.GatePassed))]
     public partial ComparisonJob ToDomain(JobEntity entity);
 
     [MapProperty(nameof(FilePairTaskEntity.ResultJson), nameof(FilePairTask.Result))]

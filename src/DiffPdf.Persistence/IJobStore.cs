@@ -15,6 +15,19 @@ public interface IJobStore
 
     Task<IReadOnlyList<ComparisonJob>> ListAsync(JobListQuery query, CancellationToken ct = default);
 
+    /// <summary>
+    /// Lightweight list projection: scalar columns + denormalized verdict + joined branch/instance keys, WITHOUT
+    /// deserializing the request/report JSON. Use for the jobs list (the full <see cref="ListAsync"/> hydrates
+    /// every job's report, which is wasteful when only a verdict is shown).
+    /// </summary>
+    Task<IReadOnlyList<JobListItem>> ListSummariesAsync(JobListQuery query, CancellationToken ct = default);
+
+    /// <summary>
+    /// One-time backfill: for up to <paramref name="max"/> completed jobs that have a report but no denormalized
+    /// verdict yet (pre-migration rows), compute the counts from the report and store them. Returns rows updated.
+    /// </summary>
+    Task<int> BackfillVerdictsAsync(int max, CancellationToken ct = default);
+
     /// <summary>Total jobs matching the query's filter (scope/status), ignoring its paging window — for pagination metadata.</summary>
     Task<int> CountAsync(JobListQuery query, CancellationToken ct = default);
 
@@ -23,6 +36,9 @@ public interface IJobStore
 
     /// <summary>A branch's pending + active jobs (Draft/Queued/Running/Paused), for the queue-state read and branch "stop".</summary>
     Task<IReadOnlyList<ComparisonJob>> ListActiveAndDraftByBranchAsync(Guid branchId, CancellationToken ct = default);
+
+    /// <summary>All pending + active jobs (Draft/Queued/Running/Paused) across every branch, in one query — for batch queue state.</summary>
+    Task<IReadOnlyList<ComparisonJob>> ListAllActiveAndDraftAsync(CancellationToken ct = default);
 
     /// <summary>
     /// Running jobs that never finished indexing (TotalCount 0) and whose worker lease expired — stuck

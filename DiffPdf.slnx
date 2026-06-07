@@ -18,6 +18,11 @@
   <Folder Name="/tests/">
     <Project Path="tests/DiffPdf.Client.Tests/DiffPdf.Client.Tests.csproj" />
     <Project Path="tests/DiffPdf.Core.Tests/DiffPdf.Core.Tests.csproj" />
-    <Project Path="tests/DiffPdf.DesktopUI.Tests/DiffPdf.DesktopUI.Tests.csproj" />
+    <Project Path="tests/DiffPdf.DesktopUI.Tests/DiffPdf.DesktopUI.Tests.csproj">
+      <!-- Mirrors DiffPdf.DesktopUI: the desktop client + its tests are built/run on their own
+           (dotnet test tests/DiffPdf.DesktopUI.Tests), not as part of the server solution build. -->
+      <Build Solution="Debug|*" Project="false" />
+      <Build Solution="Release|*" Project="false" />
+    </Project>
   </Folder>
 </Solution>
