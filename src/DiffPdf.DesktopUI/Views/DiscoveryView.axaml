@@ -12,12 +12,7 @@
         <TextBlock Text="{Binding Error}" Foreground="#C0392B" VerticalAlignment="Center"/>
         <ProgressBar IsIndeterminate="True" Width="100" Height="4" VerticalAlignment="Center" IsVisible="{Binding IsBusy}"/>
       </StackPanel>
-      <StackPanel Orientation="Horizontal" Spacing="8">
-        <TextBlock Text="Synchronizace struktury" FontWeight="Bold" VerticalAlignment="Center"/>
-        <Button Content="Náhled" Command="{Binding PreviewSyncCommand}"/>
-        <Button Content="Synchronizovat" Command="{Binding ApplySyncCommand}"/>
-        <TextBlock Text="{Binding SyncInfo}" Foreground="#2C7A2C" VerticalAlignment="Center" TextWrapping="Wrap"/>
-      </StackPanel>
+      <TextBlock Text="Synchronizace větví a instancí je nově na stránce Větve." Foreground="#808080" FontSize="12"/>
     </StackPanel>
 
     <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">

@@ -12,6 +12,7 @@ public partial class SubscriptionsViewModel : PageViewModel
     private readonly ServerSession _session;
 
     public override string Title => "Notifikace";
+    public override string Icon => "✉︎";
     public override int NavOrder => 7;
 
     public string[] Channels { get; } = ["webhook", "email"];

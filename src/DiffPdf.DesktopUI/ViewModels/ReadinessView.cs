@@ -19,16 +19,11 @@ public sealed record BarSegment(double Width, IBrush Brush);
 /// Friendly, merged view over <see cref="InstanceReadiness"/> for the instance detail: a plain-language ready
 /// status (no raw True/False), the old/new/reports folders with state dots + counts, and the old↔new pairing
 /// with a proportion bar. Replaces the "Připraveno: True / Spárováno: 536 / old Present (654 pdf)" dump.
+/// Colours come from the shared <see cref="Palette"/>.
 /// </summary>
 public sealed class ReadinessView
 {
     private const double BarWidth = 300;
-
-    private static readonly IBrush Green = new SolidColorBrush(Color.Parse("#6FCF73"));
-    private static readonly IBrush Amber = new SolidColorBrush(Color.Parse("#D8A657"));
-    private static readonly IBrush Red = new SolidColorBrush(Color.Parse("#E06C75"));
-    private static readonly IBrush Gray = new SolidColorBrush(Color.Parse("#9A9A9A"));
-    private static readonly IBrush Normal = new SolidColorBrush(Color.Parse("#CCCCCC"));
 
     public string StatusIcon { get; }
     public string StatusText { get; }
@@ -49,16 +44,16 @@ public sealed class ReadinessView
         {
             StatusIcon = "✓";
             StatusText = "Připraveno k porovnání";
-            StatusBrush = Green;
+            StatusBrush = Palette.Good;
         }
         else
         {
             StatusIcon = "✗";
-            if (!r.Reachable) { StatusText = "Nepřipraveno — cesta nedostupná"; StatusBrush = Red; }
-            else if (!r.Structure.Ok) { StatusText = "Nepřipraveno — chybí složky"; StatusBrush = Red; }
-            else if (r.Matched == 0) { StatusText = "Nepřipraveno — žádné páry k porovnání"; StatusBrush = Amber; }
-            else if (!string.IsNullOrWhiteSpace(r.Error)) { StatusText = $"Nepřipraveno — {r.Error}"; StatusBrush = Amber; }
-            else { StatusText = "Nepřipraveno"; StatusBrush = Amber; }
+            if (!r.Reachable) { StatusText = "Nepřipraveno — cesta nedostupná"; StatusBrush = Palette.Bad; }
+            else if (!r.Structure.Ok) { StatusText = "Nepřipraveno — chybí složky"; StatusBrush = Palette.Bad; }
+            else if (r.Matched == 0) { StatusText = "Nepřipraveno — žádné páry k porovnání"; StatusBrush = Palette.Warning; }
+            else if (!string.IsNullOrWhiteSpace(r.Error)) { StatusText = $"Nepřipraveno — {r.Error}"; StatusBrush = Palette.Warning; }
+            else { StatusText = "Nepřipraveno"; StatusBrush = Palette.Warning; }
         }
 
         Folders = r.Structure.Items.Select(ToFolderLine).ToList();
@@ -66,17 +61,17 @@ public sealed class ReadinessView
         HasPairing = r.OldPdfCount > 0 || r.NewPdfCount > 0;
         Pairing =
         [
-            new("✓", $"{r.Matched} párů k porovnání", r.Matched > 0 ? Green : Gray),
-            new("⚠", $"{r.OnlyInOld} jen ve staré verzi", r.OnlyInOld > 0 ? Amber : Gray),
-            new("•", $"{r.OnlyInNew} jen v nové verzi", r.OnlyInNew > 0 ? Gray : Gray),
+            new("✓", $"{r.Matched} párů k porovnání", r.Matched > 0 ? Palette.Good : Palette.Skipped),
+            new("⚠", $"{r.OnlyInOld} jen ve staré verzi", r.OnlyInOld > 0 ? Palette.Warning : Palette.Skipped),
+            new("•", $"{r.OnlyInNew} jen v nové verzi", Palette.Skipped),
         ];
 
         int total = r.Matched + r.OnlyInOld + r.OnlyInNew;
         Bar = total == 0 ? [] :
         [
-            .. Seg(r.Matched, total, Green),
-            .. Seg(r.OnlyInOld, total, Amber),
-            .. Seg(r.OnlyInNew, total, Gray),
+            .. Seg(r.Matched, total, Palette.Good),
+            .. Seg(r.OnlyInOld, total, Palette.Warning),
+            .. Seg(r.OnlyInNew, total, Palette.Skipped),
         ];
     }
 
@@ -91,9 +86,9 @@ public sealed class ReadinessView
         bool present = i.State is not (StructureItemState.Missing or StructureItemState.WrongType);
         IBrush dot = i.State switch
         {
-            StructureItemState.Missing => Red,
-            StructureItemState.WrongType => Amber,
-            _ => Green,
+            StructureItemState.Missing => Palette.Bad,
+            StructureItemState.WrongType => Palette.Warning,
+            _ => Palette.Good,
         };
         string value = i.State switch
         {
@@ -101,6 +96,6 @@ public sealed class ReadinessView
             StructureItemState.WrongType => "není složka",
             _ => i.PdfCount is { } n ? $"{n} PDF" : "OK",
         };
-        return new FolderLine(i.Name, value, dot, present ? Normal : dot);
+        return new FolderLine(i.Name, value, dot, present ? Palette.Text : dot);
     }
 }

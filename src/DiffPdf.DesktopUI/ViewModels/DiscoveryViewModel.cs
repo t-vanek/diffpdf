@@ -1,30 +1,24 @@
 using System.Collections.ObjectModel;
-using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DiffPdf.Client;
 using DiffPdf.DesktopUI.Services;
 
 namespace DiffPdf.DesktopUI.ViewModels;
 
-/// <summary>Discovery: configured network shares and credential-profile names (read-only).</summary>
+/// <summary>Discovery: configured network shares and credential-profile names (read-only). Scope synchronization
+/// lives on the Větve page (it registers branches/instances from the folder tree).</summary>
 public partial class DiscoveryViewModel : PageViewModel
 {
     private readonly ServerSession _session;
-    private readonly DialogService _dialogs;
 
     public override string Title => "Sdílené složky";
+    public override string Icon => "⊞";
     public override int NavOrder => 8;
 
     public ObservableCollection<ShareInfo> Shares { get; } = [];
     public ObservableCollection<string> CredentialProfiles { get; } = [];
 
-    [ObservableProperty] private string? _syncInfo;
-
-    public DiscoveryViewModel(ServerSession session, DialogService dialogs)
-    {
-        _session = session;
-        _dialogs = dialogs;
-    }
+    public DiscoveryViewModel(ServerSession session) => _session = session;
 
     public override Task ActivateAsync() => RunAsync(LoadAsync);
 
@@ -39,30 +33,4 @@ public partial class DiscoveryViewModel : PageViewModel
 
     [RelayCommand]
     private Task RefreshAsync() => RunAsync(LoadAsync);
-
-    /// <summary>Dry-run scope sync: report what the on-disk &lt;root&gt;/&lt;branch&gt;/&lt;instance&gt; tree would change.</summary>
-    [RelayCommand]
-    private Task PreviewSyncAsync() => RunAsync(async () =>
-        SyncInfo = Summarize(await _session.Require().SyncScopeAsync(apply: false)));
-
-    /// <summary>Apply scope sync: register discovered folders and create the missing skeleton.</summary>
-    [RelayCommand]
-    private Task ApplySyncAsync() => RunAsync(async () =>
-    {
-        if (!await _dialogs.ConfirmAsync("Synchronizovat scope",
-                "Zaregistruje nalezené složky do databáze a vytvoří chybějící old/new/reports na disku. Pokračovat?"))
-            return;
-        SyncInfo = Summarize(await _session.Require().SyncScopeAsync(apply: true));
-    });
-
-    private static string Summarize(ScopeSyncReport r)
-    {
-        if (!r.Reachable)
-            return $"Kořen nedostupný: {r.Error}";
-        int branches = r.Branches.Count(b => b.State == BranchSyncState.Registered);
-        int instances = r.Branches.Sum(b => b.Instances.Count(i => i.State == InstanceSyncState.Registered));
-        string verb = r.Applied ? "zaregistrováno" : "k registraci";
-        return $"{r.Root}: {branches} větv(í), {instances} instancí {verb}; "
-             + $"{r.MissingFolders.Count} chybějících složek, {r.OutOfRoot.Count} mimo kořen.";
-    }
 }

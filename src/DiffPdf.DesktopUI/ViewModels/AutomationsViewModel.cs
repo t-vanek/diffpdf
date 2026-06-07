@@ -22,6 +22,7 @@ public sealed record AutomationType(string Title, string Description, IAutomatio
 public partial class AutomationsViewModel : PageViewModel
 {
     public override string Title => "Automatizace";
+    public override string Icon => "⟳";
     public override int NavOrder => 3;
 
     public IReadOnlyList<AutomationType> Types { get; }

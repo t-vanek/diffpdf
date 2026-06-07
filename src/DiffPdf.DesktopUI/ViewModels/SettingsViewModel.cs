@@ -11,6 +11,7 @@ namespace DiffPdf.DesktopUI.ViewModels;
 public sealed class SettingsViewModel : PageViewModel
 {
     public override string Title => "Konfigurace";
+    public override string Icon => "⚙︎";
     public override int NavOrder => 100;
 
     public ScopeSettingsViewModel Editor { get; }

@@ -29,11 +29,11 @@ public sealed record FilePairLine(string Name, string Icon, string StatusText, I
     {
         var (icon, text, brush) = t.Status switch
         {
-            "Completed" => ("✓", "Hotovo", Green),
-            "Running" => ("▶", "Běží", Blue),
-            "Failed" => ("✗", "Chyba", Red),
-            "Paused" => ("⏸", "Pozastaveno", Amber),
-            _ => ("⏳", "Čeká", Muted),
+            "Completed" => ("✓", "Hotovo", Palette.Good),
+            "Running" => ("▶", "Běží", Palette.Info),
+            "Failed" => ("✗", "Chyba", Palette.Bad),
+            "Paused" => ("⏸", "Pozastaveno", Palette.Paused),
+            _ => ("⏳", "Čeká", Palette.Muted),
         };
         string detail = t.AttemptCount > 1 ? $"{t.AttemptCount}. pokus" : t.ResultStatus ?? "";
         bool differing = t.ResultStatus is "Differs" or "OnlyInOld" or "OnlyInNew" or "Error";
@@ -42,17 +42,11 @@ public sealed record FilePairLine(string Name, string Icon, string StatusText, I
 
     private static (string Icon, string Text, IBrush Brush, bool Differing) Classify(FilePairStatus s) => s switch
     {
-        FilePairStatus.Identical => ("✓", "Shodné", Green, false),
-        FilePairStatus.Differs => ("✗", "Odlišné", Red, true),
-        FilePairStatus.OnlyInOld => ("⤳", "Jen ve staré", Amber, true),
-        FilePairStatus.OnlyInNew => ("⤳", "Jen v nové", Amber, true),
-        FilePairStatus.Error => ("⚠", "Chyba", Red, true),
-        _ => ("•", s.ToString(), Muted, false),
+        FilePairStatus.Identical => ("✓", "Shodné", Palette.Good, false),
+        FilePairStatus.Differs => ("✗", "Odlišné", Palette.Bad, true),
+        FilePairStatus.OnlyInOld => ("⤳", "Jen ve staré", Palette.Warning, true),
+        FilePairStatus.OnlyInNew => ("⤳", "Jen v nové", Palette.Warning, true),
+        FilePairStatus.Error => ("⚠", "Chyba", Palette.Bad, true),
+        _ => ("•", s.ToString(), Palette.Muted, false),
     };
-
-    private static readonly IBrush Green = new SolidColorBrush(Color.Parse("#6FCF73"));
-    private static readonly IBrush Red = new SolidColorBrush(Color.Parse("#E06C75"));
-    private static readonly IBrush Amber = new SolidColorBrush(Color.Parse("#D8A657"));
-    private static readonly IBrush Blue = new SolidColorBrush(Color.Parse("#9CDCFE"));
-    private static readonly IBrush Muted = new SolidColorBrush(Color.Parse("#7A7A7A"));
 }

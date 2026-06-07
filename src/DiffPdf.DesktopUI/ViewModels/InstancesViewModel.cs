@@ -27,6 +27,7 @@ public partial class InstancesViewModel : PageViewModel
     private string? _loadedBranchKey; // which branch the current rows belong to (drives fresh-load vs reconcile)
 
     public override string Title => "Instance";
+    public override string Icon => "▦";
     public override int NavOrder => 2;
 
     public ObservableCollection<Branch> Branches { get; } = [];
@@ -198,35 +199,17 @@ public partial class InstancesViewModel : PageViewModel
         }
     }
 
-    /// <summary>Merges the fetched instances into <see cref="Instances"/> in place (update / append / drop by key).</summary>
+    /// <summary>Merges the fetched instances into <see cref="Instances"/> in place via <see cref="ListReconciler"/>
+    /// (update / insert / drop by key), keeping selection + checkbox state.</summary>
     private void ReconcileInstances(IReadOnlyList<Instance> list)
     {
-        var incoming = new HashSet<string>(list.Select(i => i.Key), StringComparer.Ordinal);
-
-        for (int i = Instances.Count - 1; i >= 0; i--)
-        {
-            if (!incoming.Contains(Instances[i].Instance.Key))
-            {
-                Instances[i].PropertyChanged -= OnRowChanged;
-                Instances.RemoveAt(i);
-            }
-        }
-
-        var byKey = Instances.ToDictionary(r => r.Instance.Key, StringComparer.Ordinal);
-        foreach (var inst in list)
-        {
-            if (byKey.TryGetValue(inst.Key, out var row))
-            {
-                row.Instance = inst; // refresh name/basePath/enabled (key is the immutable identity)
-            }
-            else
-            {
-                var added = new InstanceRowViewModel(inst);
-                added.PropertyChanged += OnRowChanged;
-                Instances.Add(added);
-            }
-        }
-
+        ListReconciler.Reconcile(Instances, list,
+            keyOf: i => i.Key,
+            rowKeyOf: r => r.Instance.Key,
+            create: i => new InstanceRowViewModel(i),
+            update: (r, i) => r.Instance = i, // refresh name/basePath/enabled (key is the immutable identity)
+            onAdded: r => r.PropertyChanged += OnRowChanged,
+            onRemoved: r => r.PropertyChanged -= OnRowChanged);
         RecomputeDeleteSelection();
     }
 

@@ -39,6 +39,9 @@ public abstract class PageViewModel : ViewModelBase
     /// <summary>Label in the nav rail.</summary>
     public abstract string Title { get; }
 
+    /// <summary>Glyph shown before the title in the nav rail.</summary>
+    public virtual string Icon => "•";
+
     /// <summary>Sort order in the nav rail.</summary>
     public abstract int NavOrder { get; }
 
