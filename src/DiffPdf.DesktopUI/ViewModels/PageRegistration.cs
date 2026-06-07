@@ -17,7 +17,8 @@ internal static class PageRegistration
         Add<AutomationsViewModel>(services);
         Add<SubscriptionsViewModel>(services);
         Add<DiscoveryViewModel>(services);
-        Add<TriggersViewModel>(services);
+        // "Spustit porovnání" page removed — comparisons are now launched from the per-row run-queue
+        // controls on the Branches / Instances pages, so the standalone trigger page is redundant.
         Add<SingleCompareViewModel>(services);
         Add<JobsViewModel>(services);
         // Trigger + comparer configuration is no longer a central page; it lives per-scope behind the gear

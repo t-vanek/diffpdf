@@ -1,7 +1,9 @@
+using System.Reflection;
 using DiffPdf.Core.Abstractions;
 using DiffPdf.Core.Models;
 using DiffPdf.Messaging.Handlers;
 using DiffPdf.Worker;
+using Wolverine.Attributes;
 
 namespace DiffPdf.Core.Tests;
 
@@ -126,5 +128,27 @@ public class CompareFilePairSafetyTests
             File.Delete(old);
             File.Delete(@new);
         }
+    }
+
+    [Fact]
+    public void Wolverine_message_timeout_is_raised_above_the_per_pair_cap()
+    {
+        // Wolverine cancels the handler token at its message-execution timeout (60s by default) and a breach
+        // surfaces as a TaskCanceledException — which the handler cannot distinguish from a host shutdown. A
+        // file-pair comparison legitimately runs for minutes (FilePairComparisonTimeout, default 10 min). So
+        // without a raised ceiling a slow pair is killed at 60s, misread as a shutdown, left Running, requeued
+        // by the stale-lease sweeper, and killed again at 60s — looping forever so the job never finalizes.
+        // [MessageTimeout] must keep Wolverine's ceiling above the handler's own cap, which records a proper
+        // per-file timeout error. (The tests above invoke CompareAsync directly, bypassing Wolverine, so only
+        // this invariant guards the config.)
+        var attr = typeof(CompareFilePairHandler)
+            .GetMethod(nameof(CompareFilePairHandler.Handle))!
+            .GetCustomAttribute<MessageTimeoutAttribute>();
+
+        Assert.NotNull(attr);
+        var pairCap = new WorkerOptions().FilePairComparisonTimeout;
+        Assert.True(
+            attr!.TimeoutInSeconds > pairCap.TotalSeconds,
+            $"Wolverine message timeout ({attr.TimeoutInSeconds}s) must exceed FilePairComparisonTimeout ({pairCap.TotalSeconds}s).");
     }
 }

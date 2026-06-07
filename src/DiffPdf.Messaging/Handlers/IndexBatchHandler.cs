@@ -34,6 +34,37 @@ public sealed class IndexBatchHandler
             return null;
         }
 
+        // Idempotency. IndexBatch is a durable, at-least-once message: it can be redelivered (the first run
+        // committed its tasks but threw — or was killed — before acking, or any double dispatch). The job is
+        // still Running in that window, so the status check above does not catch it. Indexing again would
+        // create a SECOND full set of tasks with fresh ids, corrupting the processed/total accounting
+        // (SetTotalAsync says N, but 2N tasks complete) and double-triggering FinalizeBatch. So if this job
+        // already has file-pair tasks it was already indexed: never create a second set. Instead re-dispatch
+        // any pairs still Queued — covering a first run that committed the tasks but did not publish every
+        // CompareFilePair before it died — and stop. Re-publishing CompareFilePair for an already-claimed or
+        // finished pair is a no-op (TryClaimAsync only succeeds on a Queued task); this mirrors how
+        // JobResumeService re-dispatches and StaleTaskRecoveryService requeues, all of which key off existing
+        // task ids rather than minting new ones, so they never conflict.
+        var existing = await taskStore.ListByJobAsync(job.Id, ct);
+        if (existing.Count > 0)
+        {
+            var pending = existing.Where(t => t.Status == FilePairTaskStatus.Queued).ToList();
+            foreach (var t in pending)
+                await bus.PublishAsync(new CompareFilePair(job.Id, t.Id));
+
+            // Every pair already reached a terminal state but the job is still Running — a lost FinalizeBatch.
+            // Nudge finalization (idempotent). Guarded on all-terminal so we never finalize while pairs are
+            // still Queued/Running: those drive finalization themselves (in-flight completion, or the
+            // stale-lease sweeper re-dispatching a crashed worker's pair).
+            if (existing.All(t => t.Status is FilePairTaskStatus.Completed or FilePairTaskStatus.Failed or FilePairTaskStatus.Skipped))
+                await bus.PublishAsync(new FinalizeBatch(job.Id));
+
+            logger.LogInformation(
+                "IndexBatch for already-indexed job {JobId} ({Existing} task(s)); re-dispatched {Pending} queued pair(s).",
+                job.Id, existing.Count, pending.Count);
+            return null;
+        }
+
         await provisioner.EnsureJobFoldersAsync(job, ct);
 
         IReadOnlyList<FilePair> pairs;

@@ -59,4 +59,11 @@ public sealed partial class EntityMapper
 
     private static IReadOnlyDictionary<string, string> MapParameters(string json) =>
         string.IsNullOrEmpty(json) ? new Dictionary<string, string>() : DiffPdfJson.Deserialize<IReadOnlyDictionary<string, string>>(json);
+
+    // Tolerate legacy/unknown `source` strings instead of throwing. Job rows that pre-dated the
+    // `source` column were backfilled with an empty string (AddTriggers migration), and Mapperly's
+    // generated Enum.Parse would crash the whole read path on them. Source is provenance metadata,
+    // so an unknown value safely degrades to System. Used for ComparisonJob.Source and TriggerRun.Source.
+    private static JobSource MapJobSource(string source) =>
+        Enum.TryParse<JobSource>(source, ignoreCase: true, out var parsed) ? parsed : JobSource.System;
 }

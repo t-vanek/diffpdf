@@ -1,4 +1,5 @@
 using DiffPdf.Core.Models;
+using DiffPdf.Core.Storage;
 using DiffPdf.Persistence;
 
 namespace DiffPdf.Messaging.Configuration;
@@ -84,7 +85,7 @@ public sealed class ScopeConfigurationService(
     public async Task<ScopeConfigurationView> UpsertGlobalAsync(UpsertScopeConfigInput input, CancellationToken ct = default)
     {
         await provisioner.EnsureGlobalAsync(ct);
-        var current = await store.GetGlobalAsync(ct) ?? await store.CreateAsync(GlobalDefault(), ct);
+        var current = await GetOrCreateAsync(() => store.GetGlobalAsync(ct), GlobalDefault, ct);
         // The global level is the root of every chain — its sources are always Custom.
         var updated = current with
         {
@@ -104,7 +105,7 @@ public sealed class ScopeConfigurationService(
 
         Validate(ConfigScopeLevel.Branch, input);
         await provisioner.EnsureBranchConfigAsync(branch.Id, ct);
-        var current = await store.GetByBranchAsync(branch.Id, ct) ?? await store.CreateAsync(BranchDefault(branch.Id), ct);
+        var current = await GetOrCreateAsync(() => store.GetByBranchAsync(branch.Id, ct), () => BranchDefault(branch.Id), ct);
         var updated = Apply(current, input);
         var saved = await store.UpdateAsync(updated, input.ExpectedVersion ?? current.Version, ct);
         return new ScopeConfigurationView(saved, await resolver.ResolveForBranchAsync(branch.Id, ct));
@@ -119,7 +120,7 @@ public sealed class ScopeConfigurationService(
 
         Validate(ConfigScopeLevel.Instance, input);
         await provisioner.EnsureInstanceConfigAsync(branch.Id, instance.Id, ct);
-        var current = await store.GetByInstanceAsync(instance.Id, ct) ?? await store.CreateAsync(InstanceDefault(branch.Id, instance.Id), ct);
+        var current = await GetOrCreateAsync(() => store.GetByInstanceAsync(instance.Id, ct), () => InstanceDefault(branch.Id, instance.Id), ct);
         var updated = Apply(current, input);
         var saved = await store.UpdateAsync(updated, input.ExpectedVersion ?? current.Version, ct);
         return new ScopeConfigurationView(saved, await resolver.ResolveForInstanceAsync(branch.Id, instance.Id, ct));
@@ -134,6 +135,17 @@ public sealed class ScopeConfigurationService(
         ComparerSource = input.ComparerSource,
         ComparisonOptions = input.ComparisonOptions,
     };
+
+    // Read the scope's row, creating the default when absent. Tolerates losing a create race (with the
+    // provisioner that ran just before, or a concurrent request): on a duplicate-key collision the row now
+    // exists, so re-read it rather than surfacing the DuplicateKeyException as a 500 from this upsert path.
+    private async Task<ScopeConfiguration> GetOrCreateAsync(
+        Func<Task<ScopeConfiguration?>> get, Func<ScopeConfiguration> makeDefault, CancellationToken ct)
+    {
+        if (await get() is { } existing) return existing;
+        try { return await store.CreateAsync(makeDefault(), ct); }
+        catch (DuplicateKeyException) { return (await get())!; }
+    }
 
     /// <summary>A branch may inherit from Global or be Custom; an instance from Branch or be Custom.</summary>
     private static void Validate(ConfigScopeLevel level, UpsertScopeConfigInput input)

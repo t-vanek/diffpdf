@@ -6,6 +6,7 @@ using DiffPdf.Worker;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Wolverine;
+using Wolverine.Attributes;
 
 namespace DiffPdf.Messaging.Handlers;
 
@@ -17,6 +18,15 @@ namespace DiffPdf.Messaging.Handlers;
 /// </summary>
 public sealed class CompareFilePairHandler
 {
+    // Wolverine caps every handler at DefaultExecutionTimeout (60s) by cancelling the token it hands us, and a
+    // breach surfaces as a TaskCanceledException — indistinguishable here from a host shutdown. But a file-pair
+    // comparison legitimately runs for minutes: the handler enforces its OWN cap (FilePairComparisonTimeout,
+    // default 10 min) and records a per-file timeout error on expiry. Raise Wolverine's ceiling for this one
+    // message well above that cap so the 60s default can never pre-empt the handler's own timeout — otherwise a
+    // pair taking >60s is killed by Wolverine, misread as a shutdown, left Running, requeued by the stale-lease
+    // sweeper, and killed again at 60s, looping forever so the job never finalizes.
+    // INVARIANT: this must stay greater than WorkerOptions.FilePairComparisonTimeoutMinutes.
+    [MessageTimeout(30 * 60)]
     public static async Task Handle(
         CompareFilePair command,
         IJobStore jobStore,
@@ -46,12 +56,21 @@ public sealed class CompareFilePairHandler
         {
             result = await CompareAsync(task, job, engine, paths, workerOptions.Value, ct);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Host shutdown / message cancellation — NOT a pair failure. Don't record it as a per-file error
+            // (CompareAsync deliberately propagates outer cancellation rather than turning it into one). Leave
+            // the task Running so it is retried after restart (lease sweeper → redelivery), and let the
+            // cancellation propagate so Wolverine treats the message as not-yet-processed.
+            throw;
+        }
         catch (Exception ex) when (ExceptionClassifier.IsTransient(ex) && task.AttemptCount < workerOptions.Value.MaxFilePairAttempts)
         {
-            // Transient and still under the attempt cap: return the task to the queue
-            // and let Wolverine redeliver (with cooldown) so it resumes on a retry.
+            // Transient and still under the attempt cap: return the task to the queue and let Wolverine
+            // redeliver (with cooldown). Requeue with None so a concurrent shutdown can't abandon the requeue
+            // and strand the task in Running.
             logger.LogWarning(ex, "Transient failure on pair {Path} (attempt {Attempt}); requeuing", task.RelativePath, task.AttemptCount);
-            await taskStore.RequeueAsync(task.Id, ct);
+            await taskStore.RequeueAsync(task.Id, CancellationToken.None);
             throw;
         }
         catch (Exception ex)
@@ -61,12 +80,18 @@ public sealed class CompareFilePairHandler
             result = new FilePairResult { RelativePath = task.RelativePath, Status = FilePairStatus.Error, Error = ex.Message };
         }
 
-        await taskStore.CompleteAsync(task.Id, result, FilePairTaskStatus.Completed, ct);
+        // The comparison itself is finished — recording its result and advancing the batch must run to
+        // completion even if ct is tripping (a host shutdown; the Wolverine message timeout is raised above the
+        // per-pair cap via [MessageTimeout], so it never fires here). Tying these writes to the message token
+        // would, on a shutdown mid-pair, abandon them: the task is left in Running (recovered only later by the
+        // lease sweeper) and the finished — and now slow — comparison is thrown away and redone. So finalize
+        // with CancellationToken.None, not ct.
+        await taskStore.CompleteAsync(task.Id, result, FilePairTaskStatus.Completed, CancellationToken.None);
 
-        var (processed, total) = await jobStore.IncrementProcessedAsync(command.JobId, ct);
+        var (processed, total) = await jobStore.IncrementProcessedAsync(command.JobId, CancellationToken.None);
         await progressPublisher.PublishAsync(new JobProgressChanged(
             job.Id, job.BranchKey, job.InstanceKey, "Running", processed, total,
-            total == 0 ? 0 : (double)processed / total), ct);
+            total == 0 ? 0 : (double)processed / total), CancellationToken.None);
 
         if (total > 0 && processed >= total)
             await bus.PublishAsync(new FinalizeBatch(job.Id));
@@ -93,7 +118,8 @@ public sealed class CompareFilePairHandler
         // Hard wall-clock cap on the whole pair (probe + extract + every render + highlight). Run off the
         // message thread so even a synchronous hang (e.g. PdfPig opening a malformed file) is abandoned, and
         // cancel the engine cooperatively on expiry. Our timeout → a per-file error; outer cancellation
-        // (shutdown / Wolverine) propagates untouched so the message is redelivered.
+        // (a host shutdown — Wolverine's message timeout is raised above our cap) propagates untouched, so the
+        // pair is left Running and recovered after restart.
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(options.FilePairComparisonTimeout);
         var compare = Task.Run(

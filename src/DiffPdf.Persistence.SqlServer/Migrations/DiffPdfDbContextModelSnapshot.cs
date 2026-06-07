@@ -540,7 +540,7 @@ namespace DiffPdf.Persistence.SqlServer.Migrations
 
                     b.HasIndex("BranchId")
                         .IsUnique()
-                        .HasFilter("[branch_id] IS NOT NULL");
+                        .HasFilter("[level] = 'Branch'");
 
                     b.HasIndex("InstanceId")
                         .IsUnique()

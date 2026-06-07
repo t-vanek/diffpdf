@@ -10,7 +10,7 @@ namespace DiffPdf.DesktopUI.Services;
 /// </summary>
 public sealed class ServerSession
 {
-    public DiffPdfClient? Client { get; private set; }
+    public DiffPdfClient? Client { get; internal set; } // internal set: tests inject a fake-transport client
     public string? BaseUrl { get; private set; }
     public string? ClientId { get; private set; }
     public string? ClientSecret { get; private set; }

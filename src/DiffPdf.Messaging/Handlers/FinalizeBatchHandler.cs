@@ -51,8 +51,13 @@ public sealed class FinalizeBatchHandler
 
         try
         {
-            var completed = await jobStore.CompleteAsync(job.Id, report, job.Version, ct);
-            await progressPublisher.PublishAsync(JobProgressChanged.From(completed), ct);
+            // This is the terminal job-completion write. It must run to completion even if ct is cancelling
+            // (host shutdown; there is no Wolverine message timeout): all pairs are already done, so abandoning
+            // it would strand the job in Running with no recovery — the lease sweeper only requeues stale
+            // tasks, not finalize-pending jobs. Use CancellationToken.None so the completion (and the
+            // BatchFinished cascade it enables) is never lost mid-finalize.
+            var completed = await jobStore.CompleteAsync(job.Id, report, job.Version, CancellationToken.None);
+            await progressPublisher.PublishAsync(JobProgressChanged.From(completed), CancellationToken.None);
             metrics.RecordJobFinished(report.Passed ? "passed" : "gate_violated", report.CompletedAt - report.StartedAt);
 
             // Real-time comparison.completed for trigger-launched batches (after the completion is committed).
@@ -64,7 +69,7 @@ public sealed class FinalizeBatchHandler
                     StartedAt: report.StartedAt, FinishedAt: report.CompletedAt,
                     DurationMs: (long)(report.CompletedAt - report.StartedAt).TotalMilliseconds,
                     Source: completed.Source.ToString(), Message: "Porovnání bylo dokončeno.",
-                    ResultReference: completed.Id.ToString()), ct);
+                    ResultReference: completed.Id.ToString()), CancellationToken.None);
 
             logger.LogInformation("Job {JobId} finalized: {Total} files, {Diff} differing.",
                 completed.Id, report.Total, report.Differing);

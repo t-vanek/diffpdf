@@ -18,5 +18,6 @@
   <Folder Name="/tests/">
     <Project Path="tests/DiffPdf.Client.Tests/DiffPdf.Client.Tests.csproj" />
     <Project Path="tests/DiffPdf.Core.Tests/DiffPdf.Core.Tests.csproj" />
+    <Project Path="tests/DiffPdf.DesktopUI.Tests/DiffPdf.DesktopUI.Tests.csproj" />
   </Folder>
 </Solution>

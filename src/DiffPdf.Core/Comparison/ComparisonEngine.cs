@@ -85,8 +85,19 @@ public sealed class ComparisonEngine(
             {
                 highlightedPath = await WriteHighlightedAsync(newPath, spreads, options, artifactDirectory, ct);
             }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                // Cancellation here is the per-pair timeout or a host shutdown — NOT a failure to produce the
+                // optional diff PDF — so it must propagate, not be swallowed by the catch below. The worker
+                // turns a timeout into a per-file error and, on shutdown, leaves the pair Running to retry.
+                // Swallowing it would return Outcome.Compared and record the pair as a successful comparison
+                // silently missing its highlighted diff (and skip the retry the cancellation sweep relies on).
+                throw;
+            }
             catch (Exception ex)
             {
+                // A genuine failure to render the optional diff PDF (malformed page, PdfSharp/IO error) does not
+                // invalidate the comparison itself — keep the result, just without the highlight artifact.
                 logger.LogWarning(ex, "Failed to write highlighted PDF for {New}", newPath);
             }
         }

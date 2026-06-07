@@ -115,17 +115,33 @@ public partial class InstancesViewModel : PageViewModel
 
     private async Task LoadInstancesAsync()
     {
-        Instances.Clear();
-        if (SelectedBranch is not { } branch) return;
+        if (SelectedBranch is not { } branch)
+        {
+            Instances.Clear();
+            return;
+        }
         var client = _session.Require();
-        foreach (var i in await client.ListInstancesAsync(branch.Key))
+
+        // Fetch first, then rebuild. Clearing up front and appending after the await is NOT safe against
+        // overlapping invocations (branch change / refresh / page re-activate): two loads would each clear
+        // while empty and then each append the full list, leaving every instance listed twice. Building the
+        // list, then doing Clear()+Add() with no await between them, keeps the rebuild atomic on the UI thread.
+        var loaded = await client.ListInstancesAsync(branch.Key);
+
+        // A newer load (different branch, or a refresh) started while we awaited → let it own the grid.
+        if (SelectedBranch?.Key != branch.Key)
+            return;
+
+        Instances.Clear();
+        foreach (var i in loaded)
             Instances.Add(new InstanceRowViewModel(i));
 
         // Seed per-instance run-queue status and join the branch's SignalR group for live pushes.
         try
         {
             await _hub.JoinBranchAsync(branch.Key);
-            ApplyState(await client.GetBranchQueueAsync(branch.Key));
+            if (SelectedBranch?.Key == branch.Key)
+                ApplyState(await client.GetBranchQueueAsync(branch.Key));
         }
         catch { /* queue state is best-effort */ }
     }
@@ -272,19 +288,28 @@ public partial class InstancesViewModel : PageViewModel
 
     private async Task LoadInstanceDetailsAsync()
     {
-        if (SelectedBranch is null || SelectedInstance is null)
+        // Snapshot the selection up front. Each await below yields, and the user can pick another row (or a
+        // refresh can clear the grid) meanwhile — re-reading SelectedBranch/SelectedInstance after an await
+        // would then dereference a now-null selection (NRE) or load one instance's details onto another.
+        if (SelectedBranch is not { } branch || SelectedInstance is not { } instance)
             return;
         var client = _session.Require();
-        var readiness = await client.GetReadinessAsync(SelectedBranch.Key, SelectedInstance.Key, sampleSize: 10);
+
+        var readiness = await client.GetReadinessAsync(branch.Key, instance.Key, sampleSize: 10);
+        var stats = await client.GetInstanceStatsAsync(branch.Key, instance.Key);
+        var triggers = await client.ListInstanceTriggersAsync(instance.Id);
+
+        // Selection moved on while we loaded → discard these now-stale results; the current selection's own
+        // load populates the panel. (OnSelectedRowChanged already cleared Stats/Triggers on the change.)
+        if (SelectedInstance is not { } current || current.Key != instance.Key || SelectedBranch?.Key != branch.Key)
+            return;
+
         Readiness = readiness;
         Structure = readiness.Structure; // read-only inspection (Present / Missing / WrongType)
-
-        var stats = await client.GetInstanceStatsAsync(SelectedBranch.Key, SelectedInstance.Key);
         Stats.Clear();
         foreach (var g in ScopeStatGroups.From(stats)) Stats.Add(g);
-
         Triggers.Clear();
-        foreach (var t in await client.ListInstanceTriggersAsync(SelectedInstance.Id)) Triggers.Add(t);
+        foreach (var t in triggers) Triggers.Add(t);
     }
 
     /// <summary>Otevře konfiguraci (triggery + porovnávače) této instance (ozubené kolo u řádku).</summary>

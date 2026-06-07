@@ -240,9 +240,12 @@ public sealed class DiffPdfDbContext(DbContextOptions<DiffPdfDbContext> options)
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
             e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
             e.Property(x => x.Version).HasColumnName("version");
-            // Exactly one global row; at most one row per branch; at most one row per instance.
+            // Exactly one global row; at most one branch-level row per branch; at most one instance-level
+            // row per instance. The branch filter MUST be level-scoped, not "branch_id IS NOT NULL":
+            // instance rows also carry their parent branch_id, so the broad filter collided every instance
+            // row with its branch's row (DuplicateKeyException on instance config upsert).
             e.HasIndex(x => x.Level).IsUnique().HasFilter("level = 'Global'");
-            e.HasIndex(x => x.BranchId).IsUnique().HasFilter("branch_id IS NOT NULL");
+            e.HasIndex(x => x.BranchId).IsUnique().HasFilter("level = 'Branch'");
             e.HasIndex(x => x.InstanceId).IsUnique().HasFilter("instance_id IS NOT NULL");
         });
 
