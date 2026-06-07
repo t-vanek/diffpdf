@@ -385,9 +385,18 @@ namespace DiffPdf.Persistence.Postgres.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<int?>("DifferingCount")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Error")
                         .HasColumnType("text")
                         .HasColumnName("error");
+
+                    b.Property<int?>("ErrorCount")
+                        .HasColumnType("integer");
+
+                    b.Property<bool?>("GatePassed")
+                        .HasColumnType("boolean");
 
                     b.Property<Guid>("InstanceId")
                         .HasColumnType("uuid")

@@ -1,9 +1,3 @@
-using System.Collections.Concurrent;
-using System.Net;
-using System.Reflection;
-using System.Text;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using DiffPdf.Client;
 using DiffPdf.DesktopUI.Services;
 using DiffPdf.DesktopUI.ViewModels;
@@ -15,18 +9,15 @@ namespace DiffPdf.DesktopUI.Tests;
 /// (1) overlapping instance loads must not duplicate rows (the "every instance listed twice" bug), and
 /// (2) a selection change while a load is in flight must neither apply stale data nor throw a
 /// NullReferenceException. Both are driven by snapshotting the selection and rebuilding atomically after the
-/// fetch — which only works because Avalonia marshals async continuations onto the single UI thread. The
-/// tests model that with a single-threaded <see cref="AsyncPump"/>; without it the loaders' post-await
-/// mutations would race the ObservableCollection. A real <see cref="DiffPdfClient"/> runs over a fake,
-/// gated <see cref="HttpMessageHandler"/> so request timing is fully controlled.
+/// fetch — which only works because Avalonia marshals async continuations onto the single UI thread, modelled
+/// here by <see cref="AsyncPump"/>. A real <see cref="DiffPdfClient"/> runs over the gated <see cref="FakeApi"/>.
 /// </summary>
 public class InstancesViewModelTests
 {
     private static readonly Guid AlfaId = Guid.NewGuid();
-    private static readonly Guid BetaId = Guid.NewGuid();
 
     private static Branch Alfa => new() { Id = AlfaId, Key = "alfa", Name = "alfa", Enabled = true };
-    private static Branch Beta => new() { Id = BetaId, Key = "beta", Name = "beta", Enabled = true };
+    private static Branch Beta => new() { Id = Guid.NewGuid(), Key = "beta", Name = "beta", Enabled = true };
 
     private static Instance Inst(string key) => new()
     {
@@ -43,12 +34,12 @@ public class InstancesViewModelTests
         {
             var api = new FakeApi { InstancesByBranch = _ => AlfaInstances, GatedSuffix = "/instances" };
             var vm = NewVm(api);
-            SetField(vm, "_selectedBranch", Alfa); // set state without firing the auto-load
+            VmTest.SetField(vm, "_selectedBranch", Alfa); // set state without firing the auto-load
 
             // Two loads for the SAME branch, both suspended at the (gated) fetch — exactly what a branch
             // re-select / refresh / page re-activate triggers. Releasing then lets both finish.
-            var first = InvokeLoadInstances(vm);
-            var second = InvokeLoadInstances(vm);
+            var first = VmTest.InvokeAsync(vm, "LoadInstancesAsync");
+            var second = VmTest.InvokeAsync(vm, "LoadInstancesAsync");
             api.Release();
             await Task.WhenAll(first, second);
 
@@ -70,10 +61,10 @@ public class InstancesViewModelTests
                 GatedSuffix = "/instances",
             };
             var vm = NewVm(api);
-            SetField(vm, "_selectedBranch", Alfa);
+            VmTest.SetField(vm, "_selectedBranch", Alfa);
 
-            var load = InvokeLoadInstances(vm);     // alfa load, suspended at the fetch
-            SetField(vm, "_selectedBranch", Beta);  // user switched branch while alfa was loading
+            var load = VmTest.InvokeAsync(vm, "LoadInstancesAsync"); // alfa load, suspended at the fetch
+            VmTest.SetField(vm, "_selectedBranch", Beta);            // user switched branch while alfa was loading
             api.Release();
             await load;
 
@@ -95,11 +86,11 @@ public class InstancesViewModelTests
                 GatedSuffix = "/readiness",
             };
             var vm = NewVm(api);
-            SetField(vm, "_selectedBranch", Alfa);
-            SetField(vm, "_selectedRow", new InstanceRowViewModel(Inst("Centropol")));
+            VmTest.SetField(vm, "_selectedBranch", Alfa);
+            VmTest.SetField(vm, "_selectedRow", new InstanceRowViewModel(Inst("Centropol")));
 
-            var load = InvokeLoadInstanceDetails(vm);  // suspended at the (gated) readiness fetch
-            SetField(vm, "_selectedRow", null);        // user clicked away mid-load — the reported NRE trigger
+            var load = VmTest.InvokeAsync(vm, "LoadInstanceDetailsAsync"); // suspended at the (gated) readiness fetch
+            VmTest.SetField(vm, "_selectedRow", null);                     // user clicked away mid-load — the NRE trigger
             api.Release();
 
             await load;                 // must NOT throw NullReferenceException (the original bug)
@@ -108,108 +99,90 @@ public class InstancesViewModelTests
         });
     }
 
-    // ---------------- harness ----------------
-
-    private static InstancesViewModel NewVm(HttpMessageHandler handler)
+    [Fact]
+    public void Reloading_instances_reconciles_in_place_preserving_selection_and_checkboxes()
     {
-        // Only ServerSession needs to be real (it hands the VM the typed client over the fake transport).
-        // The loaders never touch the dialog service, and reach the SignalR hub only inside a try/catch — so
-        // null collaborators are safe here.
-        var session = new ServerSession
+        AsyncPump.Run(async () =>
         {
-            Client = new DiffPdfClient(new HttpClient(handler) { BaseAddress = new Uri("http://localhost") }),
-        };
-        return new InstancesViewModel(session, null!, null!);
+            var vm = NewVm(new FakeApi { InstancesByBranch = _ => AlfaInstances });
+            VmTest.SetField(vm, "_selectedBranch", Alfa);
+
+            await VmTest.InvokeAsync(vm, "LoadInstancesAsync");
+            Assert.Equal(3, vm.Instances.Count);
+
+            var lama = vm.Instances[1];
+            vm.SelectedRow = lama;             // user selects a row (detail panel)
+            vm.Instances[0].IsSelected = true; // user checks a row for bulk delete
+            Assert.Equal(1, vm.SelectedDeleteCount);
+
+            // Auto-refresh tick (same branch, same data) — reconciles in place.
+            await VmTest.InvokeAsync(vm, "LoadInstancesAsync");
+
+            Assert.Equal(3, vm.Instances.Count);     // reconciled, not rebuilt → no duplication
+            Assert.Same(lama, vm.SelectedRow);       // selection preserved (same row object)
+            Assert.True(vm.Instances[0].IsSelected); // checkbox state preserved
+            Assert.Equal(1, vm.SelectedDeleteCount);
+        });
     }
 
-    private static void SetField(object target, string field, object? value) =>
-        target.GetType().GetField(field, BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(target, value);
-
-    private static Task InvokeLoadInstances(InstancesViewModel vm) => Invoke(vm, "LoadInstancesAsync");
-    private static Task InvokeLoadInstanceDetails(InstancesViewModel vm) => Invoke(vm, "LoadInstanceDetailsAsync");
-
-    private static Task Invoke(InstancesViewModel vm, string method) =>
-        (Task)typeof(InstancesViewModel).GetMethod(method, BindingFlags.Instance | BindingFlags.NonPublic)!
-            .Invoke(vm, null)!;
-
-    /// <summary>A fake API transport: serves canned JSON per route and can gate one route on a manual release.</summary>
-    private sealed class FakeApi : HttpMessageHandler
+    [Fact]
+    public void Search_filters_the_view_and_select_all_applies_to_visible_rows()
     {
-        private static readonly JsonSerializerOptions Json =
-            new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter() } };
-
-        public Func<string, object?>? InstancesByBranch { get; init; }
-        public object? Readiness { get; init; }
-        public object? Stats { get; init; }
-        public object? Triggers { get; init; }
-
-        /// <summary>Requests whose path ends with this suffix block until <see cref="Release"/> is called.</summary>
-        public string? GatedSuffix { get; init; }
-
-        private readonly TaskCompletionSource _gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public void Release() => _gate.TrySetResult();
-
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        AsyncPump.Run(async () =>
         {
-            var path = request.RequestUri!.AbsolutePath;
-            if (GatedSuffix is not null && path.EndsWith(GatedSuffix, StringComparison.Ordinal))
-                await _gate.Task.ConfigureAwait(false);
+            var vm = NewVm(new FakeApi { InstancesByBranch = _ => AlfaInstances });
+            VmTest.SetField(vm, "_selectedBranch", Alfa);
+            await VmTest.InvokeAsync(vm, "LoadInstancesAsync");
+            Assert.Equal(3, vm.InstancesView.Count);
 
-            object? payload = path switch
+            vm.SearchText = "lama"; // case-insensitive, matches "LamaEnergy" only
+            Assert.Equal(1, vm.InstancesView.Count);
+            Assert.Equal("LamaEnergy", vm.InstancesView.Cast<InstanceRowViewModel>().Single().Instance.Key);
+
+            // Select-all toggles only the visible (filtered) rows.
+            vm.AllSelected = true;
+            Assert.True(vm.Instances.Single(r => r.Instance.Key == "LamaEnergy").IsSelected);
+            Assert.False(vm.Instances.Single(r => r.Instance.Key == "Centropol").IsSelected);
+            Assert.Equal(1, vm.SelectedDeleteCount);
+            Assert.True(vm.AllSelected);
+
+            vm.SearchText = "";
+            Assert.Equal(3, vm.InstancesView.Count);
+            Assert.False(vm.AllSelected);
+        });
+    }
+
+    [Fact]
+    public void Reloading_branches_reconciles_the_picker_preserving_selection()
+    {
+        AsyncPump.Run(async () =>
+        {
+            var api = new FakeApi
             {
-                _ when path.EndsWith("/triggers", StringComparison.Ordinal) => Triggers ?? Array.Empty<TriggerResponse>(),
-                _ when path.EndsWith("/readiness", StringComparison.Ordinal) => Readiness,
-                _ when path.EndsWith("/stats", StringComparison.Ordinal) => Stats,
-                _ when path.EndsWith("/instances", StringComparison.Ordinal) => InstancesByBranch?.Invoke(BranchKey(path)),
-                _ => null,
+                Branches = new[] { Alfa, Beta },
+                InstancesByBranch = _ => Array.Empty<Instance>(), // selecting a branch loads (empty) instances
             };
-            if (payload is null)
-                return new HttpResponseMessage(HttpStatusCode.NotFound);
+            var vm = NewVm(api);
 
-            return new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent(JsonSerializer.Serialize(payload, payload.GetType(), Json), Encoding.UTF8, "application/json"),
-            };
-        }
+            await VmTest.InvokeAsync(vm, "LoadBranchesAsync");
+            Assert.Equal(new[] { "alfa", "beta" }, vm.Branches.Select(b => b.Key).ToArray());
 
-        // /api/v1/branches/{key}/instances
-        private static string BranchKey(string path)
-        {
-            var parts = path.Split('/');
-            var i = Array.IndexOf(parts, "branches");
-            return i >= 0 && i + 1 < parts.Length ? Uri.UnescapeDataString(parts[i + 1]) : "";
-        }
+            vm.SelectedBranch = vm.Branches.Single(b => b.Key == "beta"); // user picks beta
+            var betaObj = vm.SelectedBranch;
+
+            // A realtime branch event: alfa removed, gamma added; beta stays.
+            api.Branches = new[] { Beta, new Branch { Id = Guid.NewGuid(), Key = "gamma", Name = "gamma", Enabled = true } };
+            await VmTest.InvokeAsync(vm, "LoadBranchesAsync");
+
+            // beta kept as the SAME object → selection preserved; picker reflects the new membership.
+            Assert.Same(betaObj, vm.SelectedBranch);
+            Assert.Equal(new[] { "beta", "gamma" }, vm.Branches.Select(b => b.Key).ToArray());
+        });
     }
 
-    /// <summary>
-    /// Minimal single-threaded SynchronizationContext message pump (Stephen Toub's pattern). Runs the async
-    /// delegate and every continuation it posts on one thread, modelling the Avalonia UI dispatcher so the
-    /// loaders' post-await collection rebuilds are serialized (never racing each other).
-    /// </summary>
-    private sealed class AsyncPump : SynchronizationContext
-    {
-        private readonly BlockingCollection<(SendOrPostCallback Cb, object? State)> _queue = new();
-
-        public override void Post(SendOrPostCallback d, object? state) => _queue.Add((d, state));
-        public override void Send(SendOrPostCallback d, object? state) => throw new NotSupportedException();
-
-        public static void Run(Func<Task> root)
-        {
-            var previous = Current;
-            var pump = new AsyncPump();
-            SetSynchronizationContext(pump);
-            try
-            {
-                var task = root();
-                task.ContinueWith(_ => pump._queue.CompleteAdding(), TaskScheduler.Default);
-                foreach (var (cb, state) in pump._queue.GetConsumingEnumerable())
-                    cb(state);
-                task.GetAwaiter().GetResult(); // surface assertion failures / exceptions
-            }
-            finally
-            {
-                SetSynchronizationContext(previous);
-            }
-        }
-    }
+    // Only ServerSession needs to be real; the loaders never touch the dialog service and reach the SignalR
+    // hub only inside a try/catch, so null collaborators are safe here.
+    private static InstancesViewModel NewVm(HttpMessageHandler handler) =>
+        new(new ServerSession { Client = new DiffPdfClient(new HttpClient(handler) { BaseAddress = new Uri("http://localhost") }) },
+            null!, null!);
 }

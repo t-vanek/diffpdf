@@ -402,9 +402,18 @@ namespace DiffPdf.Persistence.SqlServer.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("created_at");
 
+                    b.Property<int?>("DifferingCount")
+                        .HasColumnType("int");
+
                     b.Property<string>("Error")
                         .HasColumnType("nvarchar(max)")
                         .HasColumnName("error");
+
+                    b.Property<int?>("ErrorCount")
+                        .HasColumnType("int");
+
+                    b.Property<bool?>("GatePassed")
+                        .HasColumnType("bit");
 
                     b.Property<Guid>("InstanceId")
                         .HasColumnType("uniqueidentifier")

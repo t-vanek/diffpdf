@@ -1,4 +1,6 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
+using Avalonia.Collections;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DiffPdf.Client;
@@ -7,9 +9,10 @@ using DiffPdf.DesktopUI.Services;
 namespace DiffPdf.DesktopUI.ViewModels;
 
 /// <summary>
-/// Instance pod větví: seznam + vytvoření + úprava + smazání + detail (připravenost / struktura, jen pro
-/// čtení) a statistiky. U každého řádku ⚙ konfigurace a tlačítka fronty (Spustit / Přidat do fronty /
-/// Pozastavit / Zastavit / Obnovit) řízená živým stavem per-branch fronty. Instance ve větvi běží sekvenčně.
+/// Instance pod větví: seznam + vytvoření / úprava (modální formulář) + smazání (jednotlivě i hromadně) +
+/// detail (připravenost / struktura, jen pro čtení) a statistiky. U každého řádku ⚙ konfigurace a tlačítka
+/// fronty (Spustit / Přidat do fronty / Pozastavit / Zastavit / Obnovit) řízená živým stavem per-branch fronty.
+/// Seznam se navíc periodicky obnovuje na pozadí (vedle ručního tlačítka Obnovit).
 /// </summary>
 public partial class InstancesViewModel : PageViewModel
 {
@@ -18,132 +21,233 @@ public partial class InstancesViewModel : PageViewModel
     private readonly JobProgressHubClient _hub;
     private bool _subscribed;
 
+    // Serializes instance-list reloads (manual button, realtime push, post-mutation) so they never race the
+    // shared Instances collection.
+    private readonly SemaphoreSlim _loadGate = new(1, 1);
+    private string? _loadedBranchKey; // which branch the current rows belong to (drives fresh-load vs reconcile)
+
     public override string Title => "Instance";
     public override int NavOrder => 2;
 
     public ObservableCollection<Branch> Branches { get; } = [];
     public ObservableCollection<InstanceRowViewModel> Instances { get; } = [];
 
-    /// <summary>Statistiky vztažené pouze k vybrané instanci.</summary>
-    public ObservableCollection<StatGroup> Stats { get; } = [];
+    /// <summary>Filtered + sortable view over <see cref="Instances"/> that the grid binds (search box + column sort).</summary>
+    public DataGridCollectionView InstancesView { get; }
 
-    /// <summary>Spouštěče této instance (souhrn; konfigurace je přes ⚙).</summary>
-    public ObservableCollection<TriggerResponse> Triggers { get; } = [];
+    /// <summary>Statistiky vybrané instance: úlohy + porovnávání (kontroly/automatizace/spouštěče mají vlastní stránky).</summary>
+    public ObservableCollection<StatGroup> Stats { get; } = [];
 
     [ObservableProperty] private Branch? _selectedBranch;
     [ObservableProperty] private InstanceRowViewModel? _selectedRow;
-    [ObservableProperty] private bool _showCreateForm;
+    [ObservableProperty] private string? _info;
 
-    /// <summary>Vybraná instance (odvozená z vybraného řádku) — pro detailní panel a akce úprav.</summary>
+    /// <summary>Live filter over key/name/base path (toolbar search box).</summary>
+    [ObservableProperty] private string _searchText = string.Empty;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ReadinessDisplay))]
+    private InstanceReadiness? _readiness;
+
+    /// <summary>Friendly, merged readiness + folder-structure view for the detail panel (null until loaded).</summary>
+    public ReadinessView? ReadinessDisplay => Readiness is { } r ? ReadinessView.From(r) : null;
+
+    /// <summary>Počet zaškrtnutých instancí pro hromadné smazání (řídí popisek + dostupnost tlačítka).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanDeleteSelected))]
+    private int _selectedDeleteCount;
+
+    public bool CanDeleteSelected => SelectedDeleteCount > 0;
+
+    /// <summary>True when the instance list is empty — drives the empty-state hint.</summary>
+    public bool HasNoInstances => Instances.Count == 0;
+
+    /// <summary>Vybraná instance (odvozená z vybraného řádku) — pro detailní panel a akce úprav/mazání.</summary>
     public Instance? SelectedInstance => SelectedRow?.Instance;
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(NewBasePathPreview))]
-    private string _newKey = string.Empty;
-
-    [ObservableProperty] private string _newName = string.Empty;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(NewBasePathPreview))]
-    private string _newRoot = string.Empty;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(NewBasePathPreview))]
-    [NotifyPropertyChangedFor(nameof(RootInputVisible))]
-    private string? _scopeRoot;
-
-    [ObservableProperty] private string _newCredentialProfile = string.Empty;
-    [ObservableProperty] private bool _ensureStructure = true;
-    [ObservableProperty] private string? _validationError;
-    [ObservableProperty] private string? _info;
-    [ObservableProperty] private InstanceStructureReport? _structure;
-    [ObservableProperty] private InstanceReadiness? _readiness;
-
-    // Editace vybrané instance (klíč je neměnná identita).
-    [ObservableProperty] private string _editName = string.Empty;
-    [ObservableProperty] private string _editBasePath = string.Empty;
-    [ObservableProperty] private string _editCredentialProfile = string.Empty;
-    [ObservableProperty] private bool _editEnabled = true;
-
-    /// <summary>Pole pro ruční kořen se zobrazí jen tehdy, když server kořen struktury nemá nastavený.</summary>
-    public bool RootInputVisible => string.IsNullOrWhiteSpace(ScopeRoot);
-
-    private string EffectiveRoot => string.IsNullOrWhiteSpace(ScopeRoot) ? NewRoot.Trim() : ScopeRoot!.Trim();
-
-    /// <summary>Výsledná základní cesta instance: kořen + větev + klíč instance (živý náhled pro zakládací formulář).</summary>
-    public string NewBasePathPreview
-    {
-        get
-        {
-            string root = EffectiveRoot;
-            string key = NewKey.Trim();
-            if (root.Length == 0 || SelectedBranch is null || key.Length == 0)
-                return string.Empty;
-            return Combine(Combine(root, SelectedBranch.Key), key);
-        }
-    }
-
-    /// <summary>Spojí cestu se složkou; pro UNC kořen zachová zpětná lomítka (stejně jako server).</summary>
-    private static string Combine(string root, string sub)
-    {
-        string trimmed = root.TrimEnd('\\', '/');
-        return trimmed.StartsWith(@"\\", StringComparison.Ordinal) ? $@"{trimmed}\{sub}" : System.IO.Path.Combine(trimmed, sub);
-    }
+    // Kořen struktury nastavený na serveru (ScopeSync:RootPath); předává se do formuláře pro náhled cesty.
+    [ObservableProperty] private string? _scopeRoot;
 
     public InstancesViewModel(ServerSession session, DialogService dialogs, JobProgressHubClient hub)
     {
         _session = session;
         _dialogs = dialogs;
         _hub = hub;
+        InstancesView = new DataGridCollectionView(Instances) { Filter = MatchesSearch };
+    }
+
+    private bool MatchesSearch(object o)
+    {
+        if (o is not InstanceRowViewModel r) return false;
+        var s = SearchText?.Trim();
+        return string.IsNullOrEmpty(s)
+            || r.Instance.Key.Contains(s, StringComparison.OrdinalIgnoreCase)
+            || r.Instance.Name.Contains(s, StringComparison.OrdinalIgnoreCase)
+            || r.Instance.BasePath.Contains(s, StringComparison.OrdinalIgnoreCase);
+    }
+
+    partial void OnSearchTextChanged(string value) => InstancesView.Refresh();
+
+    /// <summary>Header "select all": toggles the checkbox on every currently-visible (filtered) row.</summary>
+    public bool AllSelected
+    {
+        get => InstancesView.Count > 0 && InstancesView.Cast<InstanceRowViewModel>().All(r => r.IsSelected);
+        set { foreach (var r in InstancesView.Cast<InstanceRowViewModel>()) r.IsSelected = value; }
     }
 
     public override Task ActivateAsync() => RunAsync(async () =>
     {
         try { await _hub.EnsureStartedAsync(); } catch { /* live queue state is best-effort */ }
-        if (!_subscribed) { _hub.QueueStateReceived += OnQueueState; _subscribed = true; }
+        if (!_subscribed)
+        {
+            _hub.QueueStateReceived += OnQueueState;
+            _hub.TriggerEventReceived += OnScopeEvent;
+            _hub.Reconnected += OnReconnected;
+            _subscribed = true;
+        }
+        // Join the global scope group so branch/instance changes anywhere push to this page in realtime.
+        try { await _hub.JoinScopeAsync(); } catch { /* realtime scope updates are best-effort */ }
 
         await LoadBranchesAsync();
-        ScopeRoot = (await _session.Require().GetScopeRootAsync()).Root;
+        try { ScopeRoot = (await _session.Require().GetScopeRootAsync()).Root; } catch { /* root hint is optional */ }
     });
+
+    // Branch changes refresh the branch picker; instance changes refresh the current branch's instance list.
+    // Deduped by the load gate; errors are swallowed (the periodic auto-refresh retries).
+    private void OnScopeEvent(TriggerEvent e)
+    {
+        if (e.EventType.StartsWith("branch.", StringComparison.Ordinal))
+            _ = ReloadBranchesQuietlyAsync();
+        else if (e.EventType.StartsWith("instance.", StringComparison.Ordinal))
+            _ = ReloadQuietlyAsync();
+    }
+
+    // Connection restored after a drop — refresh both the branch picker and the current instances.
+    private void OnReconnected()
+    {
+        _ = ReloadBranchesQuietlyAsync();
+        _ = ReloadQuietlyAsync();
+    }
+
+    private async Task ReloadBranchesQuietlyAsync()
+    {
+        try { await LoadBranchesAsync(); }
+        catch { /* best-effort realtime refresh */ }
+    }
+
+    private async Task ReloadQuietlyAsync()
+    {
+        try { await LoadInstancesAsync(); }
+        catch { /* best-effort realtime refresh */ }
+    }
 
     private async Task LoadBranchesAsync()
     {
         var list = await _session.Require().ListBranchesAsync();
-        Branches.Clear();
-        foreach (var b in list) Branches.Add(b);
+
+        // Reconcile the picker in place by key so a realtime refresh doesn't reset the user's selected branch.
+        // Existing entries are kept (the combo binds the immutable Key); new keys are appended; removed keys
+        // drop out — and if the selected branch was removed, the combo clears it (→ instances reload empty).
+        var incoming = new HashSet<string>(list.Select(b => b.Key), StringComparer.Ordinal);
+        for (int i = Branches.Count - 1; i >= 0; i--)
+            if (!incoming.Contains(Branches[i].Key)) Branches.RemoveAt(i);
+
+        var present = new HashSet<string>(Branches.Select(b => b.Key), StringComparer.Ordinal);
+        foreach (var b in list)
+            if (present.Add(b.Key)) Branches.Add(b);
     }
 
+    /// <summary>Reloads the selected branch's instances, reconciling the rows in place (see <see cref="ReconcileInstances"/>).</summary>
     private async Task LoadInstancesAsync()
     {
-        if (SelectedBranch is not { } branch)
-        {
-            Instances.Clear();
-            return;
-        }
-        var client = _session.Require();
-
-        // Fetch first, then rebuild. Clearing up front and appending after the await is NOT safe against
-        // overlapping invocations (branch change / refresh / page re-activate): two loads would each clear
-        // while empty and then each append the full list, leaving every instance listed twice. Building the
-        // list, then doing Clear()+Add() with no await between them, keeps the rebuild atomic on the UI thread.
-        var loaded = await client.ListInstancesAsync(branch.Key);
-
-        // A newer load (different branch, or a refresh) started while we awaited → let it own the grid.
-        if (SelectedBranch?.Key != branch.Key)
-            return;
-
-        Instances.Clear();
-        foreach (var i in loaded)
-            Instances.Add(new InstanceRowViewModel(i));
-
-        // Seed per-instance run-queue status and join the branch's SignalR group for live pushes.
+        await _loadGate.WaitAsync();
         try
         {
-            await _hub.JoinBranchAsync(branch.Key);
-            if (SelectedBranch?.Key == branch.Key)
-                ApplyState(await client.GetBranchQueueAsync(branch.Key));
+            if (SelectedBranch is not { } branch)
+            {
+                ClearInstances();
+                _loadedBranchKey = null;
+                return;
+            }
+            var client = _session.Require();
+            var loaded = await client.ListInstancesAsync(branch.Key);
+
+            // A newer load (branch change / refresh) started while we awaited → let it own the grid.
+            if (SelectedBranch?.Key != branch.Key) return;
+
+            // Branch changed since the rows were built → start fresh (don't carry rows across branches);
+            // same branch (an auto-refresh) → reconcile in place to keep selection + checkbox state.
+            if (_loadedBranchKey != branch.Key)
+            {
+                ClearInstances();
+                _loadedBranchKey = branch.Key;
+            }
+            ReconcileInstances(loaded);
+
+            // Seed per-instance run-queue status and join the branch's SignalR group for live pushes.
+            try
+            {
+                await _hub.JoinBranchAsync(branch.Key);
+                if (SelectedBranch?.Key == branch.Key)
+                    ApplyState(await client.GetBranchQueueAsync(branch.Key));
+            }
+            catch { /* queue state is best-effort */ }
         }
-        catch { /* queue state is best-effort */ }
+        finally
+        {
+            _loadGate.Release();
+        }
+    }
+
+    /// <summary>Merges the fetched instances into <see cref="Instances"/> in place (update / append / drop by key).</summary>
+    private void ReconcileInstances(IReadOnlyList<Instance> list)
+    {
+        var incoming = new HashSet<string>(list.Select(i => i.Key), StringComparer.Ordinal);
+
+        for (int i = Instances.Count - 1; i >= 0; i--)
+        {
+            if (!incoming.Contains(Instances[i].Instance.Key))
+            {
+                Instances[i].PropertyChanged -= OnRowChanged;
+                Instances.RemoveAt(i);
+            }
+        }
+
+        var byKey = Instances.ToDictionary(r => r.Instance.Key, StringComparer.Ordinal);
+        foreach (var inst in list)
+        {
+            if (byKey.TryGetValue(inst.Key, out var row))
+            {
+                row.Instance = inst; // refresh name/basePath/enabled (key is the immutable identity)
+            }
+            else
+            {
+                var added = new InstanceRowViewModel(inst);
+                added.PropertyChanged += OnRowChanged;
+                Instances.Add(added);
+            }
+        }
+
+        RecomputeDeleteSelection();
+    }
+
+    private void ClearInstances()
+    {
+        foreach (var r in Instances) r.PropertyChanged -= OnRowChanged;
+        Instances.Clear();
+        RecomputeDeleteSelection();
+    }
+
+    private void OnRowChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(InstanceRowViewModel.IsSelected))
+            RecomputeDeleteSelection();
+    }
+
+    private void RecomputeDeleteSelection()
+    {
+        SelectedDeleteCount = Instances.Count(r => r.IsSelected);
+        OnPropertyChanged(nameof(AllSelected));
+        OnPropertyChanged(nameof(HasNoInstances));
     }
 
     private void OnQueueState(BranchQueueState state)
@@ -158,17 +262,15 @@ public partial class InstancesViewModel : PageViewModel
             row.Apply(state?.Instances.FirstOrDefault(i => i.InstanceKey == row.Instance.Key));
     }
 
-    partial void OnSelectedBranchChanged(Branch? value)
-    {
-        OnPropertyChanged(nameof(NewBasePathPreview));
-        _ = RunAsync(LoadInstancesAsync);
-    }
+    partial void OnSelectedBranchChanged(Branch? value) => _ = RunAsync(LoadInstancesAsync);
 
     [RelayCommand]
     private Task RefreshAsync() => RunAsync(async () =>
     {
+        var keep = SelectedBranch?.Key;
         await LoadBranchesAsync();
-        await LoadInstancesAsync();
+        SelectedBranch = keep is not null ? Branches.FirstOrDefault(b => b.Key == keep) : null;
+        await LoadInstancesAsync(); // belt-and-braces: also reload directly (the gate coalesces with the selection-change load)
     });
 
     // ---------------- Run queue (per instance) ----------------
@@ -187,83 +289,104 @@ public partial class InstancesViewModel : PageViewModel
         if (!string.IsNullOrEmpty(outcome.Message)) Info = outcome.Message;
     });
 
+    /// <summary>Otevře formulář pro vytvoření nové instance pod vybranou větví (modální dialog).</summary>
     [RelayCommand]
-    private void ShowCreate()
+    private async Task ShowCreate()
     {
-        NewKey = NewName = NewRoot = NewCredentialProfile = string.Empty;
-        EnsureStructure = true;
-        ValidationError = null;
-        Info = null;
-        ShowCreateForm = true;
-    }
-
-    [RelayCommand]
-    private void CancelCreate()
-    {
-        ShowCreateForm = false;
-        ValidationError = null;
-    }
-
-    [RelayCommand]
-    private Task SaveCreateAsync() => RunAsync(async () =>
-    {
-        ValidationError = Validate();
-        if (ValidationError is not null) return;
-
-        await _session.Require().CreateInstanceAsync(
-            SelectedBranch!.Key,
-            new CreateInstanceRequest(NewKey.Trim(), NewName.Trim(), NewBasePathPreview,
-                string.IsNullOrWhiteSpace(NewCredentialProfile) ? null : NewCredentialProfile.Trim()),
-            EnsureStructure);
-        Info = $"Instance '{NewKey.Trim()}' vytvořena v {NewBasePathPreview}.";
-        ShowCreateForm = false;
-        await LoadInstancesAsync();
-    });
-
-    /// <summary>Klientská kontrola: klíč + název + cesta povinné, klíč/název unikátní v rámci větve.</summary>
-    private string? Validate()
-    {
-        if (SelectedBranch is null) return "Vyber větev.";
-        var key = NewKey.Trim();
-        var name = NewName.Trim();
-        if (key.Length == 0) return "Zadej klíč.";
-        if (name.Length == 0) return "Zadej název.";
-        if (RootInputVisible && NewRoot.Trim().Length == 0) return "Zadej kořenovou složku.";
-        if (Instances.Any(r => string.Equals(r.Instance.Key, key, StringComparison.Ordinal)))
-            return $"Instance s klíčem '{key}' už v této větvi existuje.";
-        if (Instances.Any(r => string.Equals(r.Instance.Name, name, StringComparison.OrdinalIgnoreCase)))
-            return $"Instance s názvem '{name}' už v této větvi existuje.";
-        return null;
-    }
-
-    [RelayCommand]
-    private Task SaveEditAsync() => RunAsync(async () =>
-    {
-        if (SelectedBranch is null || SelectedInstance is not { } inst)
-            throw new InvalidOperationException("Vyber instanci v seznamu.");
-        if (string.IsNullOrWhiteSpace(EditBasePath))
+        if (SelectedBranch is not { } branch) { Info = "Vyber větev."; return; }
+        var keys = Instances.Select(r => r.Instance.Key).ToList();
+        var names = Instances.Select(r => r.Instance.Name).ToList();
+        var form = InstanceFormViewModel.ForCreate(_session, branch.Key, ScopeRoot, keys, names);
+        if (await _dialogs.ShowInstanceFormAsync(form))
         {
-            ValidationError = "Zadej základní cestu.";
-            return;
+            Info = $"Instance '{form.Key.Trim()}' vytvořena.";
+            await RunAsync(LoadInstancesAsync);
         }
-        await _session.Require().UpdateInstanceAsync(SelectedBranch.Key, inst.Key, new UpdateInstanceRequest(
-            EditName.Trim(), EditBasePath.Trim(),
-            string.IsNullOrWhiteSpace(EditCredentialProfile) ? null : EditCredentialProfile.Trim(),
-            EditEnabled, inst.Version));
-        Info = $"Instance '{inst.Key}' uložena.";
-        await LoadInstancesAsync();
-    });
+    }
+
+    /// <summary>Otevře formulář pro úpravu vybrané (nebo předané) instance (modální dialog).</summary>
+    [RelayCommand]
+    private async Task EditInstance(InstanceRowViewModel? row)
+    {
+        if (SelectedBranch is not { } branch) return;
+        if ((row ?? SelectedRow)?.Instance is not { } inst) return;
+        var otherNames = Instances.Where(r => r.Instance.Key != inst.Key).Select(r => r.Instance.Name).ToList();
+        var form = InstanceFormViewModel.ForEdit(_session, branch.Key, inst, otherNames);
+        if (await _dialogs.ShowInstanceFormAsync(form))
+        {
+            Info = $"Instance '{inst.Key}' uložena.";
+            await RunAsync(LoadInstancesAsync);
+        }
+    }
 
     [RelayCommand]
     private Task DeleteAsync() => RunAsync(async () =>
     {
-        if (SelectedBranch is null || SelectedInstance is null)
+        if (SelectedBranch is not { } branch || SelectedInstance is not { } inst)
             throw new InvalidOperationException("Vyber větev i instanci.");
-        var key = SelectedInstance.Key;
-        if (!await _dialogs.ConfirmAsync("Smazat instanci", $"Opravdu smazat instanci '{key}'?"))
+        if (!await _dialogs.ConfirmAsync("Smazat instanci", $"Opravdu smazat instanci '{inst.Key}'?"))
             return;
-        await _session.Require().DeleteInstanceAsync(SelectedBranch.Key, key);
-        Info = $"Instance '{key}' smazána.";
+        await _session.Require().DeleteInstanceAsync(branch.Key, inst.Key);
+        Info = $"Instance '{inst.Key}' smazána.";
+        await LoadInstancesAsync();
+    });
+
+    /// <summary>Hromadné smazání všech zaškrtnutých instancí. Pokračuje i když některá selže (např. má úlohu).</summary>
+    [RelayCommand]
+    private Task DeleteSelectedAsync() => RunAsync(async () =>
+    {
+        if (SelectedBranch is not { } branch) { Info = "Vyber větev."; return; }
+        var targets = Instances.Where(r => r.IsSelected).Select(r => r.Instance).ToList();
+        if (targets.Count == 0) { Info = "Nevybral jsi žádnou instanci."; return; }
+        if (!await _dialogs.ConfirmAsync("Smazat instance", $"Opravdu smazat vybrané instance ({targets.Count})?"))
+            return;
+
+        var client = _session.Require();
+        int deleted = 0;
+        var failed = new List<string>();
+        foreach (var inst in targets)
+        {
+            try { await client.DeleteInstanceAsync(branch.Key, inst.Key); deleted++; }
+            catch (DiffPdfApiException ex) { failed.Add($"{inst.Key} ({ex.Detail ?? ex.StatusCode.ToString()})"); }
+        }
+
+        Info = failed.Count == 0
+            ? $"Smazáno {deleted} instancí."
+            : $"Smazáno {deleted}, nešlo smazat {failed.Count}: {string.Join("; ", failed)}";
+        await LoadInstancesAsync();
+    });
+
+    /// <summary>Hromadně povolí všechny zaškrtnuté instance.</summary>
+    [RelayCommand]
+    private Task EnableSelectedAsync() => SetSelectedEnabledAsync(true);
+
+    /// <summary>Hromadně zakáže všechny zaškrtnuté instance.</summary>
+    [RelayCommand]
+    private Task DisableSelectedAsync() => SetSelectedEnabledAsync(false);
+
+    private Task SetSelectedEnabledAsync(bool enabled) => RunAsync(async () =>
+    {
+        if (SelectedBranch is not { } branch) { Info = "Vyber větev."; return; }
+        var targets = Instances.Where(r => r.IsSelected).Select(r => r.Instance).ToList();
+        if (targets.Count == 0) { Info = "Nevybral jsi žádnou instanci."; return; }
+
+        var client = _session.Require();
+        int done = 0;
+        var failed = new List<string>();
+        foreach (var inst in targets)
+        {
+            try
+            {
+                await client.UpdateInstanceAsync(branch.Key, inst.Key,
+                    new UpdateInstanceRequest(inst.Name, inst.BasePath, inst.CredentialProfile, enabled, inst.Version));
+                done++;
+            }
+            catch (DiffPdfApiException ex) { failed.Add($"{inst.Key} ({ex.Detail ?? ex.StatusCode.ToString()})"); }
+        }
+
+        Info = failed.Count == 0
+            ? $"{(enabled ? "Povoleno" : "Zakázáno")}: {done} instancí."
+            : $"Hotovo {done}, selhalo {failed.Count}: {string.Join("; ", failed)}";
         await LoadInstancesAsync();
     });
 
@@ -272,17 +395,11 @@ public partial class InstancesViewModel : PageViewModel
     {
         OnPropertyChanged(nameof(SelectedInstance));
         Stats.Clear();
-        Triggers.Clear();
         if (value is null || SelectedBranch is null)
         {
             Readiness = null;
-            Structure = null;
             return;
         }
-        EditName = value.Instance.Name;
-        EditBasePath = value.Instance.BasePath;
-        EditCredentialProfile = value.Instance.CredentialProfile ?? string.Empty;
-        EditEnabled = value.Instance.Enabled;
         _ = RunAsync(LoadInstanceDetailsAsync);
     }
 
@@ -297,19 +414,15 @@ public partial class InstancesViewModel : PageViewModel
 
         var readiness = await client.GetReadinessAsync(branch.Key, instance.Key, sampleSize: 10);
         var stats = await client.GetInstanceStatsAsync(branch.Key, instance.Key);
-        var triggers = await client.ListInstanceTriggersAsync(instance.Id);
 
         // Selection moved on while we loaded → discard these now-stale results; the current selection's own
-        // load populates the panel. (OnSelectedRowChanged already cleared Stats/Triggers on the change.)
+        // load populates the panel. (OnSelectedRowChanged already cleared Stats on the change.)
         if (SelectedInstance is not { } current || current.Key != instance.Key || SelectedBranch?.Key != branch.Key)
             return;
 
         Readiness = readiness;
-        Structure = readiness.Structure; // read-only inspection (Present / Missing / WrongType)
         Stats.Clear();
-        foreach (var g in ScopeStatGroups.From(stats)) Stats.Add(g);
-        Triggers.Clear();
-        foreach (var t in triggers) Triggers.Add(t);
+        foreach (var g in ScopeStatGroups.JobsAndComparisons(stats)) Stats.Add(g);
     }
 
     /// <summary>Otevře konfiguraci (triggery + porovnávače) této instance (ozubené kolo u řádku).</summary>

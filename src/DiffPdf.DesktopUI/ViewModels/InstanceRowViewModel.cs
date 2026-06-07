@@ -9,11 +9,20 @@ namespace DiffPdf.DesktopUI.ViewModels;
 /// </summary>
 public partial class InstanceRowViewModel(Instance instance) : ObservableObject
 {
-    public Instance Instance { get; } = instance;
+    // Settable so an auto-refresh can update a row's data in place — keeping the same row object, so the
+    // user's selection and checkbox state survive the refresh.
+    [ObservableProperty] private Instance _instance = instance;
+
+    /// <summary>Checkbox state for bulk actions (multi-select delete). Independent of the grid's single selection.</summary>
+    [ObservableProperty] private bool _isSelected;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CanRun), nameof(CanEnqueue), nameof(CanPause), nameof(CanResume), nameof(CanStop), nameof(StatusText))]
+    [NotifyPropertyChangedFor(nameof(CanRun), nameof(CanEnqueue), nameof(CanPause), nameof(CanResume), nameof(CanStop),
+        nameof(StatusText), nameof(IsActive))]
     private InstanceQueueStatus _status = InstanceQueueStatus.Idle;
+
+    /// <summary>True when the instance is anything but Idle — drives the Fronta accent.</summary>
+    public bool IsActive => Status != InstanceQueueStatus.Idle;
 
     public bool CanRun => Status == InstanceQueueStatus.Idle;
     public bool CanEnqueue => Status == InstanceQueueStatus.Idle;

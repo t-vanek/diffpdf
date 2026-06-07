@@ -129,6 +129,12 @@ public sealed class SqlServerInstanceStore(DiffPdfDbContext db, EntityMapper map
         return rows.Select(mapper.ToDomain).ToList();
     }
 
+    public async Task<IReadOnlyDictionary<Guid, int>> CountByBranchAsync(CancellationToken ct = default) =>
+        await db.Instances.AsNoTracking()
+            .GroupBy(x => x.BranchId)
+            .Select(g => new { BranchId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.BranchId, x => x.Count, ct);
+
     public async Task<bool> DeleteByKeyAsync(Guid branchId, string key, CancellationToken ct = default)
     {
         int rows = await db.Instances.Where(x => x.BranchId == branchId && x.Key == key).ExecuteDeleteAsync(ct);

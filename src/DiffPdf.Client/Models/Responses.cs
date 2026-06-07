@@ -14,6 +14,9 @@ public sealed record Branch
     public long Version { get; init; }
 }
 
+/// <summary>A branch with its instance count and live run-queue state (from <c>GET /branches/summary</c>) — one call for the list view.</summary>
+public sealed record BranchSummary(Branch Branch, int InstanceCount, BranchQueueState Queue);
+
 /// <summary>An instance under a branch (binds a customer to a base folder).</summary>
 public sealed record Instance
 {
@@ -302,6 +305,11 @@ public sealed record JobSummary
     public DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset? CompletedAt { get; init; }
     public string? Error { get; init; }
+
+    // Quick outcome (null until the job has a report) — drives the list verdict.
+    public int? Differing { get; init; }
+    public int? Errors { get; init; }
+    public bool? GatePassed { get; init; }
 }
 
 /// <summary>Result for a single matched (or unmatched) file pair.</summary>

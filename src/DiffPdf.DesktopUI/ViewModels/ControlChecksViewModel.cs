@@ -40,6 +40,17 @@ public partial class ControlChecksViewModel : ViewModelBase, IAutomationContent
 
     public bool IsEditing => EditingVersion is not null;
 
+    /// <summary>At-a-glance automation health, derived from the loaded checks (no extra call). Drives the summary strip.</summary>
+    public IReadOnlyList<StatLine> Summary =>
+    [
+        new("Celkem", Checks.Count),
+        new("OK", Checks.Count(c => c.LastOutcome == CheckRunOutcome.Ok)) { Tone = StatTone.Good },
+        new("Varování", Checks.Count(c => c.LastOutcome == CheckRunOutcome.Warning)) { Tone = StatTone.Warning },
+        new("Selhané", Checks.Count(c => c.LastOutcome == CheckRunOutcome.Failed)) { Tone = StatTone.Failed },
+        new("Nespuštěné", Checks.Count(c => c.LastOutcome is null)) { Tone = StatTone.Neutral },
+        new("Zakázané", Checks.Count(c => !c.Enabled)) { Tone = StatTone.Paused },
+    ];
+
     public ControlChecksViewModel(ServerSession session) => _session = session;
 
     public Task ActivateAsync() => RunAsync(LoadAsync);
@@ -48,6 +59,7 @@ public partial class ControlChecksViewModel : ViewModelBase, IAutomationContent
     {
         Checks.Clear();
         foreach (var c in await _session.Require().ListChecksAsync()) Checks.Add(c);
+        OnPropertyChanged(nameof(Summary));
     }
 
     partial void OnEditingVersionChanged(long? value) => OnPropertyChanged(nameof(IsEditing));
@@ -152,6 +164,7 @@ public partial class ControlChecksViewModel : ViewModelBase, IAutomationContent
         var run = await _session.Require().RunCheckAsync(c.Id);
         Info = $"Kontrola proběhla: {run.Outcome}.";
         await LoadRunsAsync();
+        await LoadAsync(); // refresh the check's last outcome + the summary strip
     });
 
     private IReadOnlyList<NotificationEvent> Events()

@@ -23,6 +23,9 @@ public sealed record CreateBranchRequest(string Key, string Name);
 /// <summary>Update a branch's mutable fields (the Key is its immutable identity). <paramref name="Version"/> guards concurrent edits.</summary>
 public sealed record UpdateBranchRequest(string Name, bool Enabled, long Version);
 
+/// <summary>A branch plus its instance count and live run-queue state — lets the list view render in one call.</summary>
+public sealed record BranchSummary(Branch Branch, int InstanceCount, BranchQueueState Queue);
+
 /// <summary>Create an instance under a branch. <paramref name="BasePath"/> holds the old/new/reports subfolders.</summary>
 public sealed record CreateInstanceRequest(string Key, string Name, string BasePath, string? CredentialProfile = null);
 
@@ -200,6 +203,11 @@ public sealed record JobSummary
     public DateTimeOffset? CompletedAt { get; init; }
     public string? Error { get; init; }
 
+    // Quick outcome from the job's report (null until it has one) — lets the list show a verdict without opening it.
+    public int? Differing { get; init; }
+    public int? Errors { get; init; }
+    public bool? GatePassed { get; init; }
+
     public static JobSummary From(ComparisonJob job) => new()
     {
         Id = job.Id,
@@ -212,6 +220,27 @@ public sealed record JobSummary
         CreatedAt = job.CreatedAt,
         CompletedAt = job.CompletedAt,
         Error = job.Error,
+        Differing = job.Report?.Differing,
+        Errors = job.Report?.Errors,
+        GatePassed = job.Report?.Passed,
+    };
+
+    /// <summary>From the lightweight list projection (verdict already denormalized; no report deserialized).</summary>
+    public static JobSummary From(JobListItem job) => new()
+    {
+        Id = job.Id,
+        BranchKey = job.BranchKey,
+        InstanceKey = job.InstanceKey,
+        Status = job.Status.ToString(),
+        Progress = job.Progress,
+        ProcessedCount = job.ProcessedCount,
+        TotalCount = job.TotalCount,
+        CreatedAt = job.CreatedAt,
+        CompletedAt = job.CompletedAt,
+        Error = job.Error,
+        Differing = job.Differing,
+        Errors = job.Errors,
+        GatePassed = job.GatePassed,
     };
 }
 

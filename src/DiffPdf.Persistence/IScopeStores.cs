@@ -44,6 +44,9 @@ public interface IInstanceStore
     Task<ComparisonInstance?> GetByKeyAsync(Guid branchId, string key, CancellationToken ct = default);
     Task<IReadOnlyList<ComparisonInstance>> ListAsync(Guid branchId, CancellationToken ct = default);
 
+    /// <summary>Counts instances grouped by branch id in one query — for list views showing per-branch counts.</summary>
+    Task<IReadOnlyDictionary<Guid, int>> CountByBranchAsync(CancellationToken ct = default);
+
     /// <summary>
     /// Deletes an instance by key within a branch; returns false if it does not exist. The caller must
     /// first ensure nothing references it (schedules / watches / jobs); the API endpoint enforces this.

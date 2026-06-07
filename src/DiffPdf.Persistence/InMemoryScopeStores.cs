@@ -116,6 +116,10 @@ public sealed class InMemoryInstanceStore : IInstanceStore
         Task.FromResult<IReadOnlyList<ComparisonInstance>>(
             _byKey.Values.Where(i => i.BranchId == branchId).OrderBy(i => i.Key).ToList());
 
+    public Task<IReadOnlyDictionary<Guid, int>> CountByBranchAsync(CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyDictionary<Guid, int>>(
+            _byKey.Values.GroupBy(i => i.BranchId).ToDictionary(g => g.Key, g => g.Count()));
+
     public Task<bool> DeleteByKeyAsync(Guid branchId, string key, CancellationToken ct = default) =>
         Task.FromResult(_byKey.TryRemove((branchId, key), out _));
 }

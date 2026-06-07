@@ -27,6 +27,10 @@ public sealed class DiffPdfClient(HttpClient http)
     public Task<IReadOnlyList<Branch>> ListBranchesAsync(CancellationToken ct = default) =>
         JsonAsync<IReadOnlyList<Branch>>(HttpMethod.Get, "/api/v1/branches", null, ct);
 
+    /// <summary>Lists branches with their instance count + run-queue state in one call (no per-branch round-trips).</summary>
+    public Task<IReadOnlyList<BranchSummary>> ListBranchSummariesAsync(CancellationToken ct = default) =>
+        JsonAsync<IReadOnlyList<BranchSummary>>(HttpMethod.Get, "/api/v1/branches/summary", null, ct);
+
     public Task<Branch?> GetBranchAsync(string branchKey, CancellationToken ct = default) =>
         GetOrNullAsync<Branch>($"/api/v1/branches/{Esc(branchKey)}", ct);
 
@@ -34,10 +38,14 @@ public sealed class DiffPdfClient(HttpClient http)
     public Task<Branch> UpdateBranchAsync(string branchKey, UpdateBranchRequest request, CancellationToken ct = default) =>
         JsonAsync<Branch>(HttpMethod.Put, $"/api/v1/branches/{Esc(branchKey)}", request, ct);
 
-    /// <summary>Deletes a branch. Throws DiffPdfApiException 409 if it has instances or an active job; 404 if unknown.</summary>
-    public async Task DeleteBranchAsync(string branchKey, CancellationToken ct = default)
+    /// <summary>
+    /// Deletes a branch. Without <paramref name="cascade"/>, throws DiffPdfApiException 409 if it has instances
+    /// or an active job; with <paramref name="cascade"/> = true, also deletes its instances + jobs. 404 if unknown.
+    /// </summary>
+    public async Task DeleteBranchAsync(string branchKey, bool cascade = false, CancellationToken ct = default)
     {
-        using var resp = await SendRawAsync(HttpMethod.Delete, $"/api/v1/branches/{Esc(branchKey)}", null, ct);
+        var url = $"/api/v1/branches/{Esc(branchKey)}" + (cascade ? "?cascade=true" : "");
+        using var resp = await SendRawAsync(HttpMethod.Delete, url, null, ct);
     }
 
     /// <summary>Aggregated statistics for a branch (jobs, checks, automations, comparisons).</summary>
@@ -316,6 +324,10 @@ public sealed class DiffPdfClient(HttpClient http)
 
     public Task<IReadOnlyList<AuditEntryResponse>> ListTriggerAuditAsync(Guid id, CancellationToken ct = default) =>
         JsonAsync<IReadOnlyList<AuditEntryResponse>>(HttpMethod.Get, $"/api/v1/triggers/{id}/audit", null, ct);
+
+    /// <summary>Lists a branch's audit entries (created / updated / deleted), newest first.</summary>
+    public Task<IReadOnlyList<AuditEntryResponse>> ListBranchAuditAsync(string branchKey, CancellationToken ct = default) =>
+        JsonAsync<IReadOnlyList<AuditEntryResponse>>(HttpMethod.Get, $"/api/v1/branches/{Esc(branchKey)}/audit", null, ct);
 
     public Task<IReadOnlyList<TriggerResponse>> ListInstanceTriggersAsync(Guid instanceId, CancellationToken ct = default) =>
         JsonAsync<IReadOnlyList<TriggerResponse>>(HttpMethod.Get, $"/api/v1/instances/{instanceId}/triggers", null, ct);

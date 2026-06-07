@@ -16,6 +16,22 @@
       <TextBlock Text="{Binding Error}" Foreground="#C0392B" VerticalAlignment="Center"/>
     </StackPanel>
 
+    <!-- Souhrn automatizací (zdraví kontrol na první pohled) -->
+    <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding Summary}" Margin="0,0,0,8">
+      <ItemsControl.ItemsPanel>
+        <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="16"/></ItemsPanelTemplate>
+      </ItemsControl.ItemsPanel>
+      <ItemsControl.ItemTemplate>
+        <DataTemplate x:DataType="vm:StatLine">
+          <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+            <TextBlock Text="{Binding Icon}" Foreground="{Binding Foreground}"/>
+            <TextBlock Text="{Binding Label}" Foreground="{Binding Foreground}"/>
+            <TextBlock Text="{Binding Count}" Foreground="{Binding Foreground}" FontWeight="{Binding Weight}"/>
+          </StackPanel>
+        </DataTemplate>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
+
     <Grid ColumnDefinitions="*,380">
       <DockPanel Grid.Column="0" Margin="0,0,8,0">
         <DataGrid DockPanel.Dock="Top" Height="280" x:CompileBindings="False" ItemsSource="{Binding Checks}"

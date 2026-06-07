@@ -27,4 +27,15 @@ public sealed class JobsHub : Hub
 
     public Task LeaveTrigger(Guid triggerId) =>
         Groups.RemoveFromGroupAsync(Context.ConnectionId, $"trigger:{triggerId}");
+
+    /// <summary>
+    /// Join the global scope group. Branch/instance CRUD events (<c>branch.*</c> / <c>instance.*</c>) are
+    /// fanned here in addition to the per-branch group, so a client can hear about scope changes it isn't
+    /// otherwise subscribed to — e.g. a branch created elsewhere it has never joined.
+    /// </summary>
+    public Task JoinScope() =>
+        Groups.AddToGroupAsync(Context.ConnectionId, "scope");
+
+    public Task LeaveScope() =>
+        Groups.RemoveFromGroupAsync(Context.ConnectionId, "scope");
 }

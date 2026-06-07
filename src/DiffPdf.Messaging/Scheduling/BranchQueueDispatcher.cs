@@ -37,6 +37,9 @@ public interface IBranchQueueDispatcher
 
     /// <summary>The branch's current queue state (null if the branch does not exist). Does not release or publish.</summary>
     Task<BranchQueueState?> GetStateAsync(Guid branchId, CancellationToken ct = default);
+
+    /// <summary>Builds queue state for many branches with a single jobs query (avoids a per-branch round-trip).</summary>
+    Task<IReadOnlyDictionary<Guid, BranchQueueState>> GetStatesAsync(IReadOnlyList<Branch> branches, CancellationToken ct = default);
 }
 
 /// <inheritdoc />
@@ -117,13 +120,24 @@ public sealed class BranchQueueDispatcher(
     public async Task<BranchQueueState?> GetStateAsync(Guid branchId, CancellationToken ct = default)
     {
         var branch = await branches.GetByIdAsync(branchId, ct);
-        return branch is null ? null : await BuildStateAsync(branch, ct);
+        return branch is null ? null : BuildState(branch, await jobs.ListActiveAndDraftByBranchAsync(branch.Id, ct));
     }
 
-    private async Task<BranchQueueState> BuildStateAsync(Branch branch, CancellationToken ct)
+    public async Task<IReadOnlyDictionary<Guid, BranchQueueState>> GetStatesAsync(IReadOnlyList<Branch> branchList, CancellationToken ct = default)
     {
-        var list = await jobs.ListActiveAndDraftByBranchAsync(branch.Id, ct);
+        // One query for every branch's active/draft jobs, then group locally — no per-branch round-trip (N+1).
+        var byBranch = (await jobs.ListAllActiveAndDraftAsync(ct))
+            .GroupBy(j => j.BranchKey)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<ComparisonJob>)g.ToList(), StringComparer.Ordinal);
 
+        var result = new Dictionary<Guid, BranchQueueState>(branchList.Count);
+        foreach (var b in branchList)
+            result[b.Id] = BuildState(b, byBranch.GetValueOrDefault(b.Key) ?? []);
+        return result;
+    }
+
+    private BranchQueueState BuildState(Branch branch, IReadOnlyList<ComparisonJob> list)
+    {
         // One state per instance — the most relevant job (highest priority, then newest).
         var perInstance = list
             .GroupBy(j => j.InstanceKey)

@@ -74,6 +74,50 @@ public sealed class DialogService
         finally { vm.CloseRequested -= OnClose; }
     }
 
+    /// <summary>Opens the create/edit branch form as a modal dialog. Returns true if the branch was saved.</summary>
+    public async Task<bool> ShowBranchFormAsync(ViewModels.BranchFormViewModel vm)
+    {
+        if (Owner is null) return false;
+
+        var dialog = new Window
+        {
+            Title = vm.WindowTitle,
+            Width = 460,
+            SizeToContent = SizeToContent.Height,
+            CanResize = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Content = new Views.BranchFormView { DataContext = vm },
+        };
+
+        void OnClose() => dialog.Close();
+        vm.CloseRequested += OnClose;
+        try { await dialog.ShowDialog(Owner); }
+        finally { vm.CloseRequested -= OnClose; }
+        return vm.Saved;
+    }
+
+    /// <summary>Opens the create/edit instance form as a modal dialog. Returns true if the instance was saved.</summary>
+    public async Task<bool> ShowInstanceFormAsync(ViewModels.InstanceFormViewModel vm)
+    {
+        if (Owner is null) return false;
+
+        var dialog = new Window
+        {
+            Title = vm.WindowTitle,
+            Width = 520,
+            SizeToContent = SizeToContent.Height,
+            CanResize = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Content = new Views.InstanceFormView { DataContext = vm },
+        };
+
+        void OnClose() => dialog.Close();
+        vm.CloseRequested += OnClose;
+        try { await dialog.ShowDialog(Owner); }
+        finally { vm.CloseRequested -= OnClose; }
+        return vm.Saved;
+    }
+
     /// <summary>Prompts for a save location and writes <paramref name="content"/>. Returns the saved path, or null if cancelled.</summary>
     public async Task<string?> SaveBytesAsync(string suggestedName, byte[] content)
     {

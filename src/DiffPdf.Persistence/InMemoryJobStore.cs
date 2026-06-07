@@ -37,6 +37,26 @@ public sealed class InMemoryJobStore : IJobStore
     public Task<int> CountAsync(JobListQuery query, CancellationToken ct = default) =>
         Task.FromResult(Filter(query).Count());
 
+    public Task<IReadOnlyList<JobListItem>> ListSummariesAsync(JobListQuery query, CancellationToken ct = default)
+    {
+        var result = Filter(query)
+            .OrderByDescending(j => j.CreatedAt)
+            .Skip(Math.Max(0, query.Offset))
+            .Take(query.Limit)
+            .Select(j => new JobListItem
+            {
+                Id = j.Id, BranchKey = j.BranchKey, InstanceKey = j.InstanceKey, Status = j.Status,
+                ProcessedCount = j.ProcessedCount, TotalCount = j.TotalCount,
+                CreatedAt = j.CreatedAt, CompletedAt = j.CompletedAt, Error = j.Error,
+                Differing = j.Report?.Differing, Errors = j.Report?.Errors, GatePassed = j.Report?.Passed,
+            })
+            .ToList();
+        return Task.FromResult<IReadOnlyList<JobListItem>>(result);
+    }
+
+    // In-memory keeps the full job (with its report), so the verdict is computed live — nothing to backfill.
+    public Task<int> BackfillVerdictsAsync(int max, CancellationToken ct = default) => Task.FromResult(0);
+
     private IEnumerable<ComparisonJob> Filter(JobListQuery query)
     {
         IEnumerable<ComparisonJob> q = _jobs.Values;
@@ -56,6 +76,11 @@ public sealed class InMemoryJobStore : IJobStore
             .Where(j => j.BranchId == branchId
                 && j.Status is JobStatus.Draft or JobStatus.Queued or JobStatus.Running or JobStatus.Paused)
             .OrderByDescending(j => j.Priority).ThenBy(j => j.CreatedAt)
+            .ToList());
+
+    public Task<IReadOnlyList<ComparisonJob>> ListAllActiveAndDraftAsync(CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<ComparisonJob>>(_jobs.Values
+            .Where(j => j.Status is JobStatus.Draft or JobStatus.Queued or JobStatus.Running or JobStatus.Paused)
             .ToList());
 
     public Task<IReadOnlyList<ComparisonJob>> ListStaleUnindexedRunningAsync(DateTimeOffset leaseExpiredBefore, int limit, CancellationToken ct = default) =>

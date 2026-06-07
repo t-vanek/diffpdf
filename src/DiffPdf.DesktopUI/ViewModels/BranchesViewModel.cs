@@ -1,4 +1,6 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
+using Avalonia.Collections;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DiffPdf.Client;
@@ -7,94 +9,210 @@ using DiffPdf.DesktopUI.Services;
 namespace DiffPdf.DesktopUI.ViewModels;
 
 /// <summary>
-/// Větve: seznam + vytvoření + úprava + smazání + detail se statistikami, a u každého řádku ⚙ konfigurace
-/// a tlačítka fronty (Spustit / Přidat do fronty / Pozastavit / Zastavit / Obnovit) řízená živým stavem fronty.
+/// Větve: seznam + vytvoření / úprava (modální formulář) + smazání (jednotlivě i hromadně) + detail se
+/// statistikami, a u každého řádku ⚙ konfigurace a tlačítka fronty (Spustit / Přidat do fronty / Pozastavit /
+/// Zastavit / Obnovit) řízená živým stavem fronty. Seznam se navíc periodicky obnovuje na pozadí (vedle
+/// ručního tlačítka Obnovit).
 /// </summary>
 public partial class BranchesViewModel : PageViewModel
 {
+    private const int AutoRefreshSeconds = 10;
+
     private readonly ServerSession _session;
     private readonly DialogService _dialogs;
     private readonly JobProgressHubClient _hub;
     private bool _subscribed;
+    private bool _autoRefreshStarted;
+
+    // Serializes list reloads: the manual button, the periodic auto-refresh, and post-mutation reloads can
+    // overlap, and the rebuild mutates the shared Branches collection — so only one runs at a time.
+    private readonly SemaphoreSlim _loadGate = new(1, 1);
 
     public override string Title => "Větve";
     public override int NavOrder => 1;
 
     public ObservableCollection<BranchRowViewModel> Branches { get; } = [];
 
-    /// <summary>Statistiky vztažené pouze k vybrané větvi (úlohy, kontroly, automatizace, porovnávání).</summary>
+    /// <summary>Filtered + sortable view over <see cref="Branches"/> that the grid binds (search box + column sort).</summary>
+    public DataGridCollectionView BranchesView { get; }
+
+    /// <summary>Statistiky vybrané větve: úlohy + porovnávání (kontroly/automatizace/spouštěče mají vlastní stránky).</summary>
     public ObservableCollection<StatGroup> Stats { get; } = [];
 
-    /// <summary>Spouštěče v této větvi (souhrn).</summary>
-    public ObservableCollection<TriggerResponse> Triggers { get; } = [];
-
     [ObservableProperty] private BranchRowViewModel? _selectedRow;
-    [ObservableProperty] private bool _showCreateForm;
-
-    /// <summary>Vybraná větev (odvozená z vybraného řádku) — pro detailní panel a akce úprav.</summary>
-    public Branch? SelectedBranch => SelectedRow?.Branch;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(BranchFolderPreview))]
-    private string _newKey = string.Empty;
-
-    [ObservableProperty] private string _newName = string.Empty;
-    [ObservableProperty] private string? _validationError;
     [ObservableProperty] private string? _info;
 
-    // Kořen struktury nastavený na serveru (ScopeSync:RootPath); je-li nastaven, vytvoření větve založí složku 'kořen\větev'.
+    /// <summary>Live filter over key/name (toolbar search box).</summary>
+    [ObservableProperty] private string _searchText = string.Empty;
+
+    /// <summary>Počet zaškrtnutých větví pro hromadné smazání (řídí popisek + dostupnost tlačítka).</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(BranchFolderPreview))]
-    private string? _scopeRoot;
+    [NotifyPropertyChangedFor(nameof(CanDeleteSelected))]
+    private int _selectedDeleteCount;
 
-    /// <summary>Náhled složky, kterou vytvoření větve založí (jen když má server nastavený kořen struktury).</summary>
-    public string BranchFolderPreview
-    {
-        get
-        {
-            string key = NewKey.Trim();
-            if (string.IsNullOrWhiteSpace(ScopeRoot) || key.Length == 0) return string.Empty;
-            string root = ScopeRoot!.Trim().TrimEnd('\\', '/');
-            return root.StartsWith(@"\\", StringComparison.Ordinal) ? $@"{root}\{key}" : System.IO.Path.Combine(root, key);
-        }
-    }
+    public bool CanDeleteSelected => SelectedDeleteCount > 0;
 
-    // Editace vybrané větve (klíč je neměnná identita).
-    [ObservableProperty] private string _editName = string.Empty;
-    [ObservableProperty] private bool _editEnabled = true;
+    /// <summary>True when there are no branches — drives the empty-state hint.</summary>
+    public bool HasNoBranches => Branches.Count == 0;
+
+    /// <summary>Vybraná větev (odvozená z vybraného řádku) — pro detailní panel a akce úprav/mazání.</summary>
+    public Branch? SelectedBranch => SelectedRow?.Branch;
+
+    // Kořen struktury nastavený na serveru (ScopeSync:RootPath); předává se do formuláře pro náhled složky.
+    [ObservableProperty] private string? _scopeRoot;
 
     public BranchesViewModel(ServerSession session, DialogService dialogs, JobProgressHubClient hub)
     {
         _session = session;
         _dialogs = dialogs;
         _hub = hub;
+        BranchesView = new DataGridCollectionView(Branches) { Filter = MatchesSearch };
+    }
+
+    private bool MatchesSearch(object o)
+    {
+        if (o is not BranchRowViewModel r) return false;
+        var s = SearchText?.Trim();
+        return string.IsNullOrEmpty(s)
+            || r.Branch.Key.Contains(s, StringComparison.OrdinalIgnoreCase)
+            || r.Branch.Name.Contains(s, StringComparison.OrdinalIgnoreCase);
+    }
+
+    partial void OnSearchTextChanged(string value) => BranchesView.Refresh();
+
+    /// <summary>Header "select all": toggles the checkbox on every currently-visible (filtered) row.</summary>
+    public bool AllSelected
+    {
+        get => BranchesView.Count > 0 && BranchesView.Cast<BranchRowViewModel>().All(r => r.IsSelected);
+        set { foreach (var r in BranchesView.Cast<BranchRowViewModel>()) r.IsSelected = value; }
     }
 
     public override Task ActivateAsync() => RunAsync(async () =>
     {
         try { await _hub.EnsureStartedAsync(); } catch { /* live queue state is best-effort */ }
-        if (!_subscribed) { _hub.QueueStateReceived += OnQueueState; _subscribed = true; }
+        if (!_subscribed)
+        {
+            _hub.QueueStateReceived += OnQueueState;
+            _hub.TriggerEventReceived += OnScopeEvent;
+            _hub.Reconnected += OnReconnected;
+            _subscribed = true;
+        }
+        // Join the global scope group so branch/instance changes anywhere (incl. a branch created elsewhere
+        // we have never joined) push to this page in realtime.
+        try { await _hub.JoinScopeAsync(); } catch { /* realtime scope updates are best-effort */ }
+
+        // Start the periodic refresh up front: even if the initial load below fails (server momentarily down),
+        // the loop keeps ticking — guarded + retried — and recovers on its own, so the list never stays stale.
+        StartAutoRefresh();
 
         await LoadAsync();
-        ScopeRoot = (await _session.Require().GetScopeRootAsync()).Root;
+        try { ScopeRoot = (await _session.Require().GetScopeRootAsync()).Root; } catch { /* root hint is optional */ }
     });
 
+    // A branch/instance was created/updated/deleted somewhere — refresh the list right away instead of waiting
+    // for the next poll. Deduped by the load gate; errors are swallowed (the periodic auto-refresh retries).
+    private void OnScopeEvent(TriggerEvent e)
+    {
+        if (e.EventType.StartsWith("branch.", StringComparison.Ordinal) ||
+            e.EventType.StartsWith("instance.", StringComparison.Ordinal))
+            _ = ReloadQuietlyAsync();
+    }
+
+    // Connection restored after a drop — reload to catch any changes missed while offline.
+    private void OnReconnected() => _ = ReloadQuietlyAsync();
+
+    private async Task ReloadQuietlyAsync()
+    {
+        try { await LoadAsync(); }
+        catch { /* best-effort realtime refresh */ }
+    }
+
+    /// <summary>Reloads the branch list, reconciling the existing rows in place (see <see cref="ReconcileAsync"/>).</summary>
     private async Task LoadAsync()
     {
-        var client = _session.Require();
-        var list = await client.ListBranchesAsync();
-        Branches.Clear();
-        foreach (var b in list) Branches.Add(new BranchRowViewModel(b));
-
-        // Seed each row's queue state and join its SignalR group for live pushes.
-        foreach (var row in Branches)
+        await _loadGate.WaitAsync();
+        try
         {
-            try
+            await ReconcileAsync(await _session.Require().ListBranchSummariesAsync());
+        }
+        finally
+        {
+            _loadGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Merges the fetched summaries into <see cref="Branches"/> in place — updating existing rows (name/enabled,
+    /// instance count, queue state), appending new ones, and dropping removed ones — instead of clearing and
+    /// rebuilding. This keeps the selection + per-row checkbox state across an auto-refresh and avoids flicker.
+    /// Queue + instance count come from the single summary call, so there is no per-branch round-trip (N+1).
+    /// </summary>
+    private async Task ReconcileAsync(IReadOnlyList<BranchSummary> summaries)
+    {
+        var incoming = new HashSet<string>(summaries.Select(s => s.Branch.Key), StringComparer.Ordinal);
+
+        for (int i = Branches.Count - 1; i >= 0; i--)
+        {
+            if (!incoming.Contains(Branches[i].Branch.Key))
             {
-                await _hub.JoinBranchAsync(row.Branch.Key);
-                row.Apply(await client.GetBranchQueueAsync(row.Branch.Key));
+                Branches[i].PropertyChanged -= OnRowChanged;
+                Branches.RemoveAt(i);
             }
-            catch { /* queue state is best-effort */ }
+        }
+
+        var byKey = Branches.ToDictionary(r => r.Branch.Key, StringComparer.Ordinal);
+        foreach (var s in summaries)
+        {
+            if (byKey.TryGetValue(s.Branch.Key, out var row))
+            {
+                row.Branch = s.Branch; // refresh name/enabled (key is the immutable identity)
+                row.InstanceCount = s.InstanceCount;
+                row.Apply(s.Queue);
+            }
+            else
+            {
+                var added = new BranchRowViewModel(s.Branch) { InstanceCount = s.InstanceCount };
+                added.Apply(s.Queue);
+                added.PropertyChanged += OnRowChanged;
+                Branches.Add(added);
+                // Join the branch's SignalR group so later live queue pushes reach this row.
+                try { await _hub.JoinBranchAsync(s.Branch.Key); }
+                catch { /* live pushes are best-effort */ }
+            }
+        }
+
+        RecomputeDeleteSelection();
+        OnPropertyChanged(nameof(HasNoBranches));
+    }
+
+    private void OnRowChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(BranchRowViewModel.IsSelected))
+            RecomputeDeleteSelection();
+    }
+
+    private void RecomputeDeleteSelection()
+    {
+        SelectedDeleteCount = Branches.Count(r => r.IsSelected);
+        OnPropertyChanged(nameof(AllSelected));
+    }
+
+    private void StartAutoRefresh()
+    {
+        if (_autoRefreshStarted) return;
+        _autoRefreshStarted = true;
+        _ = AutoRefreshLoopAsync();
+    }
+
+    private async Task AutoRefreshLoopAsync()
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(AutoRefreshSeconds));
+        while (await timer.WaitForNextTickAsync())
+        {
+            // Quiet background refresh: skip while disconnected, and never toggle the busy indicator or surface
+            // errors — that is the manual "Obnovit" button's job. A failed tick is simply retried next interval.
+            if (!_session.IsConnected) continue;
+            try { await LoadAsync(); } catch { /* transient / disconnected */ }
         }
     }
 
@@ -112,22 +230,16 @@ public partial class BranchesViewModel : PageViewModel
     {
         OnPropertyChanged(nameof(SelectedBranch));
         Stats.Clear();
-        Triggers.Clear();
         if (value is null) return;
-        EditName = value.Branch.Name;
-        EditEnabled = value.Branch.Enabled;
         _ = RunAsync(LoadStatsAsync);
     }
 
     private async Task LoadStatsAsync()
     {
         Stats.Clear();
-        Triggers.Clear();
         if (SelectedBranch is not { } b) return;
-        var client = _session.Require();
-        var stats = await client.GetBranchStatsAsync(b.Key);
-        foreach (var g in ScopeStatGroups.From(stats)) Stats.Add(g);
-        foreach (var t in await client.ListBranchTriggersAsync(b.Id)) Triggers.Add(t);
+        var stats = await _session.Require().GetBranchStatsAsync(b.Key);
+        foreach (var g in ScopeStatGroups.JobsAndComparisons(stats)) Stats.Add(g);
     }
 
     // ---------------- Run queue (cascades to all enabled instances of the branch) ----------------
@@ -156,66 +268,100 @@ public partial class BranchesViewModel : PageViewModel
         await _dialogs.ShowScopeSettingsAsync(vm);
     }
 
+    /// <summary>Otevře formulář pro vytvoření nové větve (modální dialog).</summary>
     [RelayCommand]
-    private void ShowCreate()
+    private async Task ShowCreate()
     {
-        NewKey = string.Empty;
-        NewName = string.Empty;
-        ValidationError = null;
-        Info = null;
-        ShowCreateForm = true;
+        var keys = Branches.Select(r => r.Branch.Key).ToList();
+        var names = Branches.Select(r => r.Branch.Name).ToList();
+        var form = BranchFormViewModel.ForCreate(_session, ScopeRoot, keys, names);
+        if (await _dialogs.ShowBranchFormAsync(form))
+        {
+            Info = $"Větev '{form.Key.Trim()}' vytvořena.";
+            await RunAsync(LoadAsync);
+        }
     }
 
+    /// <summary>Otevře formulář pro úpravu vybrané (nebo předané) větve (modální dialog).</summary>
     [RelayCommand]
-    private void CancelCreate()
+    private async Task EditBranch(BranchRowViewModel? row)
     {
-        ShowCreateForm = false;
-        ValidationError = null;
+        if ((row ?? SelectedRow)?.Branch is not { } b) return;
+        var otherNames = Branches.Where(r => r.Branch.Key != b.Key).Select(r => r.Branch.Name).ToList();
+        var form = BranchFormViewModel.ForEdit(_session, b, otherNames);
+        if (await _dialogs.ShowBranchFormAsync(form))
+        {
+            Info = $"Větev '{b.Key}' uložena.";
+            await RunAsync(LoadAsync);
+        }
     }
-
-    [RelayCommand]
-    private Task SaveCreateAsync() => RunAsync(async () =>
-    {
-        ValidationError = Validate();
-        if (ValidationError is not null) return;
-
-        await _session.Require().CreateBranchAsync(new CreateBranchRequest(NewKey.Trim(), NewName.Trim()));
-        Info = $"Větev '{NewKey.Trim()}' vytvořena.";
-        ShowCreateForm = false;
-        await LoadAsync();
-    });
-
-    /// <summary>Klientská kontrola: klíč + název povinné a oba unikátní (klíč je case-sensitive jako na serveru).</summary>
-    private string? Validate()
-    {
-        var key = NewKey.Trim();
-        var name = NewName.Trim();
-        if (key.Length == 0) return "Zadej klíč.";
-        if (name.Length == 0) return "Zadej název.";
-        if (Branches.Any(r => string.Equals(r.Branch.Key, key, StringComparison.Ordinal)))
-            return $"Větev s klíčem '{key}' už existuje.";
-        if (Branches.Any(r => string.Equals(r.Branch.Name, name, StringComparison.OrdinalIgnoreCase)))
-            return $"Větev s názvem '{name}' už existuje.";
-        return null;
-    }
-
-    [RelayCommand]
-    private Task SaveEditAsync() => RunAsync(async () =>
-    {
-        if (SelectedBranch is not { } b) throw new InvalidOperationException("Vyber větev ze seznamu.");
-        await _session.Require().UpdateBranchAsync(b.Key, new UpdateBranchRequest(EditName.Trim(), EditEnabled, b.Version));
-        Info = $"Větev '{b.Key}' uložena.";
-        await LoadAsync();
-    });
 
     [RelayCommand]
     private Task DeleteAsync() => RunAsync(async () =>
     {
-        if (SelectedBranch is not { } b) throw new InvalidOperationException("Vyber větev ze seznamu.");
-        if (!await _dialogs.ConfirmAsync("Smazat větev", $"Opravdu smazat větev '{b.Key}'?"))
+        if (SelectedRow is not { } row) throw new InvalidOperationException("Vyber větev ze seznamu.");
+        var b = row.Branch;
+        // A branch with instances can't be plainly deleted (409). Offer the cascade up front instead.
+        bool cascade = row.InstanceCount > 0;
+        var message = cascade
+            ? $"Větev '{b.Key}' má {row.InstanceCount} instancí. Smazat větev včetně všech instancí a jejich úloh?"
+            : $"Opravdu smazat větev '{b.Key}'?";
+        if (!await _dialogs.ConfirmAsync("Smazat větev", message))
             return;
-        await _session.Require().DeleteBranchAsync(b.Key);
+        await _session.Require().DeleteBranchAsync(b.Key, cascade);
         Info = $"Větev '{b.Key}' smazána.";
+        await LoadAsync();
+    });
+
+    /// <summary>Hromadné smazání všech zaškrtnutých větví. Pokračuje i když některá selže (např. má instance/úlohu).</summary>
+    [RelayCommand]
+    private Task DeleteSelectedAsync() => RunAsync(async () =>
+    {
+        var targets = Branches.Where(r => r.IsSelected).Select(r => r.Branch).ToList();
+        if (targets.Count == 0) { Info = "Nevybral jsi žádnou větev."; return; }
+        if (!await _dialogs.ConfirmAsync("Smazat větve", $"Opravdu smazat vybrané větve ({targets.Count})?"))
+            return;
+
+        var client = _session.Require();
+        int deleted = 0;
+        var failed = new List<string>();
+        foreach (var b in targets)
+        {
+            try { await client.DeleteBranchAsync(b.Key); deleted++; }
+            catch (DiffPdfApiException ex) { failed.Add($"{b.Key} ({ex.Detail ?? ex.StatusCode.ToString()})"); }
+        }
+
+        Info = failed.Count == 0
+            ? $"Smazáno {deleted} větví."
+            : $"Smazáno {deleted}, nešlo smazat {failed.Count}: {string.Join("; ", failed)}";
+        await LoadAsync();
+    });
+
+    /// <summary>Hromadně povolí všechny zaškrtnuté větve.</summary>
+    [RelayCommand]
+    private Task EnableSelectedAsync() => SetSelectedEnabledAsync(true);
+
+    /// <summary>Hromadně zakáže všechny zaškrtnuté větve.</summary>
+    [RelayCommand]
+    private Task DisableSelectedAsync() => SetSelectedEnabledAsync(false);
+
+    private Task SetSelectedEnabledAsync(bool enabled) => RunAsync(async () =>
+    {
+        var targets = Branches.Where(r => r.IsSelected).Select(r => r.Branch).ToList();
+        if (targets.Count == 0) { Info = "Nevybral jsi žádnou větev."; return; }
+
+        var client = _session.Require();
+        int done = 0;
+        var failed = new List<string>();
+        foreach (var b in targets)
+        {
+            try { await client.UpdateBranchAsync(b.Key, new UpdateBranchRequest(b.Name, enabled, b.Version)); done++; }
+            catch (DiffPdfApiException ex) { failed.Add($"{b.Key} ({ex.Detail ?? ex.StatusCode.ToString()})"); }
+        }
+
+        Info = failed.Count == 0
+            ? $"{(enabled ? "Povoleno" : "Zakázáno")}: {done} větví."
+            : $"Hotovo {done}, selhalo {failed.Count}: {string.Join("; ", failed)}";
         await LoadAsync();
     });
 }
