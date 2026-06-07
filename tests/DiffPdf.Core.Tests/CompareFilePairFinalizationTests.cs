@@ -51,6 +51,8 @@ public class CompareFilePairFinalizationTests
         public Task<int> CountActiveAsync(CancellationToken ct = default) => inner.CountActiveAsync(ct);
         public Task<IReadOnlyDictionary<FilePairTaskStatus, int>> CountByStatusForJobsAsync(IReadOnlyCollection<Guid> jobIds, CancellationToken ct = default) => inner.CountByStatusForJobsAsync(jobIds, ct);
         public Task<int> DeleteForJobsAsync(IReadOnlyCollection<Guid> jobIds, CancellationToken ct = default) => inner.DeleteForJobsAsync(jobIds, ct);
+        public Task<int> SkipPendingForJobAsync(Guid jobId, CancellationToken ct = default) => inner.SkipPendingForJobAsync(jobId, ct);
+        public Task<int> SkipPendingForTerminalJobsAsync(CancellationToken ct = default) => inner.SkipPendingForTerminalJobsAsync(ct);
     }
 
     private static ComparisonJob RunningJob() => new()

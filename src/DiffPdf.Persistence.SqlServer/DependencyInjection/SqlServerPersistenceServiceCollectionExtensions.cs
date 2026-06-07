@@ -91,6 +91,8 @@ internal sealed class EfCoreMigrationBackgroundService(
                 // One-time (idempotent) backfill of denormalized verdict counts for jobs completed before the
                 // AddJobVerdictColumns migration — so the jobs list keeps showing their verdict without the report.
                 await BackfillJobVerdictsAsync(scope.ServiceProvider, stoppingToken);
+                // One-time heal: skip Queued pairs left stranded by a cancel that predated the cancel→skip fix.
+                await SkipStrandedTasksAsync(scope.ServiceProvider, stoppingToken);
                 return;
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -120,6 +122,19 @@ internal sealed class EfCoreMigrationBackgroundService(
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Job verdict backfill failed (non-fatal; the list falls back to a null verdict).");
+        }
+    }
+
+    private async Task SkipStrandedTasksAsync(IServiceProvider services, CancellationToken ct)
+    {
+        try
+        {
+            int n = await services.GetRequiredService<IFilePairTaskStore>().SkipPendingForTerminalJobsAsync(ct);
+            if (n > 0) logger.LogInformation("Skipped {Count} stranded Queued pair(s) belonging to terminal jobs.", n);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Stranded-task cleanup failed (non-fatal).");
         }
     }
 

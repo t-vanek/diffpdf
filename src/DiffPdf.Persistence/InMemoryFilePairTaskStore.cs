@@ -107,6 +107,31 @@ public sealed class InMemoryFilePairTaskStore : IFilePairTaskStore
         return Task.CompletedTask;
     }
 
+    public Task<int> SkipPendingForJobAsync(Guid jobId, CancellationToken ct = default)
+    {
+        int skipped = 0;
+        lock (_gate)
+        {
+            foreach (var t in _tasks.Values.Where(t => t.JobId == jobId && t.Status == FilePairTaskStatus.Queued).ToList())
+            {
+                _tasks[t.Id] = t with
+                {
+                    Status = FilePairTaskStatus.Skipped,
+                    CompletedAt = DateTimeOffset.UtcNow,
+                    LockedBy = null,
+                    LockedUntil = null,
+                    Version = t.Version + 1,
+                };
+                skipped++;
+            }
+        }
+        return Task.FromResult(skipped);
+    }
+
+    // In-memory has no cross-store view of job status and runs no startup sweep (the EF migration runner does);
+    // its data is also non-persistent, so nothing is ever stranded across a restart. No-op.
+    public Task<int> SkipPendingForTerminalJobsAsync(CancellationToken ct = default) => Task.FromResult(0);
+
     public Task<IReadOnlyList<(Guid JobId, Guid TaskId)>> RequeueStaleAsync(CancellationToken ct = default)
     {
         var now = DateTimeOffset.UtcNow;
