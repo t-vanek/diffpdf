@@ -25,6 +25,7 @@ public sealed class BranchQueueControl(
     IBranchStore branches,
     IInstanceStore instances,
     IJobStore jobStore,
+    IFilePairTaskStore tasks,
     IBatchLauncher launcher,
     IBranchQueueDispatcher dispatcher,
     IScopeConfigurationResolver configResolver,
@@ -69,7 +70,7 @@ public sealed class BranchQueueControl(
 
             case QueueAction.Stop:
                 if (await ActiveJobAsync(branchKey, instanceKey, ct) is { } sj)
-                    await jobStore.CancelAsync(sj.Id, ct);
+                    await CancelJobAsync(sj.Id, ct);
                 await dispatcher.DispatchBranchAsync(branch.Id, ct);
                 break;
         }
@@ -123,12 +124,20 @@ public sealed class BranchQueueControl(
                 await branches.SetQueuePausedAsync(branch.Id, false, ct);
                 // Cancel the running job AND every pending Draft/Queued — clears the rest of the branch queue.
                 foreach (var j in await jobStore.ListActiveAndDraftByBranchAsync(branch.Id, ct))
-                    await SafeAsync(() => jobStore.CancelAsync(j.Id, ct));
+                    await SafeAsync(() => CancelJobAsync(j.Id, ct));
                 await dispatcher.DispatchBranchAsync(branch.Id, ct);
                 break;
         }
 
         return await OutcomeAsync(branch.Id, message, ct);
+    }
+
+    // Cancel a job and skip its still-Queued pairs together, so a stopped job's un-started work doesn't linger
+    // as "pending" comparisons (SkipPending runs even if the job was already terminal — cleans up stragglers).
+    private async Task CancelJobAsync(Guid jobId, CancellationToken ct)
+    {
+        await jobStore.CancelAsync(jobId, ct);
+        await tasks.SkipPendingForJobAsync(jobId, ct);
     }
 
     private async Task<QueueActionOutcome?> OutcomeAsync(Guid branchId, string? message, CancellationToken ct)

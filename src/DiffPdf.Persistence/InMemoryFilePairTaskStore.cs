@@ -107,6 +107,27 @@ public sealed class InMemoryFilePairTaskStore : IFilePairTaskStore
         return Task.CompletedTask;
     }
 
+    public Task<int> SkipPendingForJobAsync(Guid jobId, CancellationToken ct = default)
+    {
+        int skipped = 0;
+        lock (_gate)
+        {
+            foreach (var t in _tasks.Values.Where(t => t.JobId == jobId && t.Status == FilePairTaskStatus.Queued).ToList())
+            {
+                _tasks[t.Id] = t with
+                {
+                    Status = FilePairTaskStatus.Skipped,
+                    CompletedAt = DateTimeOffset.UtcNow,
+                    LockedBy = null,
+                    LockedUntil = null,
+                    Version = t.Version + 1,
+                };
+                skipped++;
+            }
+        }
+        return Task.FromResult(skipped);
+    }
+
     public Task<IReadOnlyList<(Guid JobId, Guid TaskId)>> RequeueStaleAsync(CancellationToken ct = default)
     {
         var now = DateTimeOffset.UtcNow;

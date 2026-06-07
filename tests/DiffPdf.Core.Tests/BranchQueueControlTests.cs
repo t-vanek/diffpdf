@@ -51,7 +51,7 @@ public class BranchQueueControlTests
         var launcher = new FakeBatchLauncher(jobs);
         var dispatcher = new BranchQueueDispatcher(jobs, branches, new NullRunPublisher(), new NullBranchQueueStatePublisher(), new BranchDispatchLocks(), new DiffPdfMetrics(), NullLogger<BranchQueueDispatcher>.Instance);
         var resolver = new ScopeConfigurationResolver(new InMemoryScopeConfigurationStore());
-        var control = new BranchQueueControl(branches, instances, jobs, launcher, dispatcher, resolver, new FakeResume());
+        var control = new BranchQueueControl(branches, instances, jobs, new InMemoryFilePairTaskStore(), launcher, dispatcher, resolver, new FakeResume());
 
         var b = await branches.CreateAsync("Alfa", "Alfa");
         await instances.CreateAsync(b.Id, "Lama", "Lama", "/base", null);
@@ -72,10 +72,47 @@ public class BranchQueueControlTests
         var branches = new InMemoryBranchStore();
         var instances = new InMemoryInstanceStore();
         var dispatcher = new BranchQueueDispatcher(jobs, branches, new NullRunPublisher(), new NullBranchQueueStatePublisher(), new BranchDispatchLocks(), new DiffPdfMetrics(), NullLogger<BranchQueueDispatcher>.Instance);
-        var control = new BranchQueueControl(branches, instances, jobs, new FakeBatchLauncher(jobs), dispatcher,
+        var control = new BranchQueueControl(branches, instances, jobs, new InMemoryFilePairTaskStore(), new FakeBatchLauncher(jobs), dispatcher,
             new ScopeConfigurationResolver(new InMemoryScopeConfigurationStore()), new FakeResume());
 
         Assert.Null(await control.ActOnBranchAsync("Nope", QueueAction.Run));
         Assert.Null(await control.ActOnInstanceAsync("Nope", "Nada", QueueAction.Run));
+    }
+
+    [Fact]
+    public async Task Stop_Instance_CancelsJob_AndSkipsItsQueuedPairs()
+    {
+        var jobs = new InMemoryJobStore();
+        var tasks = new InMemoryFilePairTaskStore();
+        var branches = new InMemoryBranchStore();
+        var instances = new InMemoryInstanceStore();
+        var dispatcher = new BranchQueueDispatcher(jobs, branches, new NullRunPublisher(), new NullBranchQueueStatePublisher(), new BranchDispatchLocks(), new DiffPdfMetrics(), NullLogger<BranchQueueDispatcher>.Instance);
+        var control = new BranchQueueControl(branches, instances, jobs, tasks, new FakeBatchLauncher(jobs), dispatcher,
+            new ScopeConfigurationResolver(new InMemoryScopeConfigurationStore()), new FakeResume());
+
+        var b = await branches.CreateAsync("Alfa", "Alfa");
+        var inst = await instances.CreateAsync(b.Id, "Lama", "Lama", "/base", null);
+
+        // A running job for the instance with two un-started pairs + one already completed.
+        var jobId = Guid.NewGuid();
+        await jobs.CreateAsync(new ComparisonJob
+        {
+            Id = jobId, BranchId = b.Id, InstanceId = inst.Id, Status = JobStatus.Running,
+            Request = new BatchComparisonRequest { Scope = new JobScope("Alfa", "Lama") },
+        });
+        await tasks.CreateManyAsync(
+        [
+            new FilePairTask { Id = Guid.NewGuid(), JobId = jobId, RelativePath = "a.pdf", Status = FilePairTaskStatus.Queued },
+            new FilePairTask { Id = Guid.NewGuid(), JobId = jobId, RelativePath = "b.pdf", Status = FilePairTaskStatus.Queued },
+            new FilePairTask { Id = Guid.NewGuid(), JobId = jobId, RelativePath = "c.pdf", Status = FilePairTaskStatus.Completed },
+        ]);
+
+        await control.ActOnInstanceAsync("Alfa", "Lama", QueueAction.Stop);
+
+        Assert.Equal(JobStatus.Cancelled, (await jobs.GetAsync(jobId))!.Status);
+        var after = await tasks.ListByJobAsync(jobId);
+        Assert.Equal(2, after.Count(t => t.Status == FilePairTaskStatus.Skipped)); // the two Queued → Skipped
+        Assert.Equal(1, after.Count(t => t.Status == FilePairTaskStatus.Completed)); // the done one untouched
+        Assert.DoesNotContain(after, t => t.Status == FilePairTaskStatus.Queued);    // nothing left "pending"
     }
 }

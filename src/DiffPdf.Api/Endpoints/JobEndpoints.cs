@@ -79,12 +79,14 @@ public static class JobEndpoints
             return report.Passed ? Results.Ok(payload) : Results.Json(payload, statusCode: StatusCodes.Status422UnprocessableEntity);
         }).WithSummary("CI gate verdict (200 pass / 422 fail)").ProducesProblem(StatusCodes.Status404NotFound);
 
-        group.MapPost("/{id:guid}/cancel", async (Guid id, IJobStore jobStore, IBranchQueueDispatcher dispatcher, CancellationToken ct) =>
+        group.MapPost("/{id:guid}/cancel", async (Guid id, IJobStore jobStore, IFilePairTaskStore tasks, IBranchQueueDispatcher dispatcher, CancellationToken ct) =>
         {
             if (await jobStore.GetAsync(id, ct) is null) return Results.NotFound();
             var cancelled = await jobStore.CancelAsync(id, ct);
             if (cancelled is null)
                 return Results.Problem("Job is not in a cancellable state.", statusCode: StatusCodes.Status409Conflict);
+            // Cancellation leaves un-started pairs Queued; skip them so they don't linger as pending comparisons.
+            await tasks.SkipPendingForJobAsync(id, ct);
             // Cancelling frees the branch — release the next pending run.
             await dispatcher.DispatchBranchAsync(cancelled.BranchId, ct);
             return Results.Ok(JobSummary.From(cancelled));

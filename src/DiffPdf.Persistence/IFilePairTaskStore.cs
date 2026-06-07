@@ -21,6 +21,12 @@ public interface IFilePairTaskStore
     Task RequeueForRetryAsync(Guid taskId, CancellationToken ct = default);
 
     /// <summary>
+    /// Marks a job's still-<c>Queued</c> tasks as <c>Skipped</c> (terminal). Called when a job is cancelled so its
+    /// un-started pairs do not linger as "pending" comparisons forever. Returns the number of tasks skipped.
+    /// </summary>
+    Task<int> SkipPendingForJobAsync(Guid jobId, CancellationToken ct = default);
+
+    /// <summary>
     /// Requeues tasks whose lease expired (crashed worker) and returns their
     /// (jobId, taskId) so they can be re-dispatched. Enables resume.
     /// </summary>
