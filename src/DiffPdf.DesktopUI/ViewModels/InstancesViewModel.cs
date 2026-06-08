@@ -25,6 +25,7 @@ public partial class InstancesViewModel : PageViewModel
     // shared Instances collection.
     private readonly SemaphoreSlim _loadGate = new(1, 1);
     private string? _loadedBranchKey; // which branch the current rows belong to (drives fresh-load vs reconcile)
+    private readonly RowSelection<InstanceRowViewModel> _selection;
 
     public override string Title => "Instance";
     public override string Icon => "▦";
@@ -74,6 +75,7 @@ public partial class InstancesViewModel : PageViewModel
         _dialogs = dialogs;
         _hub = hub;
         InstancesView = new DataGridCollectionView(Instances) { Filter = MatchesSearch };
+        _selection = new RowSelection<InstanceRowViewModel>(InstancesView, () => Instances, RecomputeDeleteSelection);
     }
 
     private bool MatchesSearch(object o)
@@ -91,8 +93,8 @@ public partial class InstancesViewModel : PageViewModel
     /// <summary>Header "select all": toggles the checkbox on every currently-visible (filtered) row.</summary>
     public bool AllSelected
     {
-        get => InstancesView.Count > 0 && InstancesView.Cast<InstanceRowViewModel>().All(r => r.IsSelected);
-        set { foreach (var r in InstancesView.Cast<InstanceRowViewModel>()) r.IsSelected = value; }
+        get => _selection.AllSelected;
+        set => _selection.AllSelected = value;
     }
 
     public override Task ActivateAsync() => RunAsync(async () =>
@@ -120,6 +122,18 @@ public partial class InstancesViewModel : PageViewModel
             _ = ReloadBranchesQuietlyAsync();
         else if (e.EventType.StartsWith("instance.", StringComparison.Ordinal))
             _ = ReloadQuietlyAsync();
+    }
+
+    public override Task DeactivateAsync()
+    {
+        if (_subscribed)
+        {
+            _hub.QueueStateReceived -= OnQueueState;
+            _hub.TriggerEventReceived -= OnScopeEvent;
+            _hub.Reconnected -= OnReconnected;
+            _subscribed = false;
+        }
+        return Task.CompletedTask;
     }
 
     // Connection restored after a drop — refresh both the branch picker and the current instances.
@@ -208,27 +222,21 @@ public partial class InstancesViewModel : PageViewModel
             rowKeyOf: r => r.Instance.Key,
             create: i => new InstanceRowViewModel(i),
             update: (r, i) => r.Instance = i, // refresh name/basePath/enabled (key is the immutable identity)
-            onAdded: r => r.PropertyChanged += OnRowChanged,
-            onRemoved: r => r.PropertyChanged -= OnRowChanged);
+            onAdded: r => _selection.Track(r),
+            onRemoved: r => _selection.Untrack(r));
         RecomputeDeleteSelection();
     }
 
     private void ClearInstances()
     {
-        foreach (var r in Instances) r.PropertyChanged -= OnRowChanged;
+        foreach (var r in Instances) _selection.Untrack(r);
         Instances.Clear();
         RecomputeDeleteSelection();
     }
 
-    private void OnRowChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName == nameof(InstanceRowViewModel.IsSelected))
-            RecomputeDeleteSelection();
-    }
-
     private void RecomputeDeleteSelection()
     {
-        SelectedDeleteCount = Instances.Count(r => r.IsSelected);
+        SelectedDeleteCount = _selection.SelectedCount;
         OnPropertyChanged(nameof(AllSelected));
         OnPropertyChanged(nameof(HasNoInstances));
     }

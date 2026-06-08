@@ -12,7 +12,7 @@ namespace DiffPdf.DesktopUI.ViewModels;
 /// editable only when creating. When creating, the base path is derived (root + branch + key) and the
 /// old/new/reports skeleton can be provisioned; when editing, the base path is edited directly.
 /// </summary>
-public partial class InstanceFormViewModel : ViewModelBase
+public partial class InstanceFormViewModel : ViewModelBase, IModalViewModel
 {
     private readonly ServerSession _session;
     private readonly string _branchKey;

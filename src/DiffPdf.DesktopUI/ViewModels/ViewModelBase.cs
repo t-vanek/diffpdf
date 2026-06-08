@@ -47,4 +47,7 @@ public abstract class PageViewModel : ViewModelBase
 
     /// <summary>Called when the page becomes visible (and the app is connected) — lazy load.</summary>
     public virtual Task ActivateAsync() => Task.CompletedTask;
+
+    /// <summary>Called when navigating away — release per-page realtime subscriptions / background work.</summary>
+    public virtual Task DeactivateAsync() => Task.CompletedTask;
 }

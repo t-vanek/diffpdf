@@ -11,7 +11,7 @@ namespace DiffPdf.DesktopUI.ViewModels;
 /// pick a configuration source and edit this level's custom payloads — the inheritance / effective-value
 /// computation is done server-side and surfaced here purely as read-only "currently used" information.
 /// </summary>
-public partial class ScopeSettingsViewModel : ViewModelBase
+public partial class ScopeSettingsViewModel : ViewModelBase, IModalViewModel
 {
     private readonly ServerSession _session;
     private readonly string? _branchKey;
