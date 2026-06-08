@@ -29,8 +29,9 @@ public sealed class WebhookNotifier(IHttpClientFactory httpFactory, ILogger<Webh
             diffpdf = notification.Detail,
         };
 
-        // Connection-level failures bubble (HttpRequestException) so Wolverine can retry the
-        // event; a non-2xx response is logged but not retried (avoids hammering a bad endpoint).
+        // Best-effort delivery: a non-2xx response is logged here, and a connection-level failure
+        // propagates to the dispatcher, which catches and logs it per subscription without retrying
+        // (so one bad endpoint never blocks — or re-sends to — the other subscriptions).
         using var response = await client.PostAsJsonAsync(subscription.Target, payload, ct);
         if (!response.IsSuccessStatusCode)
             logger.LogWarning("Webhook to {Target} returned {Status} for event {Event}.",

@@ -18,9 +18,10 @@ public sealed record BatchNotification(
     int FilesWithContentErrors,
     bool Passed,
     IReadOnlyList<string> GateViolations,
-    DateTimeOffset OccurredAt) : INotification
+    DateTimeOffset OccurredAt,
+    string? Link = null) : INotification
 {
-    /// <summary>The whole batch notification is the structured webhook detail.</summary>
+    /// <summary>The whole batch notification is the structured webhook detail (includes <see cref="Link"/>).</summary>
     public object Detail => this;
 
     /// <summary>One-line headline suitable for an e-mail subject or chat title.</summary>
@@ -31,7 +32,7 @@ public sealed record BatchNotification(
         _ => $"diffpdf — batch passed: {BranchKey}/{InstanceKey}",
     };
 
-    /// <summary>Human-readable body with the headline counts and any gate violations.</summary>
+    /// <summary>Human-readable body with the headline counts, any gate violations and a deep link to the job.</summary>
     public string Summary
     {
         get
@@ -46,6 +47,8 @@ public sealed record BatchNotification(
                 lines.Add("Gate violations:");
                 lines.AddRange(GateViolations.Select(v => $"  - {v}"));
             }
+            if (!string.IsNullOrWhiteSpace(Link))
+                lines.Add($"Details: {Link}");
             lines.Add($"Finished at {OccurredAt:u}.");
             return string.Join('\n', lines);
         }

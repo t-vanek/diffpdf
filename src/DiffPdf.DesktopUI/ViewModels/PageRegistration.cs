@@ -14,13 +14,15 @@ internal static class PageRegistration
         Add<DashboardViewModel>(services);
         Add<BranchesViewModel>(services);
         Add<InstancesViewModel>(services);
+        // Úlohy sit directly under Instance in the nav rail (jobs belong to instances).
+        Add<JobsViewModel>(services);
         Add<AutomationsViewModel>(services);
-        Add<SubscriptionsViewModel>(services);
-        Add<DiscoveryViewModel>(services);
         // "Spustit porovnání" page removed — comparisons are now launched from the per-row run-queue
         // controls on the Branches / Instances pages, so the standalone trigger page is redundant.
         Add<SingleCompareViewModel>(services);
-        Add<JobsViewModel>(services);
+        Add<SubscriptionsViewModel>(services);
+        // "Sdílené složky" page removed — it only listed network shares / credential profiles read-only;
+        // share setup and scope sync live on the Větve page.
         // Trigger + comparer configuration is no longer a central page; it lives per-scope behind the gear
         // button on each branch/instance, with the global level edited here.
         Add<SettingsViewModel>(services);

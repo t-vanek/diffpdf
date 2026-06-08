@@ -13,6 +13,7 @@ namespace DiffPdf.DesktopUI.ViewModels;
 public partial class ControlChecksViewModel : ViewModelBase, IAutomationContent
 {
     private readonly ServerSession _session;
+    private readonly DialogService _dialogs;
 
     public CheckType[] Types { get; } = Enum.GetValues<CheckType>();
     public CheckScopeKind[] Scopes { get; } = Enum.GetValues<CheckScopeKind>();
@@ -37,6 +38,8 @@ public partial class ControlChecksViewModel : ViewModelBase, IAutomationContent
     [ObservableProperty] private bool _enabled = true;
     [ObservableProperty] private long? _editingVersion;
     [ObservableProperty] private string? _info;
+    [ObservableProperty] private bool _hasNoChecks;
+    [ObservableProperty] private bool _hasNoRuns;
 
     public bool IsEditing => EditingVersion is not null;
 
@@ -51,7 +54,11 @@ public partial class ControlChecksViewModel : ViewModelBase, IAutomationContent
         new("Zakázané", Checks.Count(c => !c.Enabled)) { Tone = StatTone.Paused },
     ];
 
-    public ControlChecksViewModel(ServerSession session) => _session = session;
+    public ControlChecksViewModel(ServerSession session, DialogService dialogs)
+    {
+        _session = session;
+        _dialogs = dialogs;
+    }
 
     public Task ActivateAsync() => RunAsync(LoadAsync);
 
@@ -59,6 +66,7 @@ public partial class ControlChecksViewModel : ViewModelBase, IAutomationContent
     {
         Checks.Clear();
         foreach (var c in await _session.Require().ListChecksAsync()) Checks.Add(c);
+        HasNoChecks = Checks.Count == 0;
         OnPropertyChanged(nameof(Summary));
     }
 
@@ -69,8 +77,10 @@ public partial class ControlChecksViewModel : ViewModelBase, IAutomationContent
     private async Task LoadRunsAsync()
     {
         Runs.Clear();
+        HasNoRuns = false;
         if (Selected is null) return;
         foreach (var r in await _session.Require().ListCheckRunsAsync(Selected.Id, 50)) Runs.Add(r);
+        HasNoRuns = Runs.Count == 0;
     }
 
     [RelayCommand]
@@ -146,15 +156,19 @@ public partial class ControlChecksViewModel : ViewModelBase, IAutomationContent
             Info = "Vytvořeno.";
         }
         await LoadAsync();
+        _dialogs.ShowToast(Info!, ToastKind.Success);
     });
 
     [RelayCommand]
     private Task DeleteAsync() => RunAsync(async () =>
     {
         if (Selected is not { } c) throw new InvalidOperationException("Vyber kontrolu.");
+        if (!await _dialogs.ConfirmAsync("Smazat kontrolu", $"Opravdu smazat kontrolu '{c.Key}'?"))
+            return;
         await _session.Require().DeleteCheckAsync(c.Id);
         Info = "Smazáno.";
         await LoadAsync();
+        _dialogs.ShowToast("Kontrola smazána.", ToastKind.Success);
     });
 
     [RelayCommand]
@@ -163,6 +177,7 @@ public partial class ControlChecksViewModel : ViewModelBase, IAutomationContent
         if (Selected is not { } c) throw new InvalidOperationException("Vyber kontrolu.");
         var run = await _session.Require().RunCheckAsync(c.Id);
         Info = $"Kontrola proběhla: {run.Outcome}.";
+        _dialogs.ShowToast($"Kontrola proběhla: {run.Outcome}.", ToastKind.Info);
         await LoadRunsAsync();
         await LoadAsync(); // refresh the check's last outcome + the summary strip
     });

@@ -5,11 +5,15 @@
              x:DataType="vm:BranchesViewModel"
              x:Name="Root">
 
+  <UserControl.KeyBindings>
+    <KeyBinding Gesture="F5" Command="{Binding RefreshCommand}"/>
+  </UserControl.KeyBindings>
+
   <DockPanel>
     <!-- Toolbar -->
     <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
       <TextBlock Text="Větve" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
-      <Button Content="🔄 Obnovit" Command="{Binding RefreshCommand}"/>
+      <Button Content="🔄 Obnovit" Command="{Binding RefreshCommand}" ToolTip.Tip="Obnovit (F5)"/>
       <Button Content="➕ Vytvořit větev" Command="{Binding ShowCreateCommand}"/>
       <Button Content="🗑 Smazat větev" Command="{Binding DeleteCommand}"
               IsEnabled="{Binding SelectedBranch, Converter={x:Static ObjectConverters.IsNotNull}}"/>
@@ -25,8 +29,8 @@
               ToolTip.Tip="Náhled: co by se zaregistrovalo ze složkové struktury (bez zápisu)"/>
       <Button Content="🔁 Synchronizovat" Command="{Binding ApplySyncCommand}"
               ToolTip.Tip="Zaregistruje větve a instance ze složkové struktury &lt;kořen&gt;/&lt;větev&gt;/&lt;instance&gt;"/>
-      <TextBox Width="200" VerticalAlignment="Center" Text="{Binding SearchText}"
-               PlaceholderText="Hledat (klíč/název)…"/>
+      <TextBox x:Name="SearchBox" Width="200" VerticalAlignment="Center" Text="{Binding SearchText}"
+               PlaceholderText="Hledat (klíč/název)…" ToolTip.Tip="Hledat (Ctrl+F)"/>
       <TextBlock Text="{Binding Info}" Foreground="#9CDCFE" VerticalAlignment="Center"/>
       <TextBlock Text="{Binding Error}" Foreground="#C0392B" VerticalAlignment="Center"/>
       <ProgressBar IsIndeterminate="True" Width="100" Height="4" VerticalAlignment="Center" IsVisible="{Binding IsBusy}"/>

@@ -23,7 +23,7 @@ public partial class AutomationsViewModel : PageViewModel
 {
     public override string Title => "Automatizace";
     public override string Icon => "⟳";
-    public override int NavOrder => 3;
+    public override int NavOrder => 4;
 
     public IReadOnlyList<AutomationType> Types { get; }
 

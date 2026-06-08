@@ -10,6 +10,7 @@
       <StackPanel Orientation="Horizontal" Spacing="8">
         <TextBlock Text="Jednorázové porovnání" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
         <Button Content="Porovnat" Command="{Binding CompareCommand}"/>
+        <ProgressBar IsIndeterminate="True" Width="100" Height="4" VerticalAlignment="Center" IsVisible="{Binding IsBusy}"/>
         <TextBlock Text="{Binding Error}" Foreground="#C0392B" VerticalAlignment="Center"/>
       </StackPanel>
       <TextBox Text="{Binding OldPath}" PlaceholderText="Stará verze (cesta k PDF)"/>
@@ -25,7 +26,8 @@
 
       <TextBox Grid.Column="1" Text="{Binding ResultJson, Mode=OneWay}" IsReadOnly="True"
                AcceptsReturn="True" TextWrapping="NoWrap" FontFamily="Cascadia Mono,Consolas,monospace"
-               VerticalAlignment="Stretch"/>
+               VerticalAlignment="Stretch"
+               PlaceholderText="Zadej cesty ke dvěma PDF a klikni Porovnat — JSON výsledek se zobrazí zde."/>
     </Grid>
   </DockPanel>
 </UserControl>

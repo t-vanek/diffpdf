@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System.IO;
 using Avalonia.Collections;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -26,7 +25,7 @@ public partial class JobsViewModel : PageViewModel
 
     public override string Title => "Úlohy";
     public override string Icon => "☰";
-    public override int NavOrder => 4;
+    public override int NavOrder => 3; // přímo pod Instance (úlohy patří k instancím)
 
     public ObservableCollection<JobRowViewModel> Jobs { get; } = [];
     public JobStatus?[] StatusFilters { get; } = [null, .. Enum.GetValues<JobStatus>().Cast<JobStatus?>()];
@@ -58,6 +57,10 @@ public partial class JobsViewModel : PageViewModel
     [ObservableProperty] private JobResult? _result;
     [ObservableProperty] private string? _info;
     [ObservableProperty] private bool _showOnlyDiffering;
+    [ObservableProperty] private string _fileSearch = "";
+    [ObservableProperty] private string _fileCountLabel = "";
+    [ObservableProperty] private bool _hasNoMatchingFiles;
+    [ObservableProperty] private bool _hasNoJobs;
 
     // State-aware lifecycle actions: only what the current status allows is enabled.
     public bool CanPause => SelectedSummary?.Status == JobStatus.Running;
@@ -72,11 +75,22 @@ public partial class JobsViewModel : PageViewModel
         _dialogs = dialogs;
         FilesView = new DataGridCollectionView(Files)
         {
-            Filter = o => !ShowOnlyDiffering || (o is FilePairLine f && f.IsDiffering),
+            Filter = o => o is FilePairLine f
+                && (!ShowOnlyDiffering || f.IsDiffering)
+                && (FileSearch.Length == 0 || f.Name.Contains(FileSearch, StringComparison.OrdinalIgnoreCase)),
         };
     }
 
-    partial void OnShowOnlyDifferingChanged(bool value) => FilesView.Refresh();
+    partial void OnShowOnlyDifferingChanged(bool value) => RefreshFilesView();
+    partial void OnFileSearchChanged(string value) => RefreshFilesView();
+
+    // Re-applies the "jen odlišné" + name-search filter and updates the "X z Y" count and empty-state hint.
+    private void RefreshFilesView()
+    {
+        FilesView.Refresh();
+        FileCountLabel = Files.Count == 0 ? "" : $"Zobrazeno {FilesView.Count} z {Files.Count}";
+        HasNoMatchingFiles = Files.Count > 0 && FilesView.Count == 0;
+    }
 
     /// <summary>Called via navigation (e.g. from a trigger) to open a specific job after the list loads.</summary>
     public void OpenJob(Guid id) => _pendingJobId = id;
@@ -125,29 +139,43 @@ public partial class JobsViewModel : PageViewModel
 
     /// <summary>Merges fetched jobs into <see cref="Jobs"/> by id (updates in place, inserts new, drops gone) so the
     /// selection survives a realtime refresh. Order is the server's (newest first); existing rows are not reshuffled.</summary>
-    private void Reconcile(IReadOnlyList<JobSummary> list) =>
+    private void Reconcile(IReadOnlyList<JobSummary> list)
+    {
         ListReconciler.Reconcile(Jobs, list,
             keyOf: j => j.Id.ToString(),
             rowKeyOf: r => r.Id.ToString(),
             create: j => new JobRowViewModel(j),
             update: (r, j) => r.Apply(j));
+        HasNoJobs = Jobs.Count == 0;
+    }
 
     [RelayCommand]
     private Task RefreshAsync() => RunAsync(LoadJobsAsync);
 
     partial void OnFilterStatusChanged(JobStatus? value) => _ = RunAsync(LoadJobsAsync);
-    partial void OnFilterInstanceChanged(string value) => _ = RunAsync(LoadJobsAsync);
+
+    // A ComboBox transiently sets its bound string to null while its ItemsSource is repopulated (Clear()).
+    // Ignore that null — a real selection (incl. "— vše —") is never null/empty — so we never call the API
+    // with a null branch key (which would throw in Uri.EscapeDataString).
+    partial void OnFilterInstanceChanged(string value)
+    {
+        if (!string.IsNullOrEmpty(value)) _ = RunAsync(LoadJobsAsync);
+    }
 
     // Picking a branch repopulates the instance dropdown (cascading) and refreshes the list.
-    partial void OnFilterBranchChanged(string value) => _ = RunAsync(async () =>
+    partial void OnFilterBranchChanged(string value)
     {
-        InstanceOptions.Clear();
-        InstanceOptions.Add(AllFilter);
-        if (value != AllFilter)
-            foreach (var i in await _session.Require().ListInstancesAsync(value)) InstanceOptions.Add(i.Key);
-        if (!InstanceOptions.Contains(FilterInstance)) FilterInstance = AllFilter; // may re-trigger a (gated) reload
-        await LoadJobsAsync();
-    });
+        if (string.IsNullOrEmpty(value)) return; // transient null from the ComboBox repopulating its items
+        _ = RunAsync(async () =>
+        {
+            InstanceOptions.Clear();
+            InstanceOptions.Add(AllFilter);
+            if (value != AllFilter)
+                foreach (var i in await _session.Require().ListInstancesAsync(value)) InstanceOptions.Add(i.Key);
+            if (!InstanceOptions.Contains(FilterInstance)) FilterInstance = AllFilter; // may re-trigger a (gated) reload
+            await LoadJobsAsync();
+        });
+    }
 
     private async Task LoadBranchOptionsAsync()
     {
@@ -212,6 +240,7 @@ public partial class JobsViewModel : PageViewModel
         Files.Clear();
         Summary.Clear();
         Result = null;
+        RefreshFilesView();
         if (value is null) { LiveStatus = null; LiveProgress = 0; return; }
 
         LiveProgress = value.Job.Progress;
@@ -256,7 +285,7 @@ public partial class JobsViewModel : PageViewModel
             }
             catch { /* best-effort */ }
         }
-        FilesView.Refresh();
+        RefreshFilesView();
 
         if (finished)
             try { var r = await client.GetResultAsync(id); if (SelectedJob?.Id == id) Result = r; }
@@ -290,14 +319,12 @@ public partial class JobsViewModel : PageViewModel
         Info = $"Úloha: {updated.Status}.";
     });
 
+    /// <summary>Double-clicking a file row opens its full detail (and diff preview / save actions) in a separate
+    /// window — the Úlohy panel is too narrow to show more than status + name inline.</summary>
     [RelayCommand]
-    private Task DownloadAsync(FilePairLine? line) => RunAsync(async () =>
+    private void OpenFileDetail(FilePairLine? line)
     {
-        if (SelectedJob is null || line?.Diff?.HighlightedPdfPath is null)
-            throw new InvalidOperationException("Pro tuto dvojici není diff-artefakt.");
-        var relativePath = Path.GetFileName(line.Diff.HighlightedPdfPath);
-        var bytes = await _session.Require().DownloadArtifactAsync(SelectedJob.Id, relativePath);
-        var saved = await _dialogs.SaveBytesAsync(relativePath, bytes);
-        Info = saved is null ? "Stažení zrušeno." : $"Uloženo: {saved}";
-    });
+        if (SelectedJob is null || line is null) return;
+        _dialogs.ShowFileDetail(new FilePairDetailViewModel(SelectedJob.Id, line, _session, _dialogs));
+    }
 }

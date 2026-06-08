@@ -14,6 +14,10 @@ public sealed class NotificationOptions
 
     /// <summary>SMTP server settings; required only when a subscription uses the <c>smtp</c> channel.</summary>
     public SmtpOptions? Smtp { get; set; }
+
+    /// <summary>A deep link to the job resource (status + report) when <see cref="BaseUrl"/> is set; null otherwise.</summary>
+    public string? JobLink(Guid jobId) =>
+        string.IsNullOrWhiteSpace(BaseUrl) ? null : $"{BaseUrl.TrimEnd('/')}/api/v1/jobs/{jobId}";
 }
 
 /// <summary>SMTP transport settings for the e-mail channel.</summary>

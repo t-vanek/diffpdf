@@ -19,6 +19,7 @@ public partial class App : Application
     public override void OnFrameworkInitializationCompleted()
     {
         Services = ConfigureServices();
+        ViewModelBase.ToastSink = Services.GetRequiredService<ToastService>();
 
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
@@ -52,6 +53,7 @@ public partial class App : Application
         services.AddSingleton<ClientSettingsStore>();
         services.AddSingleton<TokenSource>();
         services.AddSingleton<JobProgressHubClient>();
+        services.AddSingleton<ToastService>();
         services.AddSingleton<DialogService>();
         services.AddSingleton<NavigationService>();
         services.AddSingleton<ServerDiscoveryClient>();

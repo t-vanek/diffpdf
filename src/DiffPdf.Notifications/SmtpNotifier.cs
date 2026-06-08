@@ -1,12 +1,13 @@
-using System.Net;
-using System.Net.Mail;
 using DiffPdf.Core.Models;
+using MailKit.Net.Smtp;
+using MailKit.Security;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using MimeKit;
 
 namespace DiffPdf.Notifications;
 
-/// <summary>Sends the notification as a plain-text e-mail via the configured SMTP server.</summary>
+/// <summary>Sends the notification as a plain-text e-mail via the configured SMTP server (MailKit).</summary>
 public sealed class SmtpNotifier(IOptions<NotificationOptions> options, ILogger<SmtpNotifier> logger) : INotifier
 {
     public string Channel => "smtp";
@@ -25,15 +26,21 @@ public sealed class SmtpNotifier(IOptions<NotificationOptions> options, ILogger<
             return;
         }
 
-        using var message = new MailMessage(smtp.From, subscription.Target)
-        {
-            Subject = notification.Title,
-            Body = notification.Summary,
-        };
-        using var client = new SmtpClient(smtp.Host, smtp.Port) { EnableSsl = smtp.UseSsl };
-        if (!string.IsNullOrWhiteSpace(smtp.Username))
-            client.Credentials = new NetworkCredential(smtp.Username, smtp.Password);
+        var message = new MimeMessage();
+        message.From.Add(MailboxAddress.Parse(smtp.From));
+        message.To.Add(MailboxAddress.Parse(subscription.Target));
+        message.Subject = notification.Title;
+        message.Body = new TextPart("plain") { Text = notification.Summary };
 
-        await client.SendMailAsync(message, ct);
+        // UseSsl=true lets MailKit pick the right transport security for the port (implicit SSL on 465,
+        // STARTTLS otherwise); false connects in plain text (a local/relay SMTP without TLS).
+        var security = smtp.UseSsl ? SecureSocketOptions.Auto : SecureSocketOptions.None;
+
+        using var client = new SmtpClient();
+        await client.ConnectAsync(smtp.Host, smtp.Port, security, ct);
+        if (!string.IsNullOrWhiteSpace(smtp.Username))
+            await client.AuthenticateAsync(smtp.Username, smtp.Password ?? string.Empty, ct);
+        await client.SendAsync(message, ct);
+        await client.DisconnectAsync(quit: true, ct);
     }
 }

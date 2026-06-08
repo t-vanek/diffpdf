@@ -16,8 +16,15 @@ public interface IModalViewModel
 /// <summary>Owner-window-bound helpers for file dialogs (e.g. saving a downloaded diff artifact) and confirmations.</summary>
 public sealed class DialogService
 {
+    private readonly ToastService _toasts;
+
+    public DialogService(ToastService toasts) => _toasts = toasts;
+
     /// <summary>Set by the shell once the main window exists.</summary>
     public Window? Owner { get; set; }
+
+    /// <summary>Raises a transient toast notification (bottom-right of the shell).</summary>
+    public void ShowToast(string message, ToastKind kind = ToastKind.Info) => _toasts.Show(message, kind);
 
     /// <summary>Modal yes/no confirmation. Returns true only if the user confirms.</summary>
     public async Task<bool> ConfirmAsync(string title, string message)
@@ -119,5 +126,13 @@ public sealed class DialogService
         await using var stream = await file.OpenWriteAsync();
         await stream.WriteAsync(content);
         return file.Path.LocalPath;
+    }
+
+    /// <summary>Opens a file pair's full detail — including the inline diff PDF preview — in a standalone,
+    /// non-modal window (owned by the main window).</summary>
+    public void ShowFileDetail(ViewModels.FilePairDetailViewModel vm)
+    {
+        if (Owner is null) return;
+        new Views.FilePairDetailWindow { DataContext = vm }.Show(Owner);
     }
 }

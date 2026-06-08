@@ -4,16 +4,24 @@
              x:Class="DiffPdf.DesktopUI.Views.ControlChecksView"
              x:DataType="vm:ControlChecksViewModel">
 
+  <UserControl.KeyBindings>
+    <KeyBinding Gesture="F5" Command="{Binding RefreshCommand}"/>
+  </UserControl.KeyBindings>
+
   <DockPanel>
     <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
       <TextBlock Text="Automatizované kontroly" FontSize="16" FontWeight="Bold" VerticalAlignment="Center"/>
-      <Button Content="Obnovit" Command="{Binding RefreshCommand}"/>
+      <Button Content="🔄 Obnovit" Command="{Binding RefreshCommand}" ToolTip.Tip="Obnovit (F5)"/>
       <Button Content="Nová" Command="{Binding NewCommand}"/>
-      <Button Content="Upravit" Command="{Binding EditSelectedCommand}"/>
-      <Button Content="Spustit teď" Command="{Binding RunNowCommand}"/>
-      <Button Content="Smazat" Command="{Binding DeleteCommand}"/>
+      <Button Content="Upravit" Command="{Binding EditSelectedCommand}"
+              IsEnabled="{Binding Selected, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+      <Button Content="Spustit teď" Command="{Binding RunNowCommand}"
+              IsEnabled="{Binding Selected, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+      <Button Content="Smazat" Command="{Binding DeleteCommand}"
+              IsEnabled="{Binding Selected, Converter={x:Static ObjectConverters.IsNotNull}}"/>
       <TextBlock Text="{Binding Info}" Foreground="#9CDCFE" VerticalAlignment="Center"/>
       <TextBlock Text="{Binding Error}" Foreground="#C0392B" VerticalAlignment="Center"/>
+      <ProgressBar IsIndeterminate="True" Width="100" Height="4" VerticalAlignment="Center" IsVisible="{Binding IsBusy}"/>
     </StackPanel>
 
     <!-- Souhrn automatizací (zdraví kontrol na první pohled) -->
@@ -34,27 +42,59 @@
 
     <Grid ColumnDefinitions="*,380">
       <DockPanel Grid.Column="0" Margin="0,0,8,0">
-        <DataGrid DockPanel.Dock="Top" Height="280" x:CompileBindings="False" ItemsSource="{Binding Checks}"
-                  SelectedItem="{Binding Selected}" IsReadOnly="True" AutoGenerateColumns="False" CanUserResizeColumns="True">
-          <DataGrid.Columns>
-            <DataGridTextColumn Header="Klíč" Binding="{Binding Key}" Width="140"/>
-            <DataGridTextColumn Header="Typ" Binding="{Binding Type}" Width="110"/>
-            <DataGridTextColumn Header="Rozsah" Binding="{Binding ScopeKind}" Width="90"/>
-            <DataGridTextColumn Header="Povoleno" Binding="{Binding Enabled}" Width="80"/>
-            <DataGridTextColumn Header="Výsledek" Binding="{Binding LastOutcome}" Width="90"/>
-            <DataGridTextColumn Header="v" Binding="{Binding Version}" Width="40"/>
-          </DataGrid.Columns>
-        </DataGrid>
+        <Panel DockPanel.Dock="Top" Height="280">
+          <DataGrid x:CompileBindings="False" ItemsSource="{Binding Checks}"
+                    SelectedItem="{Binding Selected}" IsReadOnly="True" AutoGenerateColumns="False" CanUserResizeColumns="True">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Klíč" Binding="{Binding Key}" Width="140"/>
+              <DataGridTextColumn Header="Typ" Binding="{Binding Type}" Width="110"/>
+              <DataGridTextColumn Header="Rozsah" Binding="{Binding ScopeKind}" Width="90"/>
+              <DataGridTemplateColumn Header="Povoleno" Width="100" SortMemberPath="Enabled">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate>
+                    <Panel VerticalAlignment="Center" HorizontalAlignment="Left">
+                      <Border CornerRadius="3" Padding="7,1" Background="#16341A" IsVisible="{Binding Enabled}">
+                        <TextBlock Text="Povoleno" Foreground="#6FCF73" FontSize="12"/>
+                      </Border>
+                      <Border CornerRadius="3" Padding="7,1" Background="#3A3A3A" IsVisible="{Binding !Enabled}">
+                        <TextBlock Text="Zakázáno" Foreground="#AAAAAA" FontSize="12"/>
+                      </Border>
+                    </Panel>
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+              <DataGridTemplateColumn Header="Výsledek" Width="100" SortMemberPath="LastOutcome">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate>
+                    <TextBlock VerticalAlignment="Center" FontWeight="SemiBold"
+                               Text="{Binding LastOutcome, Converter={x:Static vm:CheckOutcomeLabelConverter.Instance}}"
+                               Foreground="{Binding LastOutcome, Converter={x:Static vm:CheckOutcomeBrushConverter.Instance}}"/>
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+              <DataGridTextColumn Header="Verze" Binding="{Binding Version}" Width="55"/>
+            </DataGrid.Columns>
+          </DataGrid>
+          <TextBlock Text="Zatím žádné kontroly. Vytvoř první tlačítkem Nová." Foreground="#808080"
+                     HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding HasNoChecks}"/>
+        </Panel>
 
         <TextBlock DockPanel.Dock="Top" Text="Historie běhů" FontWeight="Bold" Margin="0,8,0,4"/>
-        <DataGrid x:CompileBindings="False" ItemsSource="{Binding Runs}" IsReadOnly="True"
-                  AutoGenerateColumns="False" CanUserResizeColumns="True">
-          <DataGrid.Columns>
-            <DataGridTextColumn Header="Začátek" Binding="{Binding StartedAt, Converter={x:Static vm:LocalTimeConverter.Instance}}" Width="180"/>
-            <DataGridTextColumn Header="Výsledek" Binding="{Binding Outcome}" Width="90"/>
-            <DataGridTextColumn Header="Detail" Binding="{Binding Detail}" Width="*"/>
-          </DataGrid.Columns>
-        </DataGrid>
+        <Panel>
+          <DataGrid x:CompileBindings="False" ItemsSource="{Binding Runs}" IsReadOnly="True"
+                    AutoGenerateColumns="False" CanUserResizeColumns="True">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Začátek" Binding="{Binding StartedAt, Converter={x:Static vm:LocalTimeConverter.Instance}}" Width="180"/>
+              <DataGridTextColumn Header="Výsledek" Binding="{Binding Outcome}" Width="90"/>
+              <DataGridTextColumn Header="Detail" Binding="{Binding Detail}" Width="*"/>
+            </DataGrid.Columns>
+          </DataGrid>
+          <TextBlock Text="Vyber kontrolu pro zobrazení historie běhů." Foreground="#808080"
+                     HorizontalAlignment="Center" VerticalAlignment="Center"
+                     IsVisible="{Binding Selected, Converter={x:Static ObjectConverters.IsNull}}"/>
+          <TextBlock Text="Tato kontrola zatím neproběhla." Foreground="#808080"
+                     HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding HasNoRuns}"/>
+        </Panel>
       </DockPanel>
 
       <ScrollViewer Grid.Column="1">
@@ -64,11 +104,16 @@
           <TextBox Text="{Binding Name}" PlaceholderText="Název"/>
           <TextBlock Text="Typ"/>
           <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Types}" SelectedItem="{Binding Type}"/>
-          <TextBlock Text="Rozsah"/>
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <TextBlock Text="Rozsah"/>
+            <TextBlock Text="ⓘ" Foreground="#6B6B73" FontSize="11" VerticalAlignment="Center"
+                       ToolTip.Tip="Rozsah kontroly: Global = celý server, Branch = jedna větev, Instance = jedna instance. Určuje, na co se kontrola vztahuje."/>
+          </StackPanel>
           <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Scopes}" SelectedItem="{Binding ScopeKind}"/>
           <TextBox Text="{Binding BranchKey}" PlaceholderText="Klíč větve (pro rozsah Větev/Instance)"/>
           <TextBox Text="{Binding InstanceKey}" PlaceholderText="Klíč instance (pro rozsah Instance)"/>
-          <TextBox Text="{Binding Cron}" PlaceholderText="Cron (UTC, 5 polí) — má přednost"/>
+          <TextBox Text="{Binding Cron}" PlaceholderText="Cron (UTC, 5 polí) — má přednost"
+                   ToolTip.Tip="Cron výraz, 5 polí v UTC: minuta hodina den-v-měsíci měsíc den-v-týdnu. Příklad: 0 6 * * * = každý den v 06:00 UTC; */15 * * * * = každých 15 minut. Když je vyplněn, má přednost před intervalem."/>
           <TextBlock Text="nebo interval (s)"/>
           <NumericUpDown Value="{Binding IntervalSeconds}" Minimum="0" Increment="30"/>
           <TextBlock Text="Parametry (klíč=hodnota na řádek)"/>

@@ -5,6 +5,10 @@
              x:DataType="vm:InstancesViewModel"
              x:Name="Root">
 
+  <UserControl.KeyBindings>
+    <KeyBinding Gesture="F5" Command="{Binding RefreshCommand}"/>
+  </UserControl.KeyBindings>
+
   <DockPanel>
     <!-- Toolbar: výběr větve + akce -->
     <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
@@ -13,7 +17,7 @@
       <ComboBox Width="180" ItemsSource="{Binding Branches}" SelectedItem="{Binding SelectedBranch}">
         <ComboBox.ItemTemplate><DataTemplate x:CompileBindings="False"><TextBlock Text="{Binding Key}"/></DataTemplate></ComboBox.ItemTemplate>
       </ComboBox>
-      <Button Content="🔄 Obnovit" Command="{Binding RefreshCommand}"/>
+      <Button Content="🔄 Obnovit" Command="{Binding RefreshCommand}" ToolTip.Tip="Obnovit (F5)"/>
       <Button Content="➕ Vytvořit instanci" Command="{Binding ShowCreateCommand}"/>
       <Button Content="🗑 Smazat instanci" Command="{Binding DeleteCommand}"
               IsEnabled="{Binding SelectedInstance, Converter={x:Static ObjectConverters.IsNotNull}}"/>
@@ -24,8 +28,8 @@
               ToolTip.Tip="Povolí všechny zaškrtnuté instance"/>
       <Button Content="🚫 Zakázat" Command="{Binding DisableSelectedCommand}" IsEnabled="{Binding CanDeleteSelected}"
               ToolTip.Tip="Zakáže všechny zaškrtnuté instance"/>
-      <TextBox Width="200" VerticalAlignment="Center" Text="{Binding SearchText}"
-               PlaceholderText="Hledat (klíč/název/cesta)…"/>
+      <TextBox x:Name="SearchBox" Width="200" VerticalAlignment="Center" Text="{Binding SearchText}"
+               PlaceholderText="Hledat (klíč/název/cesta)…" ToolTip.Tip="Hledat (Ctrl+F)"/>
       <TextBlock Text="{Binding Info}" Foreground="#9CDCFE" VerticalAlignment="Center"/>
       <TextBlock Text="{Binding Error}" Foreground="#C0392B" VerticalAlignment="Center"/>
       <ProgressBar IsIndeterminate="True" Width="100" Height="4" VerticalAlignment="Center" IsVisible="{Binding IsBusy}"/>

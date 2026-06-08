@@ -1,4 +1,5 @@
 using System.Globalization;
+using Avalonia.Data;
 using Avalonia.Data.Converters;
 
 namespace DiffPdf.DesktopUI.ViewModels;
@@ -39,6 +40,8 @@ public sealed class LocalTimeConverter : IValueConverter
         return prefix.Length > 0 ? $"{prefix} {text}" : text;
     }
 
+    // Display-only converter: never writes back to the source. Avalonia's DataGrid can call ConvertBack on a
+    // bound column even when it is read-only, so return DoNothing instead of throwing (which crashed the UI).
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
-        throw new NotSupportedException();
+        BindingOperations.DoNothing;
 }

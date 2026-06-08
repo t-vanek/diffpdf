@@ -5,15 +5,20 @@
              x:DataType="vm:JobsViewModel"
              x:Name="Root">
 
+  <UserControl.KeyBindings>
+    <KeyBinding Gesture="F5" Command="{Binding RefreshCommand}"/>
+  </UserControl.KeyBindings>
+
   <DockPanel>
     <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
       <TextBlock Text="Úlohy" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
       <ComboBox Width="140" ItemsSource="{Binding BranchOptions}" SelectedItem="{Binding FilterBranch}"/>
       <ComboBox Width="150" ItemsSource="{Binding InstanceOptions}" SelectedItem="{Binding FilterInstance}"/>
       <ComboBox Width="120" ItemsSource="{Binding StatusFilters}" SelectedItem="{Binding FilterStatus}"/>
-      <Button Content="🔄 Obnovit" Command="{Binding RefreshCommand}"/>
+      <Button Content="🔄 Obnovit" Command="{Binding RefreshCommand}" ToolTip.Tip="Obnovit (F5)"/>
       <TextBlock Text="{Binding Info}" Foreground="#9CDCFE" VerticalAlignment="Center"/>
       <TextBlock Text="{Binding Error}" Foreground="#C0392B" VerticalAlignment="Center"/>
+      <ProgressBar IsIndeterminate="True" Width="100" Height="4" VerticalAlignment="Center" IsVisible="{Binding IsBusy}"/>
     </StackPanel>
 
     <Grid ColumnDefinitions="*,560">
@@ -54,9 +59,14 @@
         </DataGrid.Columns>
       </DataGrid>
 
-      <ScrollViewer Grid.Column="1"
-                    IsVisible="{Binding SelectedSummary, Converter={x:Static ObjectConverters.IsNotNull}}">
-        <StackPanel Spacing="10">
+      <!-- Prázdný stav přes seznam úloh -->
+      <TextBlock Grid.Column="0" Margin="0,0,8,0" Text="Žádné úlohy odpovídající filtru." Foreground="#808080"
+                 HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding HasNoJobs}"/>
+
+      <DockPanel Grid.Column="1"
+                 IsVisible="{Binding SelectedSummary, Converter={x:Static ObjectConverters.IsNotNull}}">
+        <!-- Horní část: kompaktní metadata úlohy; seznam souborů níže vyplní zbytek výšky. -->
+        <StackPanel DockPanel.Dock="Top" Spacing="10">
           <!-- Hlavička: instance · větev + stav -->
           <StackPanel Spacing="2">
             <StackPanel Orientation="Horizontal" Spacing="8">
@@ -110,6 +120,8 @@
             <StackPanel Spacing="4">
               <StackPanel Orientation="Horizontal" Spacing="6">
                 <TextBlock Text="CI brána:" Foreground="#888"/>
+                <TextBlock Text="ⓘ" Foreground="#6B6B73" FontSize="11" VerticalAlignment="Center"
+                           ToolTip.Tip="Automatická brána kvality: podle nastavených pravidel (např. max. počet odlišných souborů nebo minimální podobnost) rozhodne, jestli dávka prošla. Funguje jako kontrola v CI/CD — při příliš velkých rozdílech označí výsledek jako neprošlý."/>
                 <TextBlock Text="✓ Prošlo" Foreground="#6FCF73" FontWeight="SemiBold" IsVisible="{Binding Result.Passed}"/>
                 <TextBlock Text="✗ Neprošlo" Foreground="#E06C75" FontWeight="SemiBold" IsVisible="{Binding !Result.Passed}"/>
               </StackPanel>
@@ -121,15 +133,25 @@
             </StackPanel>
           </Border>
 
-          <!-- Soubory (sjednocený seznam) -->
-          <Grid ColumnDefinitions="*,Auto">
-            <TextBlock Grid.Column="0" Text="Soubory" FontWeight="Bold" VerticalAlignment="Center"/>
-            <CheckBox Grid.Column="1" Content="Jen odlišné" IsChecked="{Binding ShowOnlyDiffering}"/>
+          <!-- Soubory: hlavička, hledání podle názvu, počet a filtr; seznam níže vyplní zbytek výšky. -->
+          <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+              <TextBlock Text="Soubory" FontWeight="Bold" VerticalAlignment="Center"
+                         ToolTip.Tip="Dvojklikem na řádek otevřeš detail s náhledem PDF"/>
+              <TextBlock Text="{Binding FileCountLabel}" Foreground="#777" FontSize="11" VerticalAlignment="Center"/>
+            </StackPanel>
+            <TextBox Grid.Column="1" x:Name="FileSearchBox" Text="{Binding FileSearch}" VerticalAlignment="Center"
+                     PlaceholderText="Hledat soubor…" ToolTip.Tip="Hledat soubor (Ctrl+F)"/>
+            <CheckBox Grid.Column="2" Content="Jen odlišné" IsChecked="{Binding ShowOnlyDiffering}" VerticalAlignment="Center"/>
           </Grid>
-          <DataGrid x:CompileBindings="False" ItemsSource="{Binding FilesView}" IsReadOnly="True" Height="320"
-                    AutoGenerateColumns="False" CanUserResizeColumns="True">
+        </StackPanel>
+
+        <!-- Seznam souborů vyplní zbytek výšky panelu; dvojklik na řádek otevře okno s detailem dvojice. -->
+        <Panel Margin="0,8,0,0">
+          <DataGrid x:CompileBindings="False" ItemsSource="{Binding FilesView}" IsReadOnly="True" MinHeight="160"
+                    AutoGenerateColumns="False" CanUserResizeColumns="True" DoubleTapped="OnFileDoubleTapped">
             <DataGrid.Columns>
-              <DataGridTemplateColumn Header="Stav" Width="120">
+              <DataGridTemplateColumn Header="Stav" Width="140">
                 <DataGridTemplateColumn.CellTemplate>
                   <DataTemplate>
                     <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
@@ -140,19 +162,12 @@
                 </DataGridTemplateColumn.CellTemplate>
               </DataGridTemplateColumn>
               <DataGridTextColumn Header="Soubor" Binding="{Binding Name}" Width="*"/>
-              <DataGridTextColumn Header="Detail" Binding="{Binding Detail}" Width="120"/>
-              <DataGridTemplateColumn Header="Diff" Width="70">
-                <DataGridTemplateColumn.CellTemplate>
-                  <DataTemplate>
-                    <Button Content="PDF" Padding="8,2" IsVisible="{Binding HasDiff}"
-                            Command="{Binding DataContext.DownloadCommand, ElementName=Root}" CommandParameter="{Binding}"/>
-                  </DataTemplate>
-                </DataGridTemplateColumn.CellTemplate>
-              </DataGridTemplateColumn>
             </DataGrid.Columns>
           </DataGrid>
-        </StackPanel>
-      </ScrollViewer>
+          <TextBlock Text="Žádné soubory neodpovídají filtru." Foreground="#808080"
+                     HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding HasNoMatchingFiles}"/>
+        </Panel>
+      </DockPanel>
     </Grid>
   </DockPanel>
 </UserControl>
