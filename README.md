@@ -1,274 +1,127 @@
-# diffpdf — serverové porovnávání PDF
+# DiffPdf — serverové porovnávání PDF
 
-Serverová náhrada desktopového [diffpdf](https://mark-summerfield.github.io/diffpdf.html),
-postavená v **C# / .NET 10** jako REST API pro **hromadné porovnávání PDF** (složka
-`old` vs složka `new`) i jednotlivých dvojic.
+Server v **C# / .NET 10**, který automaticky porovnává dvě verze sady PDF a řekne ti, **co se změnilo** — slovně, vizuálně i jako pass/fail verdikt. Serverová náhrada desktopového [diffpdf](https://mark-summerfield.github.io/diffpdf.html) navržená pro **regresní testování tiskových sestav** (faktury, reporty).
 
-**Hlavní use-case — regresní testování tiskových sestav.** QA porovnává čerstvě
-vygenerovanou dávku reportů (`new`) proti známé dobré referenci (`old`) a ověřuje, že
-nová verze nerozbila stávající tisky. Engine cílí přesně na tyhle regrese: změněný
-obsah, rozbité rozložení, prázdné stránky a chybové hlášky vyrenderované přímo do PDF.
+> 📖 Architektura, kompletní REST API, volby porovnání, SDK a build/testy: **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)**.
 
-Porovnání se **nespouští ručně** — jede automaticky: každá instance má své **rozvrhy**
-(cron) a **notifikační odběry**, spravované za běhu přes API a uložené v databázi.
-Klient tedy obsluhuje jen automatizaci a sleduje výsledky.
+---
 
-> 📖 Vývojářská dokumentace (architektura, kompletní REST API, SDK, build & testy) je
-> v **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)**.
+## Proč
 
-## Funkce
+Když přegeneruješ tiskové sestavy (nová verze šablony, knihovny, dat), potřebuješ vědět, jestli se **nerozbilo** něco, co dřív fungovalo. Ruční proklikávání stovek PDF nejde. DiffPdf vezme **referenční** dávku (`old`) a **novou** dávku (`new`), spáruje soubory podle názvu a u každé dvojice najde změněný text, posunuté rozložení, přidané/odebrané stránky, zprázdnělé stránky i chybové hlášky vyrenderované do PDF — a rozdíly **zvýrazní do diff-PDF**. Výsledek je strojově čitelný verdikt, takže z toho jde udělat **CI bránu**.
 
-- **Textové porovnání** — slovní diff s pozičním zvýrazněním (PdfPig).
-- **Pixelové vizuální porovnání** — diff po pixelech s nastavitelnou tolerancí (až po
-  přesnou shodu) a granularitou shluků (až po jednotlivý pixel); ve výchozím stavu
-  Ghostscript, PDFium jako záloha.
-- **Nastavitelná přísnost** — preset `Exact` / `Strict` / `Balanced` / `Lenient` řídí
-  prahy pro hlášení rozdílů; každý práh lze i přepsat jednotlivě.
-- **Zarovnání stránek** — vložené/odebrané stránky se detekují (Needleman–Wunsch nad
-  podobností textu), takže nezpůsobí kaskádu falešných rozdílů.
-- **Typovaná klasifikace stránek** — štítky `TextChanged`, `VisualChanged`, `PageAdded`,
-  `PageRemoved`, `SizeChanged`, `BecameBlank`, `WasBlank`.
-- **Detekce prázdných stránek** — hlásí stránky, které se staly (nebo přestaly být)
-  prázdné; zkoumá pixely, takže funguje i na skeny.
-- **Detekce chybových hlášek v obsahu** — prohledá text na chyby vyrenderované do PDF
-  (např. `subreport error`, `#error`); vzory jsou konfigurovatelné.
-- **Ignorování dynamického obsahu** — vyloučí oblasti (datum/čas v patičce, čísla
-  stránek, vodoznaky) a/nebo textové vzory z diffu, aby legitimně se měnící obsah
-  neflagoval každý report.
-- **Robustní ošetření chyb** — poškozené, šifrované, chybějící nebo prázdné PDF se
-  ohlásí jako `Error` s důvodem místo pádu celé dávky.
-- **Oboustranné zvýrazněné diff-PDF** — dvojstrana se starou stránkou (vlevo, odebrané
-  červeně) vedle nové (vpravo, přidané zeleně, vizuální změny oranžově). Na výběr je
-  rasterový styl nebo **vektorový overlay** (zvýraznění nad originálem, text zůstává
-  vybíratelný).
-- **Hromadné porovnání složek** — páruje soubory podle relativní cesty, běží paralelně,
-  klasifikuje každou dvojici jako `Identical` / `Differs` / `OnlyInOld` / `OnlyInNew` /
-  `Error`.
-- **Větve a instance** — scope je hierarchie **větev → instance**; instance nese
-  `basePath` s podsložkami `old` / `new` / `reports`, které server **založí a opraví**.
-- **Readiness (pre-flight)** — jedním voláním stav složek, počty PDF a spárování
-  `old`/`new` s verdiktem `ready`, takže prázdná nebo nekompletní dávka se zachytí dřív,
-  než se spustí.
-- **Automatizace (runtime resources)** — dávky se spouští **jen** automaticky: periodicky
-  podle **cron rozvrhu**, nebo akcí **„spusť teď"** nad rozvrhem. Každý rozvrh nese
-  vlastní porovnávací volby a CI bránu. Po doběhnutí se rozešle **notifikace** (webhook
-  Slack/Teams nebo e-mail) při `Completed` / `GateViolated` / **`Failed`** (tvrdě spadlá
-  úloha). Rozvrhy i odběry jsou plnohodnotné **API resources v DB** (CRUD za běhu, bez restartu).
-- **On-demand triggery + folder-watch** — dávku lze spustit i **webhookem**
-  (`POST /api/v1/triggers/{branch}/{instance}`), **fan-outem** přes celou větev
-  (`POST …/branches/{branch}/run`), nebo nechat **sledovat složku** `new/` a spustit
-  dávku automaticky, jakmile se drop souborů ustálí. Folder-watch je **runtime resource**
-  spravovaný přes API (`PUT …/instances/{i}/watch`) — bez editace configu a restartu.
-- **Multi-replika single-fire** — plánovač i folder-watch jsou za HA bezpečné: přes
-  **DB leader-lease** spouští dávky jen jedna („vedoucí") replika, takže rozvrh ani drop
-  nevystřelí jednou za každou repliku.
-- **Historie běhů + retence** — každý rozvrh vede **historii běhů**
-  (`GET …/schedules/{key}/runs`: kdy, jobId, výsledek), takže je vidět, jestli poslední běhy
-  prošly. Volitelná **retence** (leader-gated) maže staré report-artefakty podle stáří, aby
-  disk nerostl donekonečna (DB řádky i historie zůstávají).
-- **Provozní viditelnost** — `GET /api/v1/status` ukáže běžící automatizaci celou přes API
-  (žádné RDP): kdo je **leader** + platnost lease, **ticky služeb** (scheduler/watch/retence),
-  **backlog fronty**, počty aktivních rozvrhů/watchů a stav **závislostí** (DB, Ghostscript,
-  storage). `GET /health/ready` je readiness pro monitory (`200`/`503`); `/health` zůstává
-  levný liveness probe.
-- **Durable pipeline** — dávka se rozpadne na jednotlivé dvojice; jeden poškozený PDF
-  dávku nezabije, transientní chyby se opakují a spadlý worker se zotaví, takže dávka
-  pokračuje místo zaseknutí.
-- **CI brána** — rozvrh s `gate` se stane pass/fail kontrolou; `GET …/result` vrací
-  `200`/`422` (ideální pro `curl --fail` v pipeline).
-- **Síťové složky** — porovnání lokálních, namountovaných nebo UNC (`\\server\share`)
-  složek; credentialy a sdílení se konfigurují centrálně (pojmenované profily + aliasy).
-- **Klientské SDK (.NET)** — typovaný `HttpClient` klient (`DiffPdf.Client`, balitelný
-  jako NuGet) pokrývající celý flow vč. správy rozvrhů a odběrů.
-- **Desktop klient pro testera (Avalonia)** — multiplatformní GUI (`DiffPdf.DesktopUI`), které
-  přes SDK **plně ovládá server a flow** (branches/instances/readiness, rozvrhy, watche, odběry,
-  triggery, single compare, joby) a **živě sleduje běžící úlohy** přes SignalR.
-- **Volitelná OAuth2 autentizace** — vestavěný OpenIddict server s client-credentials
-  (M2M) flow vydávajícím JWT bearer tokeny.
+## Jak to funguje
 
-## Použité technologie
+```
+                 ┌─────────────┐   spustí (cron / watch / webhook)
+   větev ──▶ instance ──▶ dávka ──────────────────────────────┐
+                 └─ old/ new/ │                                ▼
+                    reports/  │   durable pipeline po dvojicích (text + vizuál)
+                              │   ├─ odolná vůči pádu (retry, zotavení)
+                              ▼   └─ paralelní, jeden vadný PDF dávku nezabije
+                          výsledek:  verdikt  +  zvýrazněné diff-PDF  +  JSON report
+                                     (živý progress přes SignalR)
+```
 
-| Technologie | Role |
+1. **Scope = větev → instance.** Každá instance má `basePath` se složkami `old/`, `new/`, `reports/` (server je založí a opraví). Do `reports/` se jen zapisuje, `old/` a `new/` se jen čtou.
+2. **Spouští se automaticky** — ne ručně: **cron rozvrhem**, **sledováním složky** `new/` (spustí se, jakmile se drop souborů ustálí), nebo **webhook triggerem**. V HA prostředí vystřelí dávku jen jedna replika (DB leader-lease).
+3. **Porovnání** běží jako **durable pipeline** rozpadlá na jednotlivé dvojice — transientní chyby se opakují, spadlý worker se zotaví, dávka pokračuje.
+4. **Výsledek** je verdikt každé dvojice (`Identical` / `Differs` / `OnlyInOld` / `OnlyInNew` / `Error`), zvýrazněné diff-PDF a JSON report; volitelná **CI brána** dělá z dávky pass/fail kontrolu. Po doběhnutí jde **notifikace** (e-mail / Slack / Teams).
+
+## Co to umí
+
+| Oblast | Stručně |
 |---|---|
-| **.NET 10 / ASP.NET Core Minimal API** | Moderní výkonný runtime a štíhlé HTTP API. |
-| **PdfPig** | Extrakce textu s pozicemi slov pro slovní diff. |
-| **Ghostscript** / **PDFium** | Rendering stránek na obrázky pro pixelové porovnání. |
-| **SkiaSharp** | Rychlé porovnání bitmap a detekce prázdných stránek. |
-| **PdfSharp** | Generování zvýrazněného diff-PDF (raster i vektorový overlay). |
-| **PostgreSQL / SQL Server** | Perzistentní zdroj pravdy o stavu úloh (volitelný provider). |
-| **EF Core** (Npgsql / Microsoft.Data.SqlClient) | Typovaný přístup k DB s optimistic concurrency. |
-| **Mapperly** | Source-generated mapování entit na doménové modely bez reflexe. |
-| **Wolverine** | Zpracování příkazů přes **DB-backed durable local queues** (inbox/outbox, retry, dead-letter) — bez externího brokeru. |
-| **SignalR** | Realtime push progressu úloh ke klientům. |
-| **Serilog** | Strukturované logování do konzole i rotovaného souboru. |
-| **OpenIddict** | OAuth2 server pro bezpečný přístup strojových klientů. |
+| **Porovnání** | Slovní textový diff (PdfPig) + pixelový vizuální diff (SkiaSharp) s nastavitelnou přísností (`Exact`/`Strict`/`Balanced`/`Lenient`). |
+| **Chytrá detekce** | Zarovnání vložených/odebraných stránek (žádná kaskáda falešných rozdílů), prázdné stránky, chybové hlášky v obsahu, ignorování dynamického obsahu (datum, čísla stránek). |
+| **Diff-PDF** | Oboustranná dvojstrana (staré vlevo, nové vpravo) — rasterový styl nebo **vektorový overlay** (text zůstává vybíratelný). |
+| **Automatizace** | Cron rozvrhy, folder-watch, webhook triggery, fan-out přes celou větev — vše jako **API resources v DB** (CRUD za běhu, bez restartu). |
+| **Odolnost** | Per-dvojice pipeline s retry a zotavením; HA single-fire přes leader-lease. |
+| **CI brána** | Rozvrh s `gate` → `GET …/result` vrací `200`/`422` (ideální pro `curl --fail`). |
+| **Provoz** | `GET /api/v1/status` (leader, ticky služeb, backlog, zdraví závislostí), `/metrics` (Prometheus/OTel), `/health/ready`, retence starých artefaktů. |
+| **Klienti** | Typované **.NET SDK** (`DiffPdf.Client`) a **desktop GUI** (Avalonia) s živým sledováním úloh. |
+| **Bezpečnost** | Volitelná OAuth2 (OpenIddict, client-credentials → JWT). |
 
-## Nastavení a spuštění
+## Rychlý start
 
-### Rychlý start (Docker, doporučeno)
+### Docker (doporučeno)
 
 ```bash
 docker compose up --build
-# Spustí PostgreSQL + API na http://localhost:8080 (žádný broker — práce běží nad DB).
-# Vstup je složka instance ./samples/LamaEnergy (old/ vs new/); reports se píší tamtéž.
+# PostgreSQL + API na http://localhost:8080. Žádný broker — práce běží nad DB.
+# Vstup: vzorová instance ./samples/LamaEnergy (old/ vs new/).
 ```
 
-Image instaluje Ghostscript a nativní závislosti pro SkiaSharp/PDFium; compose nastaví
-`ConnectionStrings__Postgres` a `Storage__RootPath`. Pak stačí vytvořit
-větev + instanci + rozvrh:
+Pak založ větev → instanci → rozvrh a nech to běžet:
 
 ```bash
-# větev + instance (instance nese basePath se složkami old/new/reports)
 curl -X POST http://localhost:8080/api/v1/branches \
   -d '{"key":"Alfa","name":"Alfa"}' -H 'Content-Type: application/json'
+
 curl -X POST http://localhost:8080/api/v1/branches/Alfa/instances \
   -d '{"key":"LamaEnergy","name":"Lama Energy","basePath":"/pdfs/LamaEnergy"}' -H 'Content-Type: application/json'
 
-# rozvrh (cron + volby + volitelně CI brána) — od teď běží automaticky
+# cron + porovnávací volby (+ volitelně CI brána) — od teď běží automaticky
 curl -X POST http://localhost:8080/api/v1/branches/Alfa/instances/LamaEnergy/schedules \
   -d '{"key":"nightly","cron":"0 2 * * *","options":{"mode":"Both"}}' -H 'Content-Type: application/json'
 
-# spusť teď (mimo rozvrh) -> 202 + jobId, pak polling /jobs/{id} a /jobs/{id}/report
+# spusť teď (mimo rozvrh) → 202 + jobId; pak GET /jobs/{id} a /jobs/{id}/report
 curl -X POST http://localhost:8080/api/v1/branches/Alfa/instances/LamaEnergy/schedules/nightly/run
 ```
 
-Interaktivní **Swagger UI** je na `/swagger`. Kompletní popis endpointů viz
-[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#rest-api).
+Interaktivní **Swagger** je na `/swagger`. Kompletní API: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#rest-api).
 
-### Struktura složek instance
-
-Každá instance nese **základní cestu** (`basePath`); vstup i výstup jsou její podsložky:
-
-```
-{basePath}/old                  # vstupní PDF (reference)
-{basePath}/new                  # vstupní PDF (nová verze)
-{basePath}/reports/{jobId}/...  # výstup běhu: diff-PDF + JSON report + logy
-```
-
-Aplikace zapisuje **jen** do `reports/`; `old/` a `new/` pouze čte. Strukturu při startu
-i při zakládání instance založí/opraví automaticky.
-
-### Volba databáze (PostgreSQL nebo SQL Server)
-
-Zdroj pravdy běží na **PostgreSQL** nebo **Microsoft SQL Serveru** — vybírá se podle
-connection stringu (SQL Server má přednost, je-li nastaven):
-
-```
-ConnectionStrings__SqlServer: Server=sqlserver,1433;Database=diffpdf;User Id=sa;Password=…;TrustServerCertificate=True
-# jinak:
-ConnectionStrings__Postgres:  Host=postgres;Port=5432;Database=diffpdf;Username=diffpdf;Password=diffpdf
-```
-
-Schéma se vytvoří idempotentně při startu; práce běží na **DB-backed durable local queues**
-(žádný externí broker — vše perzistentní v téže databázi, přežije restart). **Bez** databáze
-spadne API zpět na in-memory úložiště a in-process transport (jednoinstanční dev režim).
-
-### Síťové složky a credentialy
-
-`basePath` instance může být lokální cesta, namountované sdílení, UNC cesta
-(`\\server\share\...`) nebo **pojmenovaný alias** sdílení (`share:<jméno>`). Credentialy
-se na instanci **neukládají** — instance jen odkáže na **credential profil**; heslo
-zůstává v konfiguraci. Sdílení a profily se definují jednou v sekci `Network`:
-
-```jsonc
-"Network": {
-  "MountReadOnly": false,            // Linux: false — do reports/ se zapisuje
-  "CredentialProfiles": {
-    "corp": { "username": "svc_diff", "password": "…", "domain": "CORP" }
-  },
-  "Shares": {
-    "lama": { "root": "\\\\fileserver\\reports\\LamaEnergy", "credentialProfile": "corp" }
-  }
-}
-```
-
-Instance pak odkáže na alias / profil (`"basePath": "share:lama", "credentialProfile": "corp"`).
-Windows připojuje přes `WNetAddConnection2`, Linux přes CIFS mount (vyžaduje `cifs-utils`
-a `--cap-add SYS_ADMIN`). Detaily viz [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#síťové-složky-a-credentialy).
-
-### Notifikace (SMTP transport)
-
-Notifikační **odběry** se spravují za běhu přes API (`/api/v1/subscriptions`). V
-`appsettings.json` zůstává jen e-mailový transport a veřejná base URL:
-
-```jsonc
-"Notifications": {
-  "BaseUrl": "http://localhost:8080",
-  "Smtp": { "Host": "smtp.corp", "Port": 587, "UseSsl": true, "Username": "svc", "Password": "…", "From": "diffpdf@corp" }
-}
-```
-
-### Autentizace (OAuth2 / OIDC)
-
-Ve výchozím stavu **vypnutá**. Zapne se přes `Auth:Enabled=true` (vyžaduje PostgreSQL /
-SQL Server — OpenIddict tam ukládá klienty a tokeny). Když je zapnutá, **každý endpoint
-vyžaduje bearer token** kromě `/health`, OAuth endpointů a OpenAPI dokumentu.
-
-```jsonc
-"Auth": {
-  "Enabled": true,
-  "ClientId": "diffpdf-ci", "ClientSecret": "…", "Scope": "diffpdf.api",
-  "AccessTokenMinutes": 60
-}
-```
-
-Strojový klient si vyžádá token přes client-credentials a volá s ním API:
+### Lokálně
 
 ```bash
-curl -X POST http://localhost:8080/connect/token \
-  -d 'grant_type=client_credentials&client_id=diffpdf-ci&client_secret=…&scope=diffpdf.api'
-curl -H "Authorization: Bearer <access_token>" http://localhost:8080/api/v1/jobs
+dotnet run --project src/DiffPdf.Api        # http://localhost:5275, auth vypnuto
 ```
 
-Seedovaný secret změň přes `Auth:ClientSecret` a nedávej ho do gitu. V produkci použij
-reálné certifikáty a HTTPS.
+Pro vizuální režim je potřeba **Ghostscript** na `PATH` (nebo `GHOSTSCRIPT_PATH`) — viz [Konfigurace](#konfigurace-ve-zkratce). Kořen artefaktů přepíšeš přes `DIFFPDF_ARTIFACT_ROOT`.
 
-### Logování
+### Desktop klient (Avalonia)
 
-Logování používá **Serilog** (sekce `Serilog` v `appsettings.json`): strukturované logy
-na konzoli a do denně rotovaného souboru v `logs/` (14 dní historie), jeden souhrnný
-řádek na HTTP request. Adresář souborového logu nastavuje `DIFFPDF_LOG_DIR` (Docker image
-ho míří na `/data/logs`).
-
-### Lokální běh
+Multiplatformní GUI, které přes SDK plně ovládá server a **živě sleduje běžící úlohy**:
 
 ```bash
-dotnet run --project src/DiffPdf.Api
-```
-
-Pro vizuální režim vyžaduje Ghostscript na `PATH` (nebo nastav `GHOSTSCRIPT_PATH`). Kořen
-artefaktů přepíšeš přes `DIFFPDF_ARTIFACT_ROOT`. Build & testy viz
-[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#build-testy-a-ci).
-
-### Desktop klient pro testera (Avalonia)
-
-GUI pro ruční řízení a sledování serveru (`DiffPdf.DesktopUI`). Spusť proti běžícímu API:
-
-```bash
-dotnet run --project src/DiffPdf.Api        # server (default http://localhost:5275, auth vypnuto)
+dotnet run --project src/DiffPdf.Api        # server
 dotnet run --project src/DiffPdf.DesktopUI  # GUI klient
 ```
 
-V připojovací liště zadej URL serveru (a volitelně ClientId/Secret, je-li zapnutá autentizace)
-a klikni **Connect**. Levý panel přepíná sekce: Dashboard, Branches, Instances, Schedules,
-Watches, Subscriptions, Triggers/Run, Single compare, Discovery, Jobs. Sekce **Jobs** ukazuje
-**živý progress** běžící dávky (SignalR) a umožní stáhnout zvýrazněné diff-PDF artefakty.
+Připojení nastavíš v **ozubeném kolečku (⚙) vpravo nahoře** — URL serveru (a ClientId/Secret, je-li zapnutá autentizace) se **uloží** a klient se příště **připojí sám**. Levé menu: **Přehled · Větve · Instance · Automatizace · Úlohy · Jednorázové porovnání · Notifikace · Sdílené složky · Konfigurace**. Sekce **Úlohy** ukazuje živý progress (SignalR), verdikty a stažení zvýrazněných diff-PDF; synchronizaci složek se scope stromem najdeš ve **Větvích**.
 
-## Dokumentace pro vývojáře
+## Konfigurace ve zkratce
 
-Architektura, kompletní REST API reference, volby porovnání, klientské SDK, interní popis
-pipeline a postup buildu/testů: **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)**.
+Vše přes `appsettings.json` / proměnné prostředí. Detaily a příklady v [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
-## Licenční poznámka
+| Oblast | Výchozí | Poznámka |
+|---|---|---|
+| **Databáze** | in-memory (dev) | Nastav `ConnectionStrings__Postgres` nebo `__SqlServer` (SQL Server má přednost). Schéma se vytvoří idempotentně při startu; bez DB jede jednoinstanční dev režim. |
+| **Renderer** | Ghostscript (AGPL) | `gs` na `PATH` / `GHOSTSCRIPT_PATH`. Bez něj vizuální režim selže — alternativa je **PDFium** (BSD, in-process): `options.renderer = "Pdfium"`. |
+| **Autentizace** | vypnuto | `Auth:Enabled=true` (vyžaduje DB) → každý endpoint chce bearer token (mimo `/health` a OAuth). Token přes client-credentials na `/connect/token`. |
+| **Notifikace** | — | SMTP transport + `BaseUrl` v `appsettings`; samotné odběry jsou API resource (`/api/v1/subscriptions`). |
+| **Síťové složky** | — | `basePath` může být lokální / UNC (`\\server\share`) / alias `share:<jméno>`; credentialy jako pojmenované profily v sekci `Network`. |
+| **Logy / metriky** | konzole + `logs/` | Serilog (rotace 14 dní, dir přes `DIFFPDF_LOG_DIR`); metriky na `/metrics`. |
 
-Výchozí renderer volá **Ghostscript (AGPL v3)** — pro interní / serverové použití je to
-v pořádku, ale distribuce uzavřeného produktu s Ghostscriptem vyžaduje komerční licenci
-od Artifexu. Renderer **PDFium** (BSD) je licenčně čistá alternativa (`"renderer": "Pdfium"`).
-Další knihovny: PdfPig (Apache 2.0), PdfSharp (MIT), SkiaSharp (MIT).
+## Postavené na
 
-## Roadmap / zatím neimplementováno
+| Technologie | Role |
+|---|---|
+| **.NET 10 / ASP.NET Core Minimal API** | Runtime a štíhlé HTTP API. |
+| **PdfPig** | Extrakce textu s pozicemi slov pro slovní diff. |
+| **Ghostscript** / **PDFium** | Rendering stránek na obrázky pro pixelový diff. |
+| **SkiaSharp** | Porovnání bitmap a detekce prázdných stránek. |
+| **PdfSharp** | Generování zvýrazněného diff-PDF (raster i vektor). |
+| **PostgreSQL / SQL Server** + **EF Core** + **Mapperly** | Perzistentní zdroj pravdy; mapování bez reflexe. |
+| **Wolverine** | DB-backed durable queues (inbox/outbox, retry, dead-letter) — bez externího brokeru. |
+| **SignalR** | Realtime push progressu úloh. |
+| **Serilog** · **OpenIddict** | Strukturované logování · OAuth2 server. |
 
-- SSIM perceptuální skórování; strukturální shlukování regionů.
-- Multi-tenant izolace artefaktů a oprávnění per scope.
-- Retence i pro DB řádky jobů (dnes se maže jen on-disk artefakt).
-- Runtime mount autentizovaného UNC přímo v durable pipeline.
+## Dokumentace
+
+Architektura, kompletní REST API reference, volby porovnání, klientské SDK, interní popis pipeline a postup buildu/testů: **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)**.
+
+## Licence
+
+Výchozí renderer **Ghostscript** je pod **AGPL v3** — pro interní/serverové nasazení v pořádku, ale distribuce uzavřeného produktu s Ghostscriptem vyžaduje komerční licenci od Artifexu. Licenčně čistá alternativa je **PDFium** (BSD): nastav `"renderer": "Pdfium"`. Ostatní knihovny: PdfPig (Apache 2.0), PdfSharp (MIT), SkiaSharp (MIT).
+
