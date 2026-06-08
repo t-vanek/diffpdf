@@ -7,7 +7,7 @@ namespace DiffPdf.DesktopUI.ViewModels;
 /// One branch row in the Branches grid: the branch plus its live run-queue snapshot. The snapshot (pushed
 /// from the server) drives which per-row action buttons are enabled.
 /// </summary>
-public partial class BranchRowViewModel(Branch branch) : ObservableObject
+public partial class BranchRowViewModel(Branch branch) : ObservableObject, ISelectableRow
 {
     // Settable so an auto-refresh can update a row's name/enabled in place — keeping the same row object, so
     // the user's selection and checkbox state survive the refresh.

@@ -27,6 +27,7 @@ public partial class BranchesViewModel : PageViewModel
     // Serializes list reloads: the manual button, the periodic auto-refresh, and post-mutation reloads can
     // overlap, and the rebuild mutates the shared Branches collection — so only one runs at a time.
     private readonly SemaphoreSlim _loadGate = new(1, 1);
+    private readonly RowSelection<BranchRowViewModel> _selection;
 
     public override string Title => "Větve";
     public override string Icon => "⋔";
@@ -68,6 +69,7 @@ public partial class BranchesViewModel : PageViewModel
         _dialogs = dialogs;
         _hub = hub;
         BranchesView = new DataGridCollectionView(Branches) { Filter = MatchesSearch };
+        _selection = new RowSelection<BranchRowViewModel>(BranchesView, () => Branches, RecomputeDeleteSelection);
     }
 
     private bool MatchesSearch(object o)
@@ -84,8 +86,8 @@ public partial class BranchesViewModel : PageViewModel
     /// <summary>Header "select all": toggles the checkbox on every currently-visible (filtered) row.</summary>
     public bool AllSelected
     {
-        get => BranchesView.Count > 0 && BranchesView.Cast<BranchRowViewModel>().All(r => r.IsSelected);
-        set { foreach (var r in BranchesView.Cast<BranchRowViewModel>()) r.IsSelected = value; }
+        get => _selection.AllSelected;
+        set => _selection.AllSelected = value;
     }
 
     public override Task ActivateAsync() => RunAsync(async () =>
@@ -119,6 +121,18 @@ public partial class BranchesViewModel : PageViewModel
             _ = ReloadQuietlyAsync();
     }
 
+    public override Task DeactivateAsync()
+    {
+        if (_subscribed)
+        {
+            _hub.QueueStateReceived -= OnQueueState;
+            _hub.TriggerEventReceived -= OnScopeEvent;
+            _hub.Reconnected -= OnReconnected;
+            _subscribed = false;
+        }
+        return Task.CompletedTask;
+    }
+
     // Connection restored after a drop — reload to catch any changes missed while offline.
     private void OnReconnected() => _ = ReloadQuietlyAsync();
 
@@ -149,8 +163,8 @@ public partial class BranchesViewModel : PageViewModel
             rowKeyOf: r => r.Branch.Key,
             create: s => { var row = new BranchRowViewModel(s.Branch) { InstanceCount = s.InstanceCount }; row.Apply(s.Queue); return row; },
             update: (r, s) => { r.Branch = s.Branch; r.InstanceCount = s.InstanceCount; r.Apply(s.Queue); },
-            onAdded: r => { r.PropertyChanged += OnRowChanged; _ = JoinBranchQuietlyAsync(r.Branch.Key); },
-            onRemoved: r => r.PropertyChanged -= OnRowChanged);
+            onAdded: r => { _selection.Track(r); _ = JoinBranchQuietlyAsync(r.Branch.Key); },
+            onRemoved: r => _selection.Untrack(r));
         RecomputeDeleteSelection();
         OnPropertyChanged(nameof(HasNoBranches));
     }
@@ -160,15 +174,9 @@ public partial class BranchesViewModel : PageViewModel
         try { await _hub.JoinBranchAsync(key); } catch { /* live queue pushes are best-effort */ }
     }
 
-    private void OnRowChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName == nameof(BranchRowViewModel.IsSelected))
-            RecomputeDeleteSelection();
-    }
-
     private void RecomputeDeleteSelection()
     {
-        SelectedDeleteCount = Branches.Count(r => r.IsSelected);
+        SelectedDeleteCount = _selection.SelectedCount;
         OnPropertyChanged(nameof(AllSelected));
     }
 

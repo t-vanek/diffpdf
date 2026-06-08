@@ -6,6 +6,13 @@ using Avalonia.Platform.Storage;
 
 namespace DiffPdf.DesktopUI.Services;
 
+/// <summary>A view-model hosted in a modal window: supplies the window title and can ask to close.</summary>
+public interface IModalViewModel
+{
+    string WindowTitle { get; }
+    event Action? CloseRequested;
+}
+
 /// <summary>Owner-window-bound helpers for file dialogs (e.g. saving a downloaded diff artifact) and confirmations.</summary>
 public sealed class DialogService
 {
@@ -54,68 +61,44 @@ public sealed class DialogService
     }
 
     /// <summary>Opens the per-scope (branch / instance) trigger + comparer settings as a modal dialog.</summary>
-    public async Task ShowScopeSettingsAsync(ViewModels.ScopeSettingsViewModel vm)
-    {
-        if (Owner is null) return;
-
-        var dialog = new Window
-        {
-            Title = vm.WindowTitle,
-            Width = 760,
-            Height = 680,
-            CanResize = true,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            Content = new Views.ScopeSettingsView { DataContext = vm },
-        };
-
-        void OnClose() => dialog.Close();
-        vm.CloseRequested += OnClose;
-        try { await dialog.ShowDialog(Owner); }
-        finally { vm.CloseRequested -= OnClose; }
-    }
+    public Task ShowScopeSettingsAsync(ViewModels.ScopeSettingsViewModel vm) =>
+        ShowModalAsync(vm, new Views.ScopeSettingsView { DataContext = vm }, width: 760, height: 680);
 
     /// <summary>Opens the create/edit branch form as a modal dialog. Returns true if the branch was saved.</summary>
     public async Task<bool> ShowBranchFormAsync(ViewModels.BranchFormViewModel vm)
     {
-        if (Owner is null) return false;
-
-        var dialog = new Window
-        {
-            Title = vm.WindowTitle,
-            Width = 460,
-            SizeToContent = SizeToContent.Height,
-            CanResize = false,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            Content = new Views.BranchFormView { DataContext = vm },
-        };
-
-        void OnClose() => dialog.Close();
-        vm.CloseRequested += OnClose;
-        try { await dialog.ShowDialog(Owner); }
-        finally { vm.CloseRequested -= OnClose; }
+        await ShowModalAsync(vm, new Views.BranchFormView { DataContext = vm }, width: 460, height: null);
         return vm.Saved;
     }
 
     /// <summary>Opens the create/edit instance form as a modal dialog. Returns true if the instance was saved.</summary>
     public async Task<bool> ShowInstanceFormAsync(ViewModels.InstanceFormViewModel vm)
     {
-        if (Owner is null) return false;
+        await ShowModalAsync(vm, new Views.InstanceFormView { DataContext = vm }, width: 520, height: null);
+        return vm.Saved;
+    }
+
+    /// <summary>Hosts a modal view-model in a centred owner-modal window, wiring its close request. A fixed
+    /// <paramref name="height"/> makes the window resizable; null sizes it to its content (fixed forms).</summary>
+    private async Task ShowModalAsync(IModalViewModel vm, Control content, double width, double? height)
+    {
+        if (Owner is null) return;
 
         var dialog = new Window
         {
             Title = vm.WindowTitle,
-            Width = 520,
-            SizeToContent = SizeToContent.Height,
-            CanResize = false,
+            Width = width,
+            CanResize = height is not null,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            Content = new Views.InstanceFormView { DataContext = vm },
+            Content = content,
         };
+        if (height is { } h) dialog.Height = h;
+        else dialog.SizeToContent = SizeToContent.Height;
 
         void OnClose() => dialog.Close();
         vm.CloseRequested += OnClose;
         try { await dialog.ShowDialog(Owner); }
         finally { vm.CloseRequested -= OnClose; }
-        return vm.Saved;
     }
 
     /// <summary>Prompts for a save location and writes <paramref name="content"/>. Returns the saved path, or null if cancelled.</summary>

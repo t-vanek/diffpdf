@@ -11,7 +11,7 @@ namespace DiffPdf.DesktopUI.ViewModels;
 /// <see cref="CloseRequested"/>. The key is the branch's immutable identity, so it is editable only when
 /// creating; <c>Enabled</c> is only meaningful when editing.
 /// </summary>
-public partial class BranchFormViewModel : ViewModelBase
+public partial class BranchFormViewModel : ViewModelBase, IModalViewModel
 {
     private readonly ServerSession _session;
     private readonly Branch? _editing;                       // null ⇒ create mode

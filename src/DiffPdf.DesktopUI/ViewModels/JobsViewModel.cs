@@ -158,6 +158,17 @@ public partial class JobsViewModel : PageViewModel
         if (!BranchOptions.Contains(FilterBranch)) FilterBranch = AllFilter;
     }
 
+    public override Task DeactivateAsync()
+    {
+        if (_subscribed)
+        {
+            _hub.ProgressReceived -= OnProgress;
+            _hub.Reconnected -= OnReconnected;
+            _subscribed = false;
+        }
+        return Task.CompletedTask;
+    }
+
     private void OnReconnected() => _ = ReloadQuietlyAsync();
 
     private async Task ReloadQuietlyAsync()

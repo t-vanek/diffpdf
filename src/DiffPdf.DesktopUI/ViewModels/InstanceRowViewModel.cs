@@ -7,7 +7,7 @@ namespace DiffPdf.DesktopUI.ViewModels;
 /// One instance row in the Instances grid: the instance plus its live run-queue status. The status (pushed
 /// from the server) drives which per-row action buttons are enabled — the UI holds no queue logic itself.
 /// </summary>
-public partial class InstanceRowViewModel(Instance instance) : ObservableObject
+public partial class InstanceRowViewModel(Instance instance) : ObservableObject, ISelectableRow
 {
     // Settable so an auto-refresh can update a row's data in place — keeping the same row object, so the
     // user's selection and checkbox state survive the refresh.

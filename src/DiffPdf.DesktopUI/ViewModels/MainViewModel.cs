@@ -110,9 +110,9 @@ public partial class MainViewModel : ViewModelBase
         ConnectionStatus = "Nepřipojeno";
     });
 
-    partial void OnSelectedPageChanged(PageViewModel? value)
+    partial void OnSelectedPageChanged(PageViewModel? oldValue, PageViewModel? newValue)
     {
-        if (value is not null && IsConnected)
-            _ = value.ActivateAsync();
+        if (oldValue is not null) _ = oldValue.DeactivateAsync();
+        if (newValue is not null && IsConnected) _ = newValue.ActivateAsync();
     }
 }
