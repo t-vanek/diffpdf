@@ -7,16 +7,16 @@ using DiffPdf.Api.Discovery;
 using DiffPdf.Api.Endpoints;
 using DiffPdf.Api.Hubs;
 using DiffPdf.Api.Operational;
+using DiffPdf.Application;
+using DiffPdf.Application.Abstractions;
 using DiffPdf.Core.Abstractions;
 using DiffPdf.Core.Network;
 using DiffPdf.Core.Storage;
 using DiffPdf.Messaging;
-using DiffPdf.Messaging.Configuration;
 using DiffPdf.Messaging.ControlPlane;
 using DiffPdf.Messaging.Observability;
 using DiffPdf.Messaging.Scheduling;
 using DiffPdf.Messaging.ScopeSync;
-using DiffPdf.Messaging.Triggers;
 using DiffPdf.Notifications.DependencyInjection;
 using DiffPdf.Pdf.DependencyInjection;
 using DiffPdf.Persistence;
@@ -181,9 +181,6 @@ string persistenceProvider = string.IsNullOrWhiteSpace(relational) ? "In-memory"
 builder.Services.AddSingleton(new PersistenceInfo(persistenceProvider));
 builder.Services.AddSingleton<OperationalStatusService>();
 
-// Per-branch / per-instance statistics for the detail views (scoped: depends on the per-request stores).
-builder.Services.AddScoped<ScopeStatsService>();
-
 // Recovers file-pair tasks abandoned by a crashed worker (works with either store).
 builder.Services.AddHostedService<StaleTaskRecoveryService>();
 
@@ -194,9 +191,9 @@ builder.Services.AddHostedService<InstanceStructureHostedService>();
 // Outbound notifications (DB-backed subscriptions) + the on-demand batch launcher used by the triggers.
 builder.Services.AddDiffPdfNotifications(builder.Configuration);
 builder.Services.AddScoped<IBatchLauncher, BatchLauncher>();
-builder.Services.AddScoped<ITriggerService, TriggerService>();
-builder.Services.AddScoped<ITriggerProvisioner, TriggerProvisioner>();
-builder.Services.AddDiffPdfScopeConfiguration();
+builder.Services.AddScoped<IFilePairRequeueDispatcher, FilePairRequeueDispatcher>();
+// Application layer: scope/job/check/subscription/trigger/config orchestration (drives the endpoints).
+builder.Services.AddDiffPdfApplication();
 builder.Services.AddDiffPdfBranchQueue();
 builder.Services.AddDiffPdfScopeSync(builder.Configuration);
 

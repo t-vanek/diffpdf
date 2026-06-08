@@ -1,5 +1,5 @@
+using DiffPdf.Application.Configuration;
 using DiffPdf.Core.Models;
-using DiffPdf.Messaging.Configuration;
 using DiffPdf.Persistence;
 using Microsoft.Extensions.Logging.Abstractions;
 

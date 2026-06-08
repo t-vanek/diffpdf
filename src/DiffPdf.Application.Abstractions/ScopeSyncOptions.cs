@@ -1,4 +1,4 @@
-namespace DiffPdf.Messaging.ScopeSync;
+namespace DiffPdf.Application.Abstractions;
 
 /// <summary>
 /// Configures scope synchronization: reconciling a filesystem root laid out as

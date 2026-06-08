@@ -1,12 +1,11 @@
+using DiffPdf.Application.Abstractions;
 using DiffPdf.Core.Abstractions;
 using DiffPdf.Core.Models;
 using DiffPdf.Core.Storage;
-using DiffPdf.Messaging.Configuration;
-using DiffPdf.Messaging.Scheduling;
 using DiffPdf.Persistence;
 using Microsoft.Extensions.Logging;
 
-namespace DiffPdf.Messaging.Triggers;
+namespace DiffPdf.Application.Triggers;
 
 /// <summary>Fields for creating a trigger (the instance is identified by its branch + instance keys).</summary>
 public sealed record CreateTriggerInput

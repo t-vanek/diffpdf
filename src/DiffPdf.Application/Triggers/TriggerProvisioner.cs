@@ -1,24 +1,10 @@
+using DiffPdf.Application.Abstractions;
 using DiffPdf.Core.Models;
 using DiffPdf.Core.Storage;
 using DiffPdf.Persistence;
 using Microsoft.Extensions.Logging;
 
-namespace DiffPdf.Messaging.Triggers;
-
-/// <summary>
-/// Auto-provisions the single default trigger of an instance. Idempotent and best-effort (mirrors the
-/// control-check provisioner): a default is created only when none exists, and creation is audited.
-/// </summary>
-public interface ITriggerProvisioner
-{
-    Task EnsureDefaultTriggerAsync(Guid branchId, string branchKey, Guid instanceId, string instanceKey, string? actor, CancellationToken ct = default);
-
-    /// <summary>Soft-deletes an instance's triggers when the instance is deleted (history is preserved).</summary>
-    Task SoftDeleteInstanceTriggersAsync(Guid instanceId, string? actor, CancellationToken ct = default);
-
-    /// <summary>Ensures a default trigger for every existing instance (startup backfill).</summary>
-    Task ProvisionExistingAsync(CancellationToken ct = default);
-}
+namespace DiffPdf.Application.Triggers;
 
 /// <inheritdoc />
 public sealed class TriggerProvisioner(

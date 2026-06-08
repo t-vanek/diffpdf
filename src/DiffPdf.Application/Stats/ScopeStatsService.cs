@@ -1,7 +1,22 @@
 using DiffPdf.Core.Models;
 using DiffPdf.Persistence;
 
-namespace DiffPdf.Api;
+namespace DiffPdf.Application.Stats;
+
+/// <summary>Job counts by status for one scope.</summary>
+public sealed record JobStats(int Queued, int Running, int Paused, int Completed, int Failed);
+
+/// <summary>Control-check counts for one scope (Running has no persistent state today, so it is 0).</summary>
+public sealed record CheckStats(int Active, int Running, int Completed, int Failed);
+
+/// <summary>Automation counts for one scope — the umbrella over every automation type (control checks are the only type today).</summary>
+public sealed record AutomationStats(int Active, int Running, int Paused, int Completed, int Failed);
+
+/// <summary>Comparison (file-pair) counts by status for one scope. Paused/Stopped are not modelled, so they are omitted.</summary>
+public sealed record ComparisonStats(int Waiting, int Running, int Completed, int Failed, int Skipped);
+
+/// <summary>Aggregated statistics for a single branch or instance scope (jobs, checks, automations, comparisons).</summary>
+public sealed record ScopeStatsResponse(JobStats Jobs, CheckStats Checks, AutomationStats Automations, ComparisonStats Comparisons);
 
 /// <summary>
 /// Computes the per-branch / per-instance statistics shown in the branch and instance detail views:
@@ -9,7 +24,14 @@ namespace DiffPdf.Api;
 /// loaded once — that single list yields both the job-status breakdown and the job ids used to count the
 /// comparison (file-pair) tasks by status. Checks bound to the scope are filtered from the full list.
 /// </summary>
-public sealed class ScopeStatsService(IJobStore jobs, IFilePairTaskStore tasks, IControlCheckStore checks)
+public interface IScopeStatsService
+{
+    Task<ScopeStatsResponse> ForBranchAsync(string branchKey, CancellationToken ct = default);
+    Task<ScopeStatsResponse> ForInstanceAsync(string branchKey, string instanceKey, CancellationToken ct = default);
+}
+
+/// <inheritdoc />
+public sealed class ScopeStatsService(IJobStore jobs, IFilePairTaskStore tasks, IControlCheckStore checks) : IScopeStatsService
 {
     public Task<ScopeStatsResponse> ForBranchAsync(string branchKey, CancellationToken ct = default) =>
         ComputeAsync(branchKey, instanceKey: null, ct);

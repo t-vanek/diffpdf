@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics.Metrics;
 
-namespace DiffPdf.Messaging.Observability;
+namespace DiffPdf.Application.Abstractions;
 
 /// <summary>
 /// Application metrics for the per-branch sequential queue, published through the <c>DiffPdf.Queue</c> meter

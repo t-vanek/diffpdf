@@ -1,7 +1,7 @@
 using DiffPdf.Core.Abstractions;
+using DiffPdf.Application.Configuration;
+using DiffPdf.Application.Queue;
 using DiffPdf.Core.Models;
-using DiffPdf.Messaging.Configuration;
-using DiffPdf.Messaging.Observability;
 using DiffPdf.Messaging.Scheduling;
 using DiffPdf.Persistence;
 using Microsoft.Extensions.Logging.Abstractions;

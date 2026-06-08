@@ -1,9 +1,9 @@
+using DiffPdf.Application.Abstractions;
 using DiffPdf.Core.Abstractions;
 using DiffPdf.Core.Models;
-using DiffPdf.Messaging.Configuration;
 using DiffPdf.Persistence;
 
-namespace DiffPdf.Messaging.Scheduling;
+namespace DiffPdf.Application.Queue;
 
 /// <summary>
 /// Application-level queue control for the desktop manager: translates the per-instance / per-branch
