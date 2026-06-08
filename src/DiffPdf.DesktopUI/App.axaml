@@ -2,15 +2,27 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="using:DiffPdf.DesktopUI"
              x:Class="DiffPdf.DesktopUI.App"
-             RequestedThemeVariant="Default">
+             RequestedThemeVariant="Dark">
 
     <Application.DataTemplates>
         <local:ViewLocator />
     </Application.DataTemplates>
 
+    <!-- Design tokens (colour + geometry). Single source of truth; FluentTheme reads
+         SystemAccentColor / ControlCornerRadius from here. -->
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceInclude Source="avares://DiffPdf.DesktopUI/Theme/Tokens.axaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+
     <Application.Styles>
         <FluentTheme />
         <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml" />
+        <!-- Shared component styles (typography scale, card, badge, button variants…). -->
+        <StyleInclude Source="avares://DiffPdf.DesktopUI/Theme/Controls.axaml" />
 
         <!-- Reusable animations (applied via Classes="fadeIn|pulse" or an Ellipse.spinner). -->
 
@@ -39,7 +51,7 @@
         <Style Selector="Ellipse.spinner">
             <Setter Property="Width" Value="18"/>
             <Setter Property="Height" Value="18"/>
-            <Setter Property="Stroke" Value="#9CDCFE"/>
+            <Setter Property="Stroke" Value="{DynamicResource Info}"/>
             <Setter Property="StrokeThickness" Value="2.5"/>
             <Setter Property="StrokeDashArray" Value="5,15"/>
             <Setter Property="RenderTransformOrigin" Value="50%,50%"/>

@@ -327,6 +327,21 @@ public sealed record FilePairResult
     public long? CompareMs { get; init; }
 }
 
+/// <summary>Outcome of <see cref="DiffPdfClient.CompareSinglePreviewAsync"/>: the verdict plus the highlighted
+/// diff PDF bytes. <see cref="DiffPdf"/> is null when the documents are identical (nothing to highlight).</summary>
+public sealed record SingleComparisonPreview
+{
+    public bool Identical { get; init; }
+    public int OldPageCount { get; init; }
+    public int NewPageCount { get; init; }
+    public int DifferingPages { get; init; }
+    /// <summary>Aggregate similarity 0–1, or NaN if the server did not report it.</summary>
+    public double Similarity { get; init; }
+    public int ContentErrorCount { get; init; }
+    /// <summary>The highlighted diff PDF; null when identical (no diff was rendered).</summary>
+    public byte[]? DiffPdf { get; init; }
+}
+
 /// <summary>Aggregate report for a whole batch run.</summary>
 public sealed record BatchComparisonReport
 {

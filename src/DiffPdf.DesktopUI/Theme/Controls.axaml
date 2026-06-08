@@ -1,0 +1,227 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- ============================================================================
+       Shared component styles built on the Tokens.axaml palette. Applying a class
+       (Classes="card", "pageTitle"…) gives every view the same component without
+       re-declaring colours/sizes inline. Primary buttons use FluentTheme's built-in
+       Classes="accent".
+       ============================================================================ -->
+
+  <!-- ===== Typography scale ===== -->
+  <Style Selector="TextBlock.pageTitle">
+    <Setter Property="FontSize" Value="22"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="Foreground" Value="{DynamicResource Ink}"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="TextBlock.headline">
+    <Setter Property="FontSize" Value="16"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="Foreground" Value="{DynamicResource Ink}"/>
+  </Style>
+  <Style Selector="TextBlock.sectionTitle">
+    <Setter Property="Foreground" Value="{DynamicResource InkDim}"/>
+    <Setter Property="FontSize" Value="11"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="Margin" Value="2,6,0,0"/>
+  </Style>
+  <Style Selector="TextBlock.body">
+    <Setter Property="FontSize" Value="13"/>
+    <Setter Property="Foreground" Value="{DynamicResource Ink}"/>
+  </Style>
+  <Style Selector="TextBlock.muted">
+    <Setter Property="Foreground" Value="{DynamicResource InkDim}"/>
+  </Style>
+  <Style Selector="TextBlock.caption">
+    <Setter Property="FontSize" Value="11"/>
+    <Setter Property="Foreground" Value="{DynamicResource InkFaint}"/>
+  </Style>
+
+  <!-- KPI text (Dashboard counts) — kept global so every view shares one definition. -->
+  <Style Selector="TextBlock.kpiLabel">
+    <Setter Property="Foreground" Value="{DynamicResource InkDim}"/>
+    <Setter Property="FontSize" Value="11"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+  </Style>
+  <Style Selector="TextBlock.kpiValue">
+    <Setter Property="Foreground" Value="{DynamicResource Ink}"/>
+    <Setter Property="FontSize" Value="22"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+  </Style>
+  <Style Selector="TextBlock.kpiSub">
+    <Setter Property="Foreground" Value="{DynamicResource InkFaint}"/>
+    <Setter Property="FontSize" Value="11"/>
+  </Style>
+
+  <!-- Table header / cell -->
+  <Style Selector="TextBlock.th">
+    <Setter Property="Foreground" Value="{DynamicResource InkDim}"/>
+    <Setter Property="FontSize" Value="11"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="TextBlock.td">
+    <Setter Property="Foreground" Value="{DynamicResource Ink}"/>
+    <Setter Property="FontSize" Value="12"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
+  </Style>
+
+  <!-- ===== Window ===== -->
+  <Style Selector="Window">
+    <Setter Property="Background" Value="{DynamicResource Bg}"/>
+  </Style>
+
+  <!-- ===== Card ===== -->
+  <Style Selector="Border.card">
+    <Setter Property="Background" Value="{DynamicResource Surface}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Line}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="{DynamicResource RadMd}"/>
+    <Setter Property="Padding" Value="16"/>
+    <Setter Property="RenderTransform" Value="translateY(0)"/>
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Background" Duration="0:0:0.15"/>
+        <BrushTransition Property="BorderBrush" Duration="0:0:0.15"/>
+        <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.15" Easing="CubicEaseOut"/>
+      </Transitions>
+    </Setter>
+  </Style>
+  <!-- Subtle lift + highlight on hover. -->
+  <Style Selector="Border.card:pointerover">
+    <Setter Property="Background" Value="{DynamicResource SurfaceAlt}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource LineStrong}"/>
+    <Setter Property="RenderTransform" Value="translateY(-2px)"/>
+  </Style>
+  <!-- Inert container card: no hover lift (detail panels, grouping boxes). -->
+  <Style Selector="Border.cardStatic">
+    <Setter Property="Background" Value="{DynamicResource Surface}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Line}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="{DynamicResource RadMd}"/>
+    <Setter Property="Padding" Value="16"/>
+  </Style>
+
+  <!-- ===== Badge / pill ===== -->
+  <Style Selector="Border.badge">
+    <Setter Property="CornerRadius" Value="{DynamicResource RadPill}"/>
+    <Setter Property="Padding" Value="9,2"/>
+    <Setter Property="Background" Value="{DynamicResource NeutralFill}"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
+    <Setter Property="HorizontalAlignment" Value="Left"/>
+  </Style>
+  <Style Selector="Border.badge > TextBlock">
+    <Setter Property="FontSize" Value="11"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="Foreground" Value="{DynamicResource InkDim}"/>
+  </Style>
+  <Style Selector="Border.badge.good"><Setter Property="Background" Value="{DynamicResource GoodFill}"/></Style>
+  <Style Selector="Border.badge.good > TextBlock"><Setter Property="Foreground" Value="{DynamicResource Good}"/></Style>
+  <Style Selector="Border.badge.bad"><Setter Property="Background" Value="{DynamicResource BadFill}"/></Style>
+  <Style Selector="Border.badge.bad > TextBlock"><Setter Property="Foreground" Value="{DynamicResource Bad}"/></Style>
+  <Style Selector="Border.badge.warn"><Setter Property="Background" Value="{DynamicResource WarnFill}"/></Style>
+  <Style Selector="Border.badge.warn > TextBlock"><Setter Property="Foreground" Value="{DynamicResource Warn}"/></Style>
+
+  <!-- ===== Buttons ===== -->
+  <!-- Primary action → Classes="accent" (FluentTheme built-in, uses SystemAccentColor). -->
+  <!-- Destructive: restrained red text rather than a full red fill. -->
+  <Style Selector="Button.destructive">
+    <Setter Property="Foreground" Value="{DynamicResource Bad}"/>
+  </Style>
+  <!-- Ghost: borderless secondary action; keeps FluentTheme's hover overlay. (On the dark Mica title bar the
+       default overlay reads as a bright white box, so the MainWindow header locally overrides the
+       ButtonBackgroundPointerOver/Pressed resources to a subtle value.) -->
+  <Style Selector="Button.ghost">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="BorderThickness" Value="0"/>
+  </Style>
+  <!-- Title-bar icon button: fully self-templated so the hover/pressed overlay is controlled directly (the
+       FluentTheme default reads as a bright white box on the dark Mica title bar). -->
+  <Style Selector="Button.titleIcon">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="CornerRadius" Value="{DynamicResource RadSm}"/>
+    <Setter Property="Foreground" Value="{DynamicResource InkDim}"/>
+    <Setter Property="Template">
+      <ControlTemplate TargetType="Button">
+        <Border x:Name="bg" Background="{TemplateBinding Background}" CornerRadius="{TemplateBinding CornerRadius}">
+          <ContentPresenter Content="{TemplateBinding Content}" Padding="{TemplateBinding Padding}"
+                            HorizontalContentAlignment="Center" VerticalContentAlignment="Center"/>
+        </Border>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="Button.titleIcon:pointerover /template/ Border#bg">
+    <Setter Property="Background" Value="#1AFFFFFF"/>
+  </Style>
+  <Style Selector="Button.titleIcon:pressed /template/ Border#bg">
+    <Setter Property="Background" Value="#26FFFFFF"/>
+  </Style>
+  <Style Selector="Button.titleIcon:pointerover">
+    <Setter Property="Foreground" Value="{DynamicResource Ink}"/>
+  </Style>
+
+  <!-- Custom window caption buttons (min / max / close) for the fully-owned title bar. Self-templated; the close
+       button turns red on hover (Win11 convention). -->
+  <Style Selector="Button.captionBtn">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="Width" Value="46"/>
+    <Setter Property="VerticalAlignment" Value="Stretch"/>
+    <Setter Property="Foreground" Value="{DynamicResource InkDim}"/>
+    <Setter Property="Template">
+      <ControlTemplate TargetType="Button">
+        <Border x:Name="bg" Background="{TemplateBinding Background}">
+          <ContentPresenter HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Content="{TemplateBinding Content}"/>
+        </Border>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="Button.captionBtn:pointerover /template/ Border#bg">
+    <Setter Property="Background" Value="#1AFFFFFF"/>
+  </Style>
+  <Style Selector="Button.captionBtn:pointerover">
+    <Setter Property="Foreground" Value="{DynamicResource Ink}"/>
+  </Style>
+  <Style Selector="Button.captionBtn.close:pointerover /template/ Border#bg">
+    <Setter Property="Background" Value="#C42B1C"/>
+  </Style>
+  <Style Selector="Button.captionBtn.close:pointerover">
+    <Setter Property="Foreground" Value="White"/>
+  </Style>
+
+  <!-- Compact icon button (per-row transport controls). -->
+  <Style Selector="Button.iconBtn">
+    <Setter Property="Padding" Value="7,3"/>
+    <Setter Property="MinWidth" Value="32"/>
+    <Setter Property="FontSize" Value="13"/>
+  </Style>
+
+  <!-- ===== DataGrid polish — flat, horizontal rules only, quiet headers ===== -->
+  <Style Selector="DataGrid">
+    <Setter Property="GridLinesVisibility" Value="Horizontal"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="Background" Value="Transparent"/>
+  </Style>
+  <Style Selector="DataGridColumnHeader">
+    <Setter Property="Foreground" Value="{DynamicResource InkDim}"/>
+    <Setter Property="FontSize" Value="11"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="Background" Value="Transparent"/>
+  </Style>
+
+  <!-- ===== ToolTip ===== -->
+  <Style Selector="ToolTip">
+    <Setter Property="Background" Value="{DynamicResource SurfaceAlt}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Line}"/>
+    <Setter Property="Foreground" Value="{DynamicResource Ink}"/>
+    <Setter Property="CornerRadius" Value="{DynamicResource RadSm}"/>
+    <Setter Property="MaxWidth" Value="380"/>
+  </Style>
+
+  <!-- ===== ProgressBar ===== -->
+  <Style Selector="ProgressBar">
+    <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
+  </Style>
+
+</Styles>

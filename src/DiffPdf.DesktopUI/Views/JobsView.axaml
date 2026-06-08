@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:DiffPdf.DesktopUI.ViewModels"
+             xmlns:models="using:DiffPdf.Client"
              x:Class="DiffPdf.DesktopUI.Views.JobsView"
              x:DataType="vm:JobsViewModel"
              x:Name="Root">
@@ -10,20 +11,21 @@
   </UserControl.KeyBindings>
 
   <DockPanel>
-    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
-      <TextBlock Text="Úlohy" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
+    <TextBlock DockPanel.Dock="Top" Text="Úlohy" Classes="pageTitle" Margin="2,0,0,10"/>
+
+    <WrapPanel DockPanel.Dock="Top" ItemSpacing="8" LineSpacing="8" Margin="0,0,0,10">
       <ComboBox Width="140" ItemsSource="{Binding BranchOptions}" SelectedItem="{Binding FilterBranch}"/>
       <ComboBox Width="150" ItemsSource="{Binding InstanceOptions}" SelectedItem="{Binding FilterInstance}"/>
       <ComboBox Width="120" ItemsSource="{Binding StatusFilters}" SelectedItem="{Binding FilterStatus}"/>
-      <Button Content="🔄 Obnovit" Command="{Binding RefreshCommand}" ToolTip.Tip="Obnovit (F5)"/>
-      <TextBlock Text="{Binding Info}" Foreground="#9CDCFE" VerticalAlignment="Center"/>
-      <TextBlock Text="{Binding Error}" Foreground="#C0392B" VerticalAlignment="Center"/>
+      <Button Content="Obnovit" Classes="ghost" Command="{Binding RefreshCommand}" ToolTip.Tip="Obnovit (F5)"/>
+      <TextBlock Text="{Binding Info}" Foreground="{DynamicResource Info}" VerticalAlignment="Center"/>
+      <TextBlock Text="{Binding Error}" Foreground="{DynamicResource Bad}" VerticalAlignment="Center"/>
       <ProgressBar IsIndeterminate="True" Width="100" Height="4" VerticalAlignment="Center" IsVisible="{Binding IsBusy}"/>
-    </StackPanel>
+    </WrapPanel>
 
-    <Grid ColumnDefinitions="*,560">
+    <Grid ColumnDefinitions="3*,2*">
       <!-- Seznam úloh -->
-      <DataGrid Grid.Column="0" Margin="0,0,8,0" x:CompileBindings="False" ItemsSource="{Binding Jobs}"
+      <DataGrid Grid.Column="0" Margin="0,0,12,0" x:CompileBindings="False" ItemsSource="{Binding Jobs}"
                 SelectedItem="{Binding SelectedJob}" IsReadOnly="True" AutoGenerateColumns="False" CanUserResizeColumns="True">
         <DataGrid.Columns>
           <DataGridTemplateColumn Header="Stav" Width="120">
@@ -60,7 +62,7 @@
       </DataGrid>
 
       <!-- Prázdný stav přes seznam úloh -->
-      <TextBlock Grid.Column="0" Margin="0,0,8,0" Text="Žádné úlohy odpovídající filtru." Foreground="#808080"
+      <TextBlock Grid.Column="0" Margin="0,0,12,0" Text="Žádné úlohy odpovídající filtru." Foreground="{DynamicResource InkFaint}"
                  HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding HasNoJobs}"/>
 
       <DockPanel Grid.Column="1"
@@ -70,33 +72,65 @@
           <!-- Hlavička: instance · větev + stav -->
           <StackPanel Spacing="2">
             <StackPanel Orientation="Horizontal" Spacing="8">
-              <TextBlock Text="{Binding SelectedSummary.InstanceKey}" FontWeight="Bold" FontSize="16"/>
-              <TextBlock Text="{Binding SelectedSummary.BranchKey, StringFormat='· {0}'}" Foreground="#888" VerticalAlignment="Center"/>
-              <TextBlock Text="{Binding SelectedJob.StatusIcon}" Foreground="{Binding SelectedJob.StatusBrush}" VerticalAlignment="Center"/>
-              <TextBlock Text="{Binding SelectedJob.StatusText}" Foreground="{Binding SelectedJob.StatusBrush}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+              <ContentControl Content="{Binding SelectedSummary}">
+                <ContentControl.ContentTemplate>
+                  <DataTemplate x:DataType="models:JobSummary">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                      <TextBlock Text="{Binding InstanceKey}" Classes="headline"/>
+                      <TextBlock Text="{Binding BranchKey, StringFormat='· {0}'}" Foreground="{DynamicResource InkDim}" VerticalAlignment="Center"/>
+                    </StackPanel>
+                  </DataTemplate>
+                </ContentControl.ContentTemplate>
+              </ContentControl>
+              <ContentControl Content="{Binding SelectedJob}" VerticalAlignment="Center">
+                <ContentControl.ContentTemplate>
+                  <DataTemplate x:DataType="vm:JobRowViewModel">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                      <TextBlock Text="{Binding StatusIcon}" Foreground="{Binding StatusBrush}" VerticalAlignment="Center"/>
+                      <TextBlock Text="{Binding StatusText}" Foreground="{Binding StatusBrush}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    </StackPanel>
+                  </DataTemplate>
+                </ContentControl.ContentTemplate>
+              </ContentControl>
             </StackPanel>
-            <TextBlock Foreground="#808080" FontSize="12"
-                       Text="{Binding SelectedSummary.CreatedAt, Converter={x:Static vm:LocalTimeConverter.Instance}, ConverterParameter='Vytvořeno|dd.MM.yyyy HH:mm'}"/>
-            <TextBlock Foreground="#808080" FontSize="12"
-                       IsVisible="{Binding SelectedSummary.CompletedAt, Converter={x:Static ObjectConverters.IsNotNull}}"
-                       Text="{Binding SelectedSummary.CompletedAt, Converter={x:Static vm:LocalTimeConverter.Instance}, ConverterParameter='Dokončeno|dd.MM.yyyy HH:mm'}"/>
+            <ContentControl Content="{Binding SelectedSummary}">
+              <ContentControl.ContentTemplate>
+                <DataTemplate x:DataType="models:JobSummary">
+                  <StackPanel Spacing="2">
+                    <TextBlock Foreground="{DynamicResource InkFaint}" FontSize="12"
+                               Text="{Binding CreatedAt, Converter={x:Static vm:LocalTimeConverter.Instance}, ConverterParameter='Vytvořeno|dd.MM.yyyy HH:mm'}"/>
+                    <TextBlock Foreground="{DynamicResource InkFaint}" FontSize="12"
+                               IsVisible="{Binding CompletedAt, Converter={x:Static ObjectConverters.IsNotNull}}"
+                               Text="{Binding CompletedAt, Converter={x:Static vm:LocalTimeConverter.Instance}, ConverterParameter='Dokončeno|dd.MM.yyyy HH:mm'}"/>
+                  </StackPanel>
+                </DataTemplate>
+              </ContentControl.ContentTemplate>
+            </ContentControl>
           </StackPanel>
 
           <!-- Živý průběh -->
           <StackPanel Spacing="3">
             <ProgressBar Minimum="0" Maximum="1" Value="{Binding LiveProgress}"/>
-            <TextBlock FontSize="12" Foreground="#CCC"
-                       Text="{Binding SelectedSummary.ProcessedCount, StringFormat='{}{0} porovnáno'}"/>
-            <TextBlock Text="{Binding SelectedSummary.Error}" Foreground="#E06C75" TextWrapping="Wrap"
-                       IsVisible="{Binding SelectedSummary.Error, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+            <ContentControl Content="{Binding SelectedSummary}">
+              <ContentControl.ContentTemplate>
+                <DataTemplate x:DataType="models:JobSummary">
+                  <StackPanel Spacing="3">
+                    <TextBlock FontSize="12" Foreground="{DynamicResource InkDim}"
+                               Text="{Binding ProcessedCount, StringFormat='{}{0} porovnáno'}"/>
+                    <TextBlock Text="{Binding Error}" Foreground="{DynamicResource Bad}" TextWrapping="Wrap"
+                               IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+                  </StackPanel>
+                </DataTemplate>
+              </ContentControl.ContentTemplate>
+            </ContentControl>
           </StackPanel>
 
           <!-- Stavově řízené akce -->
           <WrapPanel>
-            <Button Content="⏸ Pozastavit" Command="{Binding PauseCommand}" IsVisible="{Binding CanPause}" Margin="0,0,6,6"/>
-            <Button Content="↻ Pokračovat" Command="{Binding ResumeCommand}" IsVisible="{Binding CanResume}" Margin="0,0,6,6"/>
-            <Button Content="⏹ Zrušit" Command="{Binding CancelCommand}" IsVisible="{Binding CanCancel}" Margin="0,0,6,6"/>
-            <Button Content="🔁 Opakovat" Command="{Binding RetryCommand}" IsVisible="{Binding CanRetry}" Margin="0,0,6,6"/>
+            <Button Content="‖ Pozastavit" Classes="ghost" Command="{Binding PauseCommand}" IsVisible="{Binding CanPause}" Margin="0,0,6,6"/>
+            <Button Content="↻ Pokračovat" Classes="ghost" Command="{Binding ResumeCommand}" IsVisible="{Binding CanResume}" Margin="0,0,6,6"/>
+            <Button Content="■ Zrušit" Classes="ghost destructive" Command="{Binding CancelCommand}" IsVisible="{Binding CanCancel}" Margin="0,0,6,6"/>
+            <Button Content="↺ Opakovat" Classes="ghost" Command="{Binding RetryCommand}" IsVisible="{Binding CanRetry}" Margin="0,0,6,6"/>
           </WrapPanel>
 
           <!-- Souhrn (barevné chipy) + CI brána -->
@@ -115,30 +149,35 @@
             </ItemsControl.ItemTemplate>
           </ItemsControl>
 
-          <Border BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="4" Padding="8"
-                  IsVisible="{Binding Result, Converter={x:Static ObjectConverters.IsNotNull}}">
-            <StackPanel Spacing="4">
-              <StackPanel Orientation="Horizontal" Spacing="6">
-                <TextBlock Text="CI brána:" Foreground="#888"/>
-                <TextBlock Text="ⓘ" Foreground="#6B6B73" FontSize="11" VerticalAlignment="Center"
-                           ToolTip.Tip="Automatická brána kvality: podle nastavených pravidel (např. max. počet odlišných souborů nebo minimální podobnost) rozhodne, jestli dávka prošla. Funguje jako kontrola v CI/CD — při příliš velkých rozdílech označí výsledek jako neprošlý."/>
-                <TextBlock Text="✓ Prošlo" Foreground="#6FCF73" FontWeight="SemiBold" IsVisible="{Binding Result.Passed}"/>
-                <TextBlock Text="✗ Neprošlo" Foreground="#E06C75" FontWeight="SemiBold" IsVisible="{Binding !Result.Passed}"/>
-              </StackPanel>
-              <ItemsControl ItemsSource="{Binding Result.Violations}">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate><TextBlock Text="{Binding}" Foreground="#E06C75" FontSize="12" TextWrapping="Wrap"/></DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-            </StackPanel>
-          </Border>
+          <ContentControl Content="{Binding Result}">
+            <ContentControl.ContentTemplate>
+              <DataTemplate x:DataType="models:JobResult">
+                <Border Classes="cardStatic" Padding="12">
+                  <StackPanel Spacing="4">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <TextBlock Text="CI brána:" Foreground="{DynamicResource InkDim}"/>
+                      <TextBlock Text="ⓘ" Foreground="{DynamicResource InkFaint}" FontSize="11" VerticalAlignment="Center"
+                                 ToolTip.Tip="Automatická brána kvality: podle nastavených pravidel (např. max. počet odlišných souborů nebo minimální podobnost) rozhodne, jestli dávka prošla. Funguje jako kontrola v CI/CD — při příliš velkých rozdílech označí výsledek jako neprošlý."/>
+                      <TextBlock Text="✓ Prošlo" Foreground="{DynamicResource Good}" FontWeight="SemiBold" IsVisible="{Binding Passed}"/>
+                      <TextBlock Text="✗ Neprošlo" Foreground="{DynamicResource Bad}" FontWeight="SemiBold" IsVisible="{Binding !Passed}"/>
+                    </StackPanel>
+                    <ItemsControl ItemsSource="{Binding Violations}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate><TextBlock Text="{Binding}" Foreground="{DynamicResource Bad}" FontSize="12" TextWrapping="Wrap"/></DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ContentControl.ContentTemplate>
+          </ContentControl>
 
           <!-- Soubory: hlavička, hledání podle názvu, počet a filtr; seznam níže vyplní zbytek výšky. -->
           <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
             <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-              <TextBlock Text="Soubory" FontWeight="Bold" VerticalAlignment="Center"
+              <TextBlock Text="Soubory" FontWeight="SemiBold" VerticalAlignment="Center"
                          ToolTip.Tip="Dvojklikem na řádek otevřeš detail s náhledem PDF"/>
-              <TextBlock Text="{Binding FileCountLabel}" Foreground="#777" FontSize="11" VerticalAlignment="Center"/>
+              <TextBlock Text="{Binding FileCountLabel}" Foreground="{DynamicResource InkFaint}" FontSize="11" VerticalAlignment="Center"/>
             </StackPanel>
             <TextBox Grid.Column="1" x:Name="FileSearchBox" Text="{Binding FileSearch}" VerticalAlignment="Center"
                      PlaceholderText="Hledat soubor…" ToolTip.Tip="Hledat soubor (Ctrl+F)"/>
@@ -164,7 +203,7 @@
               <DataGridTextColumn Header="Soubor" Binding="{Binding Name}" Width="*"/>
             </DataGrid.Columns>
           </DataGrid>
-          <TextBlock Text="Žádné soubory neodpovídají filtru." Foreground="#808080"
+          <TextBlock Text="Žádné soubory neodpovídají filtru." Foreground="{DynamicResource InkFaint}"
                      HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding HasNoMatchingFiles}"/>
         </Panel>
       </DockPanel>

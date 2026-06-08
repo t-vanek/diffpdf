@@ -108,6 +108,21 @@ public sealed class DialogService
         finally { vm.CloseRequested -= OnClose; }
     }
 
+    /// <summary>Opens a PDF file picker and returns the chosen file's local path, or null if cancelled.</summary>
+    public async Task<string?> OpenPdfAsync(string title)
+    {
+        if (Owner?.StorageProvider is not { } storage)
+            return null;
+
+        var files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = title,
+            AllowMultiple = false,
+            FileTypeFilter = [new FilePickerFileType("PDF") { Patterns = ["*.pdf"] }],
+        });
+        return files.Count > 0 ? files[0].Path.LocalPath : null;
+    }
+
     /// <summary>Prompts for a save location and writes <paramref name="content"/>. Returns the saved path, or null if cancelled.</summary>
     public async Task<string?> SaveBytesAsync(string suggestedName, byte[] content)
     {

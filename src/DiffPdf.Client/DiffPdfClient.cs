@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -372,6 +373,66 @@ public sealed class DiffPdfClient(HttpClient http)
     /// <summary>Compares a single old/new pair synchronously. Returns the raw result JSON (the per-page model is deep).</summary>
     public Task<JsonElement> CompareSingleAsync(SingleComparisonRequest request, CancellationToken ct = default) =>
         JsonAsync<JsonElement>(HttpMethod.Post, "/api/v1/comparisons", request, ct);
+
+    /// <summary>Compares a single pair and returns the verdict together with the highlighted diff PDF bytes
+    /// (streamed as <c>application/pdf</c>; <see cref="SingleComparisonPreview.DiffPdf"/> is null when the
+    /// documents are identical). Throws <see cref="DiffPdfApiException"/> 422 when a file cannot be compared.</summary>
+    public async Task<SingleComparisonPreview> CompareSinglePreviewAsync(SingleComparisonRequest request, CancellationToken ct = default)
+    {
+        using var resp = await SendRawAsync(HttpMethod.Post, "/api/v1/comparisons/preview", request, ct);
+        return await ReadPreviewAsync(resp, ct);
+    }
+
+    /// <summary>Compares two PDFs uploaded as bytes (multipart) — for when the server runs on a different machine
+    /// than the client, so a server-side path would not resolve. Returns the verdict + highlighted diff PDF bytes
+    /// (null when identical). Throws <see cref="DiffPdfApiException"/> 422 when a file cannot be compared.</summary>
+    public async Task<SingleComparisonPreview> CompareSinglePreviewUploadAsync(
+        byte[] oldPdf, string oldName, byte[] newPdf, string newName, ComparisonOptions options, CancellationToken ct = default)
+    {
+        using var form = new MultipartFormDataContent
+        {
+            // Parts WITH a filename bind as files (form.Files["old"/"new"]); the filename also names the diff PDF.
+            { new ByteArrayContent(oldPdf), "old", string.IsNullOrWhiteSpace(oldName) ? "old.pdf" : oldName },
+            { new ByteArrayContent(newPdf), "new", string.IsNullOrWhiteSpace(newName) ? "new.pdf" : newName },
+            // No filename → binds as a form field (form["options"]).
+            { new StringContent(JsonSerializer.Serialize(options, Json)), "options" },
+        };
+
+        using var req = new HttpRequestMessage(HttpMethod.Post, "/api/v1/comparisons/preview-upload") { Content = form };
+        using var resp = await http.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode) throw await ApiException(resp, ct);
+        return await ReadPreviewAsync(resp, ct);
+    }
+
+    private static async Task<SingleComparisonPreview> ReadPreviewAsync(HttpResponseMessage resp, CancellationToken ct)
+    {
+        byte[]? pdf = null;
+        if (resp.StatusCode != HttpStatusCode.NoContent)
+        {
+            var bytes = await resp.Content.ReadAsByteArrayAsync(ct);
+            if (bytes.Length > 0) pdf = bytes;
+        }
+        return new SingleComparisonPreview
+        {
+            Identical = string.Equals(Header(resp, "X-Diff-Identical"), "true", StringComparison.OrdinalIgnoreCase),
+            OldPageCount = HeaderInt(resp, "X-Diff-Old-Pages"),
+            NewPageCount = HeaderInt(resp, "X-Diff-New-Pages"),
+            DifferingPages = HeaderInt(resp, "X-Diff-Differing"),
+            Similarity = double.TryParse(Header(resp, "X-Diff-Similarity"), NumberStyles.Float, CultureInfo.InvariantCulture, out var s) ? s : double.NaN,
+            ContentErrorCount = HeaderInt(resp, "X-Diff-Content-Errors"),
+            DiffPdf = pdf,
+        };
+    }
+
+    private static string? Header(HttpResponseMessage resp, string name)
+    {
+        if (resp.Headers.TryGetValues(name, out var values))
+            foreach (var v in values) return v;
+        return null;
+    }
+
+    private static int HeaderInt(HttpResponseMessage resp, string name) =>
+        int.TryParse(Header(resp, name), NumberStyles.Integer, CultureInfo.InvariantCulture, out var i) ? i : 0;
 
     /// <summary>Liveness probe; true when the API responds 200.</summary>
     public async Task<bool> HealthAsync(CancellationToken ct = default)

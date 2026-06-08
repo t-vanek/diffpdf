@@ -9,23 +9,26 @@
   </UserControl.KeyBindings>
 
   <DockPanel>
-    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
-      <TextBlock Text="Notifikace" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
-      <TextBlock Text="{Binding Subscriptions.Count, StringFormat='({0})'}" Foreground="#777" VerticalAlignment="Center"
+    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="2,0,0,10">
+      <TextBlock Text="Notifikace" Classes="pageTitle"/>
+      <TextBlock Text="{Binding Subscriptions.Count, StringFormat='({0})'}" Foreground="{DynamicResource InkFaint}" VerticalAlignment="Center"
                  IsVisible="{Binding !HasNoSubscriptions}"/>
-      <Button Content="🔄 Obnovit" Command="{Binding RefreshCommand}" ToolTip.Tip="Obnovit (F5)"/>
-      <Button Content="Nová" Command="{Binding NewCommand}"/>
-      <Button Content="Upravit" Command="{Binding EditSelectedCommand}"
-              IsEnabled="{Binding Selected, Converter={x:Static ObjectConverters.IsNotNull}}"/>
-      <Button Content="Smazat" Command="{Binding DeleteCommand}"
-              IsEnabled="{Binding Selected, Converter={x:Static ObjectConverters.IsNotNull}}"/>
-      <TextBlock Text="{Binding Info}" Foreground="#9CDCFE" VerticalAlignment="Center"/>
-      <TextBlock Text="{Binding Error}" Foreground="#C0392B" VerticalAlignment="Center"/>
-      <ProgressBar IsIndeterminate="True" Width="100" Height="4" VerticalAlignment="Center" IsVisible="{Binding IsBusy}"/>
     </StackPanel>
 
-    <Grid ColumnDefinitions="*,360">
-      <DataGrid Grid.Column="0" Margin="0,0,8,0" x:CompileBindings="False" ItemsSource="{Binding Subscriptions}"
+    <WrapPanel DockPanel.Dock="Top" ItemSpacing="8" LineSpacing="8" Margin="0,0,0,10">
+      <Button Content="Nová" Classes="accent" Command="{Binding NewCommand}"/>
+      <Button Content="Obnovit" Classes="ghost" Command="{Binding RefreshCommand}" ToolTip.Tip="Obnovit (F5)"/>
+      <Button Content="Upravit" Classes="ghost" Command="{Binding EditSelectedCommand}"
+              IsEnabled="{Binding Selected, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+      <Button Content="Smazat" Classes="destructive" Command="{Binding DeleteCommand}"
+              IsEnabled="{Binding Selected, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+      <TextBlock Text="{Binding Info}" Foreground="{DynamicResource Info}" VerticalAlignment="Center"/>
+      <TextBlock Text="{Binding Error}" Foreground="{DynamicResource Bad}" VerticalAlignment="Center"/>
+      <ProgressBar IsIndeterminate="True" Width="100" Height="4" VerticalAlignment="Center" IsVisible="{Binding IsBusy}"/>
+    </WrapPanel>
+
+    <Grid ColumnDefinitions="3*,2*">
+      <DataGrid Grid.Column="0" Margin="0,0,12,0" x:CompileBindings="False" ItemsSource="{Binding Subscriptions}"
                 SelectedItem="{Binding Selected}" IsReadOnly="True" AutoGenerateColumns="False" CanUserResizeColumns="True">
         <DataGrid.Columns>
           <DataGridTextColumn Header="Kanál" Binding="{Binding Channel}" Width="90"/>
@@ -36,11 +39,11 @@
             <DataGridTemplateColumn.CellTemplate>
               <DataTemplate>
                 <Panel VerticalAlignment="Center" HorizontalAlignment="Left">
-                  <Border CornerRadius="3" Padding="7,1" Background="#16341A" IsVisible="{Binding Enabled}">
-                    <TextBlock Text="Povoleno" Foreground="#6FCF73" FontSize="12"/>
+                  <Border Classes="badge good" IsVisible="{Binding Enabled}">
+                    <TextBlock Text="Povoleno"/>
                   </Border>
-                  <Border CornerRadius="3" Padding="7,1" Background="#3A3A3A" IsVisible="{Binding !Enabled}">
-                    <TextBlock Text="Zakázáno" Foreground="#AAAAAA" FontSize="12"/>
+                  <Border Classes="badge" IsVisible="{Binding !Enabled}">
+                    <TextBlock Text="Zakázáno"/>
                   </Border>
                 </Panel>
               </DataTemplate>
@@ -50,12 +53,12 @@
         </DataGrid.Columns>
       </DataGrid>
 
-      <TextBlock Grid.Column="0" Margin="0,0,8,0" Text="Zatím žádné odběry. Vytvoř první tlačítkem Nová."
-                 Foreground="#808080" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding HasNoSubscriptions}"/>
+      <TextBlock Grid.Column="0" Margin="0,0,12,0" Text="Zatím žádné odběry. Vytvoř první tlačítkem Nová."
+                 Foreground="{DynamicResource InkFaint}" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding HasNoSubscriptions}"/>
 
       <ScrollViewer Grid.Column="1">
         <StackPanel Spacing="6">
-          <TextBlock Text="Odběr notifikací" FontWeight="Bold"/>
+          <TextBlock Text="Odběr notifikací" Classes="headline"/>
           <TextBlock Text="Kanál"/>
           <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Channels}" SelectedItem="{Binding Channel}"/>
           <TextBox Text="{Binding Target}" PlaceholderText="Cíl (URL nebo e-mail)"/>
@@ -66,7 +69,7 @@
           <TextBox Text="{Binding BranchKey}" PlaceholderText="Klíč větve (volitelné)"/>
           <TextBox Text="{Binding InstanceKey}" PlaceholderText="Klíč instance (volitelné)"/>
           <CheckBox Content="Povoleno" IsChecked="{Binding Enabled}"/>
-          <Button Content="Uložit odběr" Command="{Binding SaveCommand}" HorizontalAlignment="Left"/>
+          <Button Content="Uložit odběr" Classes="accent" Command="{Binding SaveCommand}" HorizontalAlignment="Left"/>
         </StackPanel>
       </ScrollViewer>
     </Grid>

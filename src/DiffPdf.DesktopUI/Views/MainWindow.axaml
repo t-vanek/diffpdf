@@ -5,95 +5,139 @@
         x:Class="DiffPdf.DesktopUI.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Width="1280" Height="820"
+        MinWidth="780" MinHeight="560"
+        Background="Transparent"
+        TransparencyLevelHint="Mica, AcrylicBlur, Blur"
+        WindowDecorations="BorderOnly"
         Title="DiffPDF Remote Manager">
 
   <Panel>
+    <!-- Mica backdrop tint: a semi-transparent dark layer over the Win11 Mica material — keeps the app's dark
+         identity and text contrast while the material subtly shows through (most in the system title bar, which
+         has no tint over it). Code-behind makes it fully opaque when the OS grants no transparency (e.g. Windows 10)
+         so the window never goes see-through to the desktop. -->
+    <Border x:Name="MicaTint" Background="{DynamicResource Bg}" Opacity="0.88" Margin="0,48,0,0"/>
+
+    <!-- Disconnected: frost the whole area below the title bar (nav menu + content) so the reconnect dialog stands
+         out as a modal. Margin top 48 keeps the title bar crisp. -->
+    <ExperimentalAcrylicBorder IsVisible="{Binding !IsConnected}" Margin="0,48,0,0">
+      <ExperimentalAcrylicBorder.Material>
+        <ExperimentalAcrylicMaterial BackgroundSource="Digger" TintColor="#16161A"
+                                     TintOpacity="0.62" MaterialOpacity="0.5" FallbackColor="#1C1C20"/>
+      </ExperimentalAcrylicBorder.Material>
+    </ExperimentalAcrylicBorder>
+
   <DockPanel>
     <!-- Header: title · connection status · connection gear (server config lives in the gear, not a top bar) -->
-    <Border DockPanel.Dock="Top" Padding="10,8" Background="#252526">
-      <Grid ColumnDefinitions="*,Auto,Auto">
-        <TextBlock Grid.Column="0" Text="DiffPDF Remote Manager" FontWeight="Bold" FontSize="14"
-                   Foreground="White" VerticalAlignment="Center"/>
+    <!-- Fully custom title bar (WindowDecorations=BorderOnly hides the OS chrome): app title · connection status ·
+         connection gear · window caption buttons. Draggable; double-click toggles maximize. -->
+    <Border DockPanel.Dock="Top" Height="48" Background="Transparent"
+            BorderBrush="{DynamicResource Line}" BorderThickness="0,0,0,1"
+            PointerPressed="OnTitleBarPressed" DoubleTapped="OnTitleBarDoubleTapped">
+      <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto">
+        <TextBlock Grid.Column="0" Text="DiffPDF Remote Manager" FontWeight="SemiBold" FontSize="14"
+                   Foreground="{DynamicResource Ink}" VerticalAlignment="Center" Margin="16,0,0,0"/>
+
+        <!-- Column 1 (*) is the flexible, draggable gap. -->
 
         <!-- Live connection status -->
-        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,0,10,0">
-          <Ellipse Width="9" Height="9" Fill="#6FCF73" VerticalAlignment="Center" Classes="pulse" IsVisible="{Binding IsConnected}"/>
-          <Ellipse Width="9" Height="9" Fill="#888888" VerticalAlignment="Center" IsVisible="{Binding !IsConnected}"/>
-          <TextBlock Text="{Binding ConnectionStatus}" Foreground="#9CDCFE" VerticalAlignment="Center"
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="7" VerticalAlignment="Center" Margin="0,0,10,0">
+          <Ellipse Width="9" Height="9" Fill="{DynamicResource Good}" VerticalAlignment="Center" Classes="pulse" IsVisible="{Binding IsConnected}"/>
+          <Ellipse Width="9" Height="9" Fill="{DynamicResource InkFaint}" VerticalAlignment="Center" IsVisible="{Binding !IsConnected}"/>
+          <TextBlock Text="{Binding ConnectionStatus}" Foreground="{DynamicResource InkDim}" VerticalAlignment="Center"
                      TextTrimming="CharacterEllipsis" MaxWidth="360" ToolTip.Tip="{Binding ConnectionStatus}"/>
         </StackPanel>
 
         <!-- Connection gear: configure / connect / remember -->
-        <Button Grid.Column="2" VerticalAlignment="Center" Padding="8,4" ToolTip.Tip="Připojení k serveru">
-          <TextBlock Text="⚙" FontSize="16"/>
+        <Button Grid.Column="3" Classes="titleIcon" VerticalAlignment="Center" Padding="8,5" Margin="0,0,8,0" ToolTip.Tip="Připojení k serveru">
+          <!-- Vector gear (the ⚙ glyph renders with a stray arrow in the app font). -->
+          <Viewbox Width="17" Height="17">
+            <Path Fill="{DynamicResource InkDim}"
+                  Data="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
+          </Viewbox>
           <Button.Flyout>
             <Flyout Placement="BottomEdgeAlignedRight">
-              <StackPanel Width="330" Spacing="8" Margin="4" x:CompileBindings="False">
-                <TextBlock Text="Připojení k serveru" FontWeight="Bold" FontSize="14"/>
-                <TextBlock Text="Adresa serveru" FontSize="12" Foreground="#AAAAAA"/>
+              <StackPanel Width="330" Spacing="10" Margin="4" x:CompileBindings="False">
+                <TextBlock Text="Připojení k serveru" Classes="headline"/>
+                <TextBlock Text="Adresa serveru" Classes="caption"/>
                 <TextBox Text="{Binding ServerUrl}" PlaceholderText="http://localhost:5275"/>
                 <StackPanel Spacing="6" IsVisible="{Binding AuthEnabled}">
                   <TextBox Text="{Binding ClientId}" PlaceholderText="ClientId"/>
                   <TextBox Text="{Binding ClientSecret}" PlaceholderText="Secret" PasswordChar="•"/>
                 </StackPanel>
                 <CheckBox Content="Připojovat automaticky při startu" IsChecked="{Binding AutoConnect}"/>
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                  <Button Content="Připojit" Command="{Binding ConnectCommand}" IsVisible="{Binding !IsConnected}"/>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <Button Content="Připojit" Classes="accent" Command="{Binding ConnectCommand}" IsVisible="{Binding !IsConnected}"/>
                   <Button Content="Odpojit" Command="{Binding DisconnectCommand}" IsVisible="{Binding IsConnected}"/>
-                  <Button Content="💾 Uložit" Command="{Binding SaveSettingsCommand}"/>
+                  <Button Content="Uložit" Command="{Binding SaveSettingsCommand}"/>
                 </StackPanel>
-                <TextBlock Text="{Binding ConnectionStatus}" Foreground="#9CDCFE" TextWrapping="Wrap"/>
-                <TextBlock Text="{Binding SaveNote}" Foreground="#6FCF73" TextWrapping="Wrap"
+                <TextBlock Text="{Binding ConnectionStatus}" Foreground="{DynamicResource Info}" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding SaveNote}" Foreground="{DynamicResource Good}" TextWrapping="Wrap"
                            IsVisible="{Binding SaveNote, Converter={x:Static ObjectConverters.IsNotNull}}"/>
-                <TextBlock Text="{Binding Error}" Foreground="#FF6B6B" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding Error}" Foreground="{DynamicResource Bad}" TextWrapping="Wrap"/>
               </StackPanel>
             </Flyout>
           </Button.Flyout>
         </Button>
+
+        <!-- Window caption buttons (custom — WindowDecorations=BorderOnly hides the OS ones, incl. the stray glyph). -->
+        <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Stretch" Margin="6,0,0,0">
+          <Button Classes="captionBtn" Click="OnMinimize" ToolTip.Tip="Minimalizovat">
+            <Rectangle Width="11" Height="1" VerticalAlignment="Center" Fill="{Binding $parent[Button].Foreground}"/>
+          </Button>
+          <Button Classes="captionBtn" Click="OnMaximizeRestore" ToolTip.Tip="Maximalizovat / obnovit">
+            <Rectangle Width="10" Height="10" Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1"/>
+          </Button>
+          <Button Classes="captionBtn close" Click="OnClose" ToolTip.Tip="Zavřít">
+            <Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" Data="M0,0 L10,10 M0,10 L10,0"/>
+          </Button>
+        </StackPanel>
       </Grid>
     </Border>
 
     <!-- Nav rail -->
-    <ListBox DockPanel.Dock="Left" Width="210"
+    <ListBox DockPanel.Dock="Left" Width="216" Padding="8,10"
+             Background="Transparent" BorderBrush="{DynamicResource Line}" BorderThickness="0,0,1,0"
              ItemsSource="{Binding Pages}"
              SelectedItem="{Binding SelectedPage}"
              IsEnabled="{Binding IsConnected}">
       <ListBox.ItemTemplate>
         <DataTemplate x:DataType="vm:PageViewModel">
-          <StackPanel Orientation="Horizontal" Spacing="8" Margin="2,4">
+          <StackPanel Orientation="Horizontal" Spacing="11" Margin="2,3">
             <TextBlock Text="{Binding Icon}" FontSize="15" Width="22" TextAlignment="Center" VerticalAlignment="Center"/>
-            <TextBlock Text="{Binding Title}" VerticalAlignment="Center"/>
+            <TextBlock Text="{Binding Title}" FontSize="13" VerticalAlignment="Center"/>
           </StackPanel>
         </DataTemplate>
       </ListBox.ItemTemplate>
     </ListBox>
 
     <!-- Active page when connected; a clear "not connected" panel otherwise (instead of a blank screen). -->
-    <Panel Margin="10">
+    <Panel Margin="16,14">
       <TransitioningContentControl Content="{Binding SelectedPage}" IsVisible="{Binding IsConnected}">
         <TransitioningContentControl.PageTransition>
           <PageSlide Duration="0:0:0.22" Orientation="Horizontal"/>
         </TransitioningContentControl.PageTransition>
       </TransitioningContentControl>
 
-      <Border Classes="fadeIn" IsVisible="{Binding !IsConnected}" Background="#232327" BorderBrush="#36363D" BorderThickness="1"
-              CornerRadius="8" Padding="28" MaxWidth="470" HorizontalAlignment="Center" VerticalAlignment="Center">
-        <StackPanel Spacing="10" HorizontalAlignment="Center">
-          <TextBlock Text="⚠" FontSize="34" Foreground="#D8A657" HorizontalAlignment="Center"/>
-          <TextBlock Text="Nepřipojeno k serveru" FontSize="18" FontWeight="Bold" Foreground="#ECECEC" HorizontalAlignment="Center"/>
-          <TextBlock Text="{Binding ConnectionStatus}" Foreground="#9CDCFE"
+      <Border Classes="cardStatic fadeIn" IsVisible="{Binding !IsConnected}" Padding="32"
+              MaxWidth="470" HorizontalAlignment="Center" VerticalAlignment="Center"
+              BoxShadow="0 14 38 0 #73000000">
+        <StackPanel Spacing="12" HorizontalAlignment="Center">
+          <TextBlock Text="⚠&#xFE0E;" FontSize="34" Foreground="{DynamicResource Warn}" HorizontalAlignment="Center"/>
+          <TextBlock Text="Nepřipojeno k serveru" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource Ink}" HorizontalAlignment="Center"/>
+          <TextBlock Text="{Binding ConnectionStatus}" Foreground="{DynamicResource Info}"
                      HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"/>
-          <TextBlock Text="{Binding Error}" Foreground="#E06C75"
+          <TextBlock Text="{Binding Error}" Foreground="{DynamicResource Bad}"
                      HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"
                      IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"/>
-          <Button Content="Připojit" Command="{Binding ConnectCommand}" HorizontalAlignment="Center" Padding="16,6"
+          <Button Content="Připojit" Classes="accent" Command="{Binding ConnectCommand}" HorizontalAlignment="Center" Padding="18,7"
                   IsVisible="{Binding !IsBusy}"/>
           <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" IsVisible="{Binding IsBusy}">
             <Ellipse Classes="spinner"/>
-            <TextBlock Text="Připojuji…" Foreground="#9CDCFE" VerticalAlignment="Center"/>
+            <TextBlock Text="Připojuji…" Foreground="{DynamicResource Info}" VerticalAlignment="Center"/>
           </StackPanel>
-          <TextBlock Text="Adresu serveru a přihlášení upravíš přes ⚙ vpravo nahoře."
-                     Foreground="#76767E" FontSize="12" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"/>
+          <TextBlock Text="Adresu serveru a přihlášení upravíš vpravo nahoře."
+                     Foreground="{DynamicResource InkFaint}" FontSize="12" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"/>
         </StackPanel>
       </Border>
     </Panel>
@@ -107,11 +151,11 @@
       </ItemsControl.ItemsPanel>
       <ItemsControl.ItemTemplate>
         <DataTemplate x:DataType="services:ToastItem">
-          <Border Classes="fadeIn" Background="#2A2A30" BorderBrush="{Binding Accent}" BorderThickness="1"
-                  CornerRadius="6" MinWidth="220" MaxWidth="380" ClipToBounds="True">
+          <Border Classes="fadeIn" Background="{DynamicResource SurfaceAlt}" BorderBrush="{Binding Accent}" BorderThickness="1"
+                  CornerRadius="{DynamicResource RadSm}" MinWidth="220" MaxWidth="380" ClipToBounds="True">
             <StackPanel Orientation="Horizontal">
               <Border Width="4" Background="{Binding Accent}"/>
-              <TextBlock Text="{Binding Message}" Foreground="#ECECEC" TextWrapping="Wrap"
+              <TextBlock Text="{Binding Message}" Foreground="{DynamicResource Ink}" TextWrapping="Wrap"
                          VerticalAlignment="Center" Margin="12,10"/>
             </StackPanel>
           </Border>

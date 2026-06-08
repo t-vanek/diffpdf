@@ -1,0 +1,64 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- ============================================================================
+       DiffPDF design tokens — the single source of truth for colour and geometry.
+       Dark-only, Czech UI. Previously ~140 hard-coded hex values were scattered
+       across the views with drift (3 different reds for "error", ~9 greys for
+       "muted text", 3 border colours…). Everything now references these tokens.
+
+       Status colours mirror Palette.cs (the C# side used by view-models) — keep
+       the two in sync when changing a value.
+
+       Spacing scale (apply as literals — 4/8 grid): 4 · 8 · 12 · 16 · 24 · 32
+       ============================================================================ -->
+
+  <!-- Accent — Apple system blue (dark). FluentTheme derives every default control
+       (buttons, focus rings, selection, toggles, progress) from these. -->
+  <Color x:Key="SystemAccentColor">#0A84FF</Color>
+  <Color x:Key="SystemAccentColorLight1">#3D9BFF</Color>
+  <Color x:Key="SystemAccentColorLight2">#6FB4FF</Color>
+  <Color x:Key="SystemAccentColorLight3">#A1CDFF</Color>
+  <Color x:Key="SystemAccentColorDark1">#0974E0</Color>
+  <Color x:Key="SystemAccentColorDark2">#0863BE</Color>
+  <Color x:Key="SystemAccentColorDark3">#06539C</Color>
+
+  <!-- Geometry — one rounding scale. ControlCornerRadius/OverlayCornerRadius are
+       honoured by FluentTheme app-wide (buttons, text boxes, combos, flyouts). -->
+  <CornerRadius x:Key="ControlCornerRadius">6</CornerRadius>
+  <CornerRadius x:Key="OverlayCornerRadius">10</CornerRadius>
+  <CornerRadius x:Key="RadSm">6</CornerRadius>
+  <CornerRadius x:Key="RadMd">10</CornerRadius>
+  <CornerRadius x:Key="RadPill">999</CornerRadius>
+
+  <!-- Surfaces & lines (elevation goes Bg → Surface → SurfaceAlt). -->
+  <SolidColorBrush x:Key="Bg"         Color="#1A1A1E"/>
+  <SolidColorBrush x:Key="Surface"    Color="#232327"/>
+  <SolidColorBrush x:Key="SurfaceAlt" Color="#2A2A30"/>
+  <SolidColorBrush x:Key="Field"      Color="#2A2A2F"/>
+  <SolidColorBrush x:Key="Line"       Color="#36363D"/>
+  <SolidColorBrush x:Key="LineStrong" Color="#4A4A52"/>
+
+  <!-- Text — three levels, all ≥ WCAG AA (4.5:1) on Surface.
+       (The old #5A5A62 / #76767E greys sat at ~2:1 and ~3.4:1 — below AA.) -->
+  <SolidColorBrush x:Key="Ink"      Color="#ECECEC"/>
+  <SolidColorBrush x:Key="InkDim"   Color="#A9A9B2"/>
+  <SolidColorBrush x:Key="InkFaint" Color="#8A8A93"/>
+  <SolidColorBrush x:Key="OnAccent" Color="#FFFFFF"/>
+
+  <!-- Status — one brush per meaning (mirror Palette.cs). -->
+  <SolidColorBrush x:Key="Accent" Color="#0A84FF"/>
+  <SolidColorBrush x:Key="Good"   Color="#5FD27E"/>
+  <SolidColorBrush x:Key="Bad"    Color="#FF5C61"/>
+  <SolidColorBrush x:Key="Warn"   Color="#E2A03B"/>
+  <SolidColorBrush x:Key="Info"   Color="#6FB7FF"/>
+  <SolidColorBrush x:Key="Paused" Color="#E5A050"/>
+  <SolidColorBrush x:Key="Skip"   Color="#9A9AA2"/>
+
+  <!-- Soft status fills — tinted backgrounds for badges/pills. -->
+  <SolidColorBrush x:Key="GoodFill"    Color="#16341E"/>
+  <SolidColorBrush x:Key="BadFill"     Color="#3A1B1D"/>
+  <SolidColorBrush x:Key="WarnFill"    Color="#382C15"/>
+  <SolidColorBrush x:Key="NeutralFill" Color="#2E2E35"/>
+
+</ResourceDictionary>
