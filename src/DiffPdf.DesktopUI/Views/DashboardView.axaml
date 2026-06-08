@@ -34,7 +34,7 @@
           <TextBlock Text="{Binding Status.Leader.Owner, StringFormat='Vlastník: {0}'}"/>
           <TextBlock Text="{Binding Status.Leader.IsThisReplica, StringFormat='Tato replika vede: {0}'}"/>
           <TextBlock Text="{Binding Status.Leader.LeaseHealthy, StringFormat='Zápůjčka platná: {0}'}"/>
-          <TextBlock Text="{Binding Status.Leader.ExpiresAt, StringFormat='Expirace: {0}'}"/>
+          <TextBlock Text="{Binding Status.Leader.ExpiresAt, Converter={x:Static vm:LocalTimeConverter.Instance}, ConverterParameter='Expirace:|dd.MM.yyyy HH:mm'}"/>
         </StackPanel>
       </Border>
 
@@ -55,8 +55,8 @@
                 AutoGenerateColumns="False" Height="170" CanUserResizeColumns="True">
         <DataGrid.Columns>
           <DataGridTextColumn Header="Služba" Binding="{Binding Service}" Width="140"/>
-          <DataGridTextColumn Header="Poslední tik" Binding="{Binding LastTickAt}" Width="200"/>
-          <DataGridTextColumn Header="Tik leadera" Binding="{Binding LastLeaderActiveAt}" Width="200"/>
+          <DataGridTextColumn Header="Poslední tik" Binding="{Binding LastTickAt, Converter={x:Static vm:LocalTimeConverter.Instance}}" Width="200"/>
+          <DataGridTextColumn Header="Tik leadera" Binding="{Binding LastLeaderActiveAt, Converter={x:Static vm:LocalTimeConverter.Instance}}" Width="200"/>
           <DataGridTextColumn Header="Tiků" Binding="{Binding TickCount}" Width="80"/>
           <DataGridTextColumn Header="Poslední chyba" Binding="{Binding LastError}" Width="*"/>
         </DataGrid.Columns>
