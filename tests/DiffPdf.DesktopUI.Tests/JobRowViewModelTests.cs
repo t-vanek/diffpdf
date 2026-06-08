@@ -53,14 +53,16 @@ public class JobRowViewModelTests
         var differs = FilePairLine.FromResult(new FilePairResult
         {
             RelativePath = "a.pdf", Status = FilePairStatus.Differs, Similarity = 0.82, DifferingPages = 3,
-            HighlightedPdfPath = @"reports\a.diff.pdf",
+            HighlightedPdfPath = @"reports\a.diff.pdf", CompareMs = 1234,
         });
         Assert.True(differs.IsDiffering);
         Assert.True(differs.HasDiff);
         Assert.Contains("82", differs.Detail);
+        Assert.EndsWith("s", differs.Detail); // engine-only compare time appended (e.g. "… · 1,2 s") — culture-agnostic
 
-        var identical = FilePairLine.FromResult(new FilePairResult { RelativePath = "b.pdf", Status = FilePairStatus.Identical });
+        var identical = FilePairLine.FromResult(new FilePairResult { RelativePath = "b.pdf", Status = FilePairStatus.Identical, CompareMs = 300 });
         Assert.False(identical.IsDiffering);
         Assert.False(identical.HasDiff);
+        Assert.Equal("300 ms", identical.Detail); // identical pair: just the compare time
     }
 }
