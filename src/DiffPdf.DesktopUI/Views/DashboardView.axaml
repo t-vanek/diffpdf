@@ -6,62 +6,6 @@
              x:Class="DiffPdf.DesktopUI.Views.DashboardView"
              x:DataType="vm:DashboardViewModel">
 
-  <UserControl.Styles>
-    <Style Selector="Border.card">
-      <Setter Property="Background" Value="#232327"/>
-      <Setter Property="BorderBrush" Value="#36363D"/>
-      <Setter Property="BorderThickness" Value="1"/>
-      <Setter Property="CornerRadius" Value="8"/>
-      <Setter Property="Padding" Value="16"/>
-      <Setter Property="RenderTransform" Value="translateY(0)"/>
-      <Setter Property="Transitions">
-        <Transitions>
-          <BrushTransition Property="Background" Duration="0:0:0.15"/>
-          <BrushTransition Property="BorderBrush" Duration="0:0:0.15"/>
-          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.15" Easing="CubicEaseOut"/>
-        </Transitions>
-      </Setter>
-    </Style>
-    <!-- Subtle lift + highlight on hover. -->
-    <Style Selector="Border.card:pointerover">
-      <Setter Property="Background" Value="#2A2A30"/>
-      <Setter Property="BorderBrush" Value="#4A4A52"/>
-      <Setter Property="RenderTransform" Value="translateY(-2px)"/>
-    </Style>
-    <Style Selector="TextBlock.kpiLabel">
-      <Setter Property="Foreground" Value="#8B8B95"/>
-      <Setter Property="FontSize" Value="11"/>
-      <Setter Property="FontWeight" Value="SemiBold"/>
-    </Style>
-    <Style Selector="TextBlock.kpiValue">
-      <Setter Property="Foreground" Value="#ECECEC"/>
-      <Setter Property="FontSize" Value="21"/>
-      <Setter Property="FontWeight" Value="SemiBold"/>
-      <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
-    </Style>
-    <Style Selector="TextBlock.kpiSub">
-      <Setter Property="Foreground" Value="#76767E"/>
-      <Setter Property="FontSize" Value="11"/>
-    </Style>
-    <Style Selector="TextBlock.sectionTitle">
-      <Setter Property="Foreground" Value="#C9C9CF"/>
-      <Setter Property="FontSize" Value="13"/>
-      <Setter Property="FontWeight" Value="Bold"/>
-      <Setter Property="Margin" Value="2,6,0,0"/>
-    </Style>
-    <Style Selector="TextBlock.th">
-      <Setter Property="Foreground" Value="#8B8B95"/>
-      <Setter Property="FontSize" Value="11"/>
-      <Setter Property="FontWeight" Value="SemiBold"/>
-      <Setter Property="VerticalAlignment" Value="Center"/>
-    </Style>
-    <Style Selector="TextBlock.td">
-      <Setter Property="Foreground" Value="#D0D0D6"/>
-      <Setter Property="FontSize" Value="12"/>
-      <Setter Property="VerticalAlignment" Value="Center"/>
-    </Style>
-  </UserControl.Styles>
-
   <ScrollViewer>
     <StackPanel Spacing="16" Margin="6,4,6,16">
 
@@ -76,17 +20,17 @@
           </StackPanel>
           <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
                       IsVisible="{Binding LastUpdated, Converter={x:Static ObjectConverters.IsNotNull}}">
-            <TextBlock VerticalAlignment="Center" Foreground="#76767E" FontSize="11"
+            <TextBlock VerticalAlignment="Center" Foreground="{DynamicResource InkFaint}" FontSize="11"
                        Text="{Binding LastUpdated, Converter={x:Static vm:LocalTimeConverter.Instance}, ConverterParameter='Aktualizováno|HH:mm:ss'}"/>
-            <TextBlock VerticalAlignment="Center" Foreground="#5A5A62" FontSize="11" Text="· automaticky každých 5 s"/>
+            <TextBlock VerticalAlignment="Center" Foreground="{DynamicResource InkFaint}" FontSize="11" Text="· automaticky každých 5 s"/>
           </StackPanel>
         </Grid>
       </Border>
 
-      <TextBlock Foreground="#76767E" TextWrapping="Wrap"
+      <TextBlock Foreground="{DynamicResource InkDim}" TextWrapping="Wrap"
                  Text="Obecný technický stav serveru a prostředí. Statistiky úloh, kontrol a porovnávání najdete v detailu konkrétní Větve nebo Instance."/>
 
-      <TextBlock Text="{Binding Error}" Foreground="#E06C75" TextWrapping="Wrap"
+      <TextBlock Text="{Binding Error}" Foreground="{DynamicResource Bad}" TextWrapping="Wrap"
                  IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"/>
 
       <!-- ===== Live counts: bound to stable VM props so the count-up + stagger survive the 5 s refresh ===== -->
@@ -95,7 +39,7 @@
         <Border Classes="card" Width="165" Margin="0,0,12,12">
           <StackPanel Spacing="6">
             <TextBlock Classes="kpiLabel" Text="BĚŽÍCÍ ÚLOHY"/>
-            <controls:RollingNumber Classes="kpiValue" Foreground="#9CDCFE" Value="{Binding RunningJobs}"/>
+            <controls:RollingNumber Classes="kpiValue" Foreground="{DynamicResource Info}" Value="{Binding RunningJobs}"/>
           </StackPanel>
         </Border>
         <Border Classes="card" Width="165" Margin="0,0,12,12">
@@ -174,7 +118,7 @@
                 <Border Classes="card" Width="300" Margin="0,0,12,12">
                   <StackPanel Spacing="8">
                     <Grid ColumnDefinitions="*,Auto">
-                      <TextBlock Grid.Column="0" Text="Databáze" FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center"/>
+                      <TextBlock Grid.Column="0" Text="Databáze" Classes="headline" VerticalAlignment="Center"/>
                       <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                         <Ellipse Width="9" Height="9" VerticalAlignment="Center"
                                  Fill="{Binding Dependencies.Database.Ok, Converter={x:Static vm:OkBrushConverter.Instance}}"/>
@@ -183,13 +127,13 @@
                                    Text="{Binding Dependencies.Database.Ok, Converter={x:Static vm:OkLabelConverter.Instance}, ConverterParameter='Funkční|Nedostupné'}"/>
                       </StackPanel>
                     </Grid>
-                    <TextBlock Foreground="#9A9AA2" FontSize="12" TextWrapping="Wrap" Text="{Binding Dependencies.Database.Detail}"/>
+                    <TextBlock Foreground="{DynamicResource InkDim}" FontSize="12" TextWrapping="Wrap" Text="{Binding Dependencies.Database.Detail}"/>
                   </StackPanel>
                 </Border>
                 <Border Classes="card" Width="300" Margin="0,0,12,12">
                   <StackPanel Spacing="8">
                     <Grid ColumnDefinitions="*,Auto">
-                      <TextBlock Grid.Column="0" Text="Renderer" FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center"/>
+                      <TextBlock Grid.Column="0" Text="Renderer" Classes="headline" VerticalAlignment="Center"/>
                       <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                         <Ellipse Width="9" Height="9" VerticalAlignment="Center"
                                  Fill="{Binding Dependencies.Renderer.Ok, Converter={x:Static vm:OkBrushConverter.Instance}}"/>
@@ -198,13 +142,13 @@
                                    Text="{Binding Dependencies.Renderer.Ok, Converter={x:Static vm:OkLabelConverter.Instance}, ConverterParameter='Funkční|Nedostupné'}"/>
                       </StackPanel>
                     </Grid>
-                    <TextBlock Foreground="#9A9AA2" FontSize="12" TextWrapping="Wrap" Text="{Binding Dependencies.Renderer.Detail}"/>
+                    <TextBlock Foreground="{DynamicResource InkDim}" FontSize="12" TextWrapping="Wrap" Text="{Binding Dependencies.Renderer.Detail}"/>
                   </StackPanel>
                 </Border>
                 <Border Classes="card" Width="300" Margin="0,0,12,12">
                   <StackPanel Spacing="8">
                     <Grid ColumnDefinitions="*,Auto">
-                      <TextBlock Grid.Column="0" Text="Úložiště" FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center"/>
+                      <TextBlock Grid.Column="0" Text="Úložiště" Classes="headline" VerticalAlignment="Center"/>
                       <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                         <Ellipse Width="9" Height="9" VerticalAlignment="Center"
                                  Fill="{Binding Dependencies.Storage.Ok, Converter={x:Static vm:OkBrushConverter.Instance}}"/>
@@ -213,7 +157,7 @@
                                    Text="{Binding Dependencies.Storage.Ok, Converter={x:Static vm:OkLabelConverter.Instance}, ConverterParameter='Funkční|Nedostupné'}"/>
                       </StackPanel>
                     </Grid>
-                    <TextBlock Foreground="#9A9AA2" FontSize="12" TextWrapping="Wrap" Text="{Binding Dependencies.Storage.Detail}"/>
+                    <TextBlock Foreground="{DynamicResource InkDim}" FontSize="12" TextWrapping="Wrap" Text="{Binding Dependencies.Storage.Detail}"/>
                   </StackPanel>
                 </Border>
               </WrapPanel>
@@ -221,10 +165,10 @@
               <!-- Background services heartbeat -->
               <StackPanel Orientation="Horizontal" Spacing="6">
                 <TextBlock Classes="sectionTitle" Text="Služby na pozadí (heartbeat tohoto serveru)"/>
-                <TextBlock Text="ⓘ" Foreground="#6B6B73" FontSize="11" VerticalAlignment="Center"
+                <TextBlock Text="ⓘ" Foreground="{DynamicResource InkFaint}" FontSize="11" VerticalAlignment="Center"
                            ToolTip.Tip="Heartbeat = pravidelný tep služby běžící na pozadí. Sloupec Poslední tik ukazuje, kdy služba naposledy proběhla; když přestane tikat, něco se zaseklo."/>
               </StackPanel>
-              <Border Classes="card" Padding="0">
+              <Border Classes="cardStatic" Padding="0">
                 <StackPanel>
                   <Grid ColumnDefinitions="28,2*,2*,2*,70,4*" Margin="16,12,16,8">
                     <TextBlock Grid.Column="1" Classes="th" Text="Služba"/>
@@ -233,7 +177,7 @@
                     <TextBlock Grid.Column="4" Classes="th" Text="Tiků"/>
                     <TextBlock Grid.Column="5" Classes="th" Text="Poslední chyba"/>
                   </Grid>
-                  <Border Height="1" Background="#36363D"/>
+                  <Border Height="1" Background="{DynamicResource Line}"/>
                   <ItemsControl ItemsSource="{Binding Services}">
                     <ItemsControl.ItemTemplate>
                       <DataTemplate x:DataType="client:ServiceHealthInfo">
@@ -244,7 +188,7 @@
                           <TextBlock Grid.Column="2" Classes="td" Text="{Binding LastTickAt, Converter={x:Static vm:LocalTimeConverter.Instance}}"/>
                           <TextBlock Grid.Column="3" Classes="td" Text="{Binding LastLeaderActiveAt, Converter={x:Static vm:LocalTimeConverter.Instance}}"/>
                           <TextBlock Grid.Column="4" Classes="td" Text="{Binding TickCount}"/>
-                          <TextBlock Grid.Column="5" Classes="td" Foreground="#E06C75" TextWrapping="Wrap" Text="{Binding LastError}"/>
+                          <TextBlock Grid.Column="5" Classes="td" Foreground="{DynamicResource Bad}" TextWrapping="Wrap" Text="{Binding LastError}"/>
                         </Grid>
                       </DataTemplate>
                     </ItemsControl.ItemTemplate>
@@ -264,13 +208,13 @@
             <StackPanel Spacing="12">
               <StackPanel Orientation="Horizontal" Spacing="10">
                 <TextBlock Classes="sectionTitle" Text="Připravenost (readiness)" Margin="2,0,0,0" VerticalAlignment="Center"/>
-                <TextBlock Text="ⓘ" Foreground="#6B6B73" FontSize="11" VerticalAlignment="Center"
+                <TextBlock Text="ⓘ" Foreground="{DynamicResource InkFaint}" FontSize="11" VerticalAlignment="Center"
                            ToolTip.Tip="Připravenost = jestli je server schopen obsluhovat požadavky (databáze, renderer i úložiště dostupné). Obdoba readiness probe v Kubernetes — dokud není ready, nemá se na něj posílat provoz."/>
-                <Border Background="#2A2A30" CornerRadius="10" Padding="8,2" VerticalAlignment="Center">
-                  <TextBlock Text="{Binding Status}" Foreground="#C9C9CF" FontSize="11" FontWeight="SemiBold"/>
+                <Border Classes="badge" VerticalAlignment="Center">
+                  <TextBlock Text="{Binding Status}"/>
                 </Border>
               </StackPanel>
-              <Border Classes="card" Padding="0">
+              <Border Classes="cardStatic" Padding="0">
                 <ItemsControl ItemsSource="{Binding Checks}">
                   <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="client:DependencyCheck">
@@ -278,7 +222,7 @@
                         <Ellipse Grid.Column="0" Width="9" Height="9" HorizontalAlignment="Left" VerticalAlignment="Center"
                                  Fill="{Binding Ok, Converter={x:Static vm:OkBrushConverter.Instance}}"/>
                         <TextBlock Grid.Column="1" Classes="td" Text="{Binding Name}"/>
-                        <TextBlock Grid.Column="2" Classes="td" Foreground="#9A9AA2" TextWrapping="Wrap" Text="{Binding Detail}"/>
+                        <TextBlock Grid.Column="2" Classes="td" Foreground="{DynamicResource InkDim}" TextWrapping="Wrap" Text="{Binding Detail}"/>
                       </Grid>
                     </DataTemplate>
                   </ItemsControl.ItemTemplate>

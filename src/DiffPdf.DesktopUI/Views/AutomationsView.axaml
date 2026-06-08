@@ -6,9 +6,9 @@
 
   <DockPanel>
     <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="10" Margin="0,0,0,8">
-      <TextBlock Text="Automatizace" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
+      <TextBlock Text="Automatizace" Classes="pageTitle"/>
       <TextBlock Text="Centrální místo pro automatizované akce. Vyber typ automatizace vlevo."
-                 Foreground="#888" VerticalAlignment="Center"/>
+                 Foreground="{DynamicResource InkDim}" VerticalAlignment="Center"/>
     </StackPanel>
 
     <Grid ColumnDefinitions="230,*">
@@ -18,7 +18,7 @@
           <DataTemplate x:DataType="vm:AutomationType">
             <StackPanel Margin="2" Spacing="2">
               <TextBlock Text="{Binding Title}" FontWeight="Bold" TextWrapping="Wrap"/>
-              <TextBlock Text="{Binding Description}" Foreground="#888" FontSize="11" TextWrapping="Wrap"/>
+              <TextBlock Text="{Binding Description}" Foreground="{DynamicResource InkFaint}" FontSize="11" TextWrapping="Wrap"/>
             </StackPanel>
           </DataTemplate>
         </ListBox.ItemTemplate>

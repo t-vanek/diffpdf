@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:DiffPdf.DesktopUI.ViewModels"
+             xmlns:models="using:DiffPdf.Client"
              x:Class="DiffPdf.DesktopUI.Views.InstancesView"
              x:DataType="vm:InstancesViewModel"
              x:Name="Root">
@@ -10,33 +11,38 @@
   </UserControl.KeyBindings>
 
   <DockPanel>
-    <!-- Toolbar: výběr větve + akce -->
-    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
-      <TextBlock Text="Instance" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
-      <TextBlock Text="Větev:" VerticalAlignment="Center"/>
+    <TextBlock DockPanel.Dock="Top" Text="Instance" Classes="pageTitle" Margin="2,0,0,10"/>
+
+    <!-- Toolbar: branch selector · primary action · refresh · bulk group · search. Wraps on narrow windows. -->
+    <WrapPanel DockPanel.Dock="Top" ItemSpacing="8" LineSpacing="8" Margin="0,0,0,10">
+      <TextBlock Text="Větev:" Foreground="{DynamicResource InkDim}" VerticalAlignment="Center"/>
       <ComboBox Width="180" ItemsSource="{Binding Branches}" SelectedItem="{Binding SelectedBranch}">
         <ComboBox.ItemTemplate><DataTemplate x:CompileBindings="False"><TextBlock Text="{Binding Key}"/></DataTemplate></ComboBox.ItemTemplate>
       </ComboBox>
-      <Button Content="🔄 Obnovit" Command="{Binding RefreshCommand}" ToolTip.Tip="Obnovit (F5)"/>
-      <Button Content="➕ Vytvořit instanci" Command="{Binding ShowCreateCommand}"/>
-      <Button Content="🗑 Smazat instanci" Command="{Binding DeleteCommand}"
+      <Button Content="Vytvořit instanci" Classes="accent" Command="{Binding ShowCreateCommand}"/>
+      <Button Content="Obnovit" Classes="ghost" Command="{Binding RefreshCommand}" ToolTip.Tip="Obnovit (F5)"/>
+      <Button Content="Smazat instanci" Classes="destructive" Command="{Binding DeleteCommand}"
               IsEnabled="{Binding SelectedInstance, Converter={x:Static ObjectConverters.IsNotNull}}"/>
-      <Button Content="{Binding SelectedDeleteCount, StringFormat='🗑 Smazat vybrané ({0})'}"
+
+      <Border Width="1" Background="{DynamicResource Line}" Margin="4,3"/>
+
+      <Button Content="Povolit" Classes="ghost" Command="{Binding EnableSelectedCommand}" IsEnabled="{Binding CanDeleteSelected}"
+              ToolTip.Tip="Povolí všechny zaškrtnuté instance"/>
+      <Button Content="Zakázat" Classes="ghost" Command="{Binding DisableSelectedCommand}" IsEnabled="{Binding CanDeleteSelected}"
+              ToolTip.Tip="Zakáže všechny zaškrtnuté instance"/>
+      <Button Content="{Binding SelectedDeleteCount, StringFormat='Smazat vybrané ({0})'}" Classes="destructive"
               Command="{Binding DeleteSelectedCommand}" IsEnabled="{Binding CanDeleteSelected}"
               ToolTip.Tip="Smaže všechny zaškrtnuté instance"/>
-      <Button Content="✅ Povolit" Command="{Binding EnableSelectedCommand}" IsEnabled="{Binding CanDeleteSelected}"
-              ToolTip.Tip="Povolí všechny zaškrtnuté instance"/>
-      <Button Content="🚫 Zakázat" Command="{Binding DisableSelectedCommand}" IsEnabled="{Binding CanDeleteSelected}"
-              ToolTip.Tip="Zakáže všechny zaškrtnuté instance"/>
+
       <TextBox x:Name="SearchBox" Width="200" VerticalAlignment="Center" Text="{Binding SearchText}"
                PlaceholderText="Hledat (klíč/název/cesta)…" ToolTip.Tip="Hledat (Ctrl+F)"/>
-      <TextBlock Text="{Binding Info}" Foreground="#9CDCFE" VerticalAlignment="Center"/>
-      <TextBlock Text="{Binding Error}" Foreground="#C0392B" VerticalAlignment="Center"/>
+      <TextBlock Text="{Binding Info}" Foreground="{DynamicResource Info}" VerticalAlignment="Center"/>
+      <TextBlock Text="{Binding Error}" Foreground="{DynamicResource Bad}" VerticalAlignment="Center"/>
       <ProgressBar IsIndeterminate="True" Width="100" Height="4" VerticalAlignment="Center" IsVisible="{Binding IsBusy}"/>
-    </StackPanel>
+    </WrapPanel>
 
-    <Grid ColumnDefinitions="*,420">
-      <DataGrid Grid.Column="0" Margin="0,0,8,0" x:CompileBindings="False" ItemsSource="{Binding InstancesView}"
+    <Grid ColumnDefinitions="3*,2*">
+      <DataGrid Grid.Column="0" Margin="0,0,12,0" x:CompileBindings="False" ItemsSource="{Binding InstancesView}"
                 SelectedItem="{Binding SelectedRow}" IsReadOnly="True" AutoGenerateColumns="False" CanUserResizeColumns="True" CanUserSortColumns="True">
         <DataGrid.Columns>
           <DataGridTemplateColumn Width="40" CanUserSort="False">
@@ -50,13 +56,13 @@
               </DataTemplate>
             </DataGridTemplateColumn.CellTemplate>
           </DataGridTemplateColumn>
-          <DataGridTemplateColumn Header="" Width="86">
+          <DataGridTemplateColumn Header="" Width="80">
             <DataGridTemplateColumn.CellTemplate>
               <DataTemplate>
                 <StackPanel Orientation="Horizontal" Spacing="2">
-                  <Button Content="✏" Padding="6,2" Margin="2" ToolTip.Tip="Upravit instanci"
+                  <Button Content="✎" Classes="iconBtn ghost" ToolTip.Tip="Upravit instanci"
                           Command="{Binding #Root.DataContext.EditInstanceCommand}" CommandParameter="{Binding}"/>
-                  <Button Content="⚙" Padding="6,2" Margin="2" ToolTip.Tip="Konfigurace (triggery a porovnávače)"
+                  <Button Content="⚙&#xFE0E;" Classes="iconBtn ghost" ToolTip.Tip="Konfigurace (triggery a porovnávače)"
                           Command="{Binding #Root.DataContext.OpenSettingsCommand}" CommandParameter="{Binding}"/>
                 </StackPanel>
               </DataTemplate>
@@ -66,15 +72,15 @@
             <DataGridTemplateColumn.CellTemplate>
               <DataTemplate>
                 <StackPanel Orientation="Horizontal" Spacing="2">
-                  <Button Content="▶" ToolTip.Tip="Spustit" Padding="6,2" IsEnabled="{Binding CanRun}"
+                  <Button Content="▸" Classes="iconBtn ghost" ToolTip.Tip="Spustit" IsEnabled="{Binding CanRun}"
                           Command="{Binding #Root.DataContext.RunInstanceCommand}" CommandParameter="{Binding}"/>
-                  <Button Content="➕" ToolTip.Tip="Přidat do fronty" Padding="6,2" IsEnabled="{Binding CanEnqueue}"
+                  <Button Content="+" Classes="iconBtn ghost" ToolTip.Tip="Přidat do fronty" IsEnabled="{Binding CanEnqueue}"
                           Command="{Binding #Root.DataContext.EnqueueInstanceCommand}" CommandParameter="{Binding}"/>
-                  <Button Content="⏸" ToolTip.Tip="Pozastavit" Padding="6,2" IsEnabled="{Binding CanPause}"
+                  <Button Content="‖" Classes="iconBtn ghost" ToolTip.Tip="Pozastavit" IsEnabled="{Binding CanPause}"
                           Command="{Binding #Root.DataContext.PauseInstanceCommand}" CommandParameter="{Binding}"/>
-                  <Button Content="↻" ToolTip.Tip="Obnovit" Padding="6,2" IsEnabled="{Binding CanResume}"
+                  <Button Content="↻" Classes="iconBtn ghost" ToolTip.Tip="Obnovit" IsEnabled="{Binding CanResume}"
                           Command="{Binding #Root.DataContext.ResumeInstanceCommand}" CommandParameter="{Binding}"/>
-                  <Button Content="⏹" ToolTip.Tip="Zastavit" Padding="6,2" IsEnabled="{Binding CanStop}"
+                  <Button Content="■" Classes="iconBtn ghost" ToolTip.Tip="Zastavit" IsEnabled="{Binding CanStop}"
                           Command="{Binding #Root.DataContext.StopInstanceCommand}" CommandParameter="{Binding}"/>
                 </StackPanel>
               </DataTemplate>
@@ -87,11 +93,11 @@
             <DataGridTemplateColumn.CellTemplate>
               <DataTemplate>
                 <Panel VerticalAlignment="Center" HorizontalAlignment="Left">
-                  <Border CornerRadius="3" Padding="7,1" Background="#16341A" IsVisible="{Binding Instance.Enabled}">
-                    <TextBlock Text="Povoleno" Foreground="#6FCF73" FontSize="12"/>
+                  <Border Classes="badge good" IsVisible="{Binding Instance.Enabled}">
+                    <TextBlock Text="Povoleno"/>
                   </Border>
-                  <Border CornerRadius="3" Padding="7,1" Background="#3A3A3A" IsVisible="{Binding !Instance.Enabled}">
-                    <TextBlock Text="Zakázáno" Foreground="#AAAAAA" FontSize="12"/>
+                  <Border Classes="badge" IsVisible="{Binding !Instance.Enabled}">
+                    <TextBlock Text="Zakázáno"/>
                   </Border>
                 </Panel>
               </DataTemplate>
@@ -101,8 +107,8 @@
             <DataGridTemplateColumn.CellTemplate>
               <DataTemplate>
                 <Panel VerticalAlignment="Center" HorizontalAlignment="Left">
-                  <TextBlock Text="{Binding StatusText}" Foreground="#9CDCFE" IsVisible="{Binding IsActive}"/>
-                  <TextBlock Text="{Binding StatusText}" Foreground="#808080" IsVisible="{Binding !IsActive}"/>
+                  <TextBlock Text="{Binding StatusText}" Foreground="{DynamicResource Info}" IsVisible="{Binding IsActive}"/>
+                  <TextBlock Text="{Binding StatusText}" Foreground="{DynamicResource InkFaint}" IsVisible="{Binding !IsActive}"/>
                 </Panel>
               </DataTemplate>
             </DataGridTemplateColumn.CellTemplate>
@@ -111,27 +117,33 @@
       </DataGrid>
 
       <!-- Prázdný stav (přes prázdnou mřížku) -->
-      <TextBlock Grid.Column="0" Margin="0,0,8,0" TextWrapping="Wrap"
-                 Text="Žádné instance. Vyber větev nahoře, nebo vytvoř instanci přes ➕ Vytvořit instanci."
-                 Foreground="#808080" HorizontalAlignment="Center" VerticalAlignment="Center"
+      <TextBlock Grid.Column="0" Margin="0,0,12,0" TextWrapping="Wrap"
+                 Text="Žádné instance. Vyber větev nahoře, nebo vytvoř instanci přes „Vytvořit instanci“."
+                 Foreground="{DynamicResource InkFaint}" HorizontalAlignment="Center" VerticalAlignment="Center"
                  IsVisible="{Binding HasNoInstances}"/>
 
       <ScrollViewer Grid.Column="1">
         <StackPanel Spacing="10">
           <TextBlock Text="Vyber instanci v seznamu pro zobrazení stavu a statistik."
-                     Foreground="#808080" TextWrapping="Wrap"
+                     Foreground="{DynamicResource InkDim}" TextWrapping="Wrap"
                      IsVisible="{Binding SelectedInstance, Converter={x:Static ObjectConverters.IsNull}}"/>
 
           <StackPanel Spacing="10" IsVisible="{Binding SelectedInstance, Converter={x:Static ObjectConverters.IsNotNull}}">
-            <TextBlock Text="{Binding SelectedInstance.Key, StringFormat='Detail instance: {0}'}" FontWeight="Bold" FontSize="16"/>
+            <ContentControl Content="{Binding SelectedInstance}">
+              <ContentControl.ContentTemplate>
+                <DataTemplate x:DataType="models:Instance">
+                  <TextBlock Text="{Binding Key, StringFormat='Detail instance: {0}'}" Classes="headline"/>
+                </DataTemplate>
+              </ContentControl.ContentTemplate>
+            </ContentControl>
 
             <!-- Statistiky této instance -->
             <ItemsControl ItemsSource="{Binding Stats}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:StatGroup">
-                  <Border BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,0,8">
+                  <Border Classes="cardStatic" Padding="12" Margin="0,0,0,8">
                     <StackPanel Spacing="4">
-                      <TextBlock Text="{Binding Title}" FontWeight="Bold"/>
+                      <TextBlock Text="{Binding Title}" FontWeight="SemiBold"/>
                       <ItemsControl ItemsSource="{Binding Lines}">
                         <ItemsControl.ItemTemplate>
                           <DataTemplate x:DataType="vm:StatLine">
@@ -149,60 +161,62 @@
               </ItemsControl.ItemTemplate>
             </ItemsControl>
 
-            <!-- Připravenost (sloučeno se strukturou složek) -->
-            <Border BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="4" Padding="10"
-                    IsVisible="{Binding ReadinessDisplay, Converter={x:Static ObjectConverters.IsNotNull}}">
-              <StackPanel Spacing="8">
-                <TextBlock Text="Připravenost" FontWeight="Bold"/>
+            <!-- Připravenost — gated via ContentControl so the inner bindings never fire when ReadinessDisplay is null. -->
+            <ContentControl Content="{Binding ReadinessDisplay}">
+              <ContentControl.ContentTemplate>
+                <DataTemplate x:DataType="vm:ReadinessView">
+                  <Border Classes="cardStatic" Padding="12">
+                    <StackPanel Spacing="8">
+                      <TextBlock Text="Připravenost" FontWeight="SemiBold"/>
 
-                <!-- Stav (žádné True/False) -->
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                  <TextBlock Text="{Binding ReadinessDisplay.StatusIcon}" Foreground="{Binding ReadinessDisplay.StatusBrush}" FontWeight="Bold"/>
-                  <TextBlock Text="{Binding ReadinessDisplay.StatusText}" Foreground="{Binding ReadinessDisplay.StatusBrush}" FontWeight="SemiBold" TextWrapping="Wrap"/>
-                </StackPanel>
-
-                <!-- Složky old/new/reports -->
-                <TextBlock Text="Složky" Foreground="#888" FontSize="12" Margin="0,4,0,0"/>
-                <SelectableTextBlock Text="{Binding ReadinessDisplay.BasePath}" Foreground="#808080" FontSize="11" TextWrapping="Wrap"/>
-                <ItemsControl ItemsSource="{Binding ReadinessDisplay.Folders}">
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="vm:FolderLine">
-                      <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,1">
-                        <TextBlock Grid.Column="0" Text="●" Foreground="{Binding Dot}" Margin="0,0,6,0"/>
-                        <TextBlock Grid.Column="1" Text="{Binding Name}"/>
-                        <TextBlock Grid.Column="2" Text="{Binding Value}" Foreground="{Binding ValueBrush}"/>
-                      </Grid>
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
-
-                <!-- Párování old ↔ new -->
-                <TextBlock Text="Párování" Foreground="#888" FontSize="12" Margin="0,4,0,0" IsVisible="{Binding ReadinessDisplay.HasPairing}"/>
-                <Border Height="6" CornerRadius="3" ClipToBounds="True" Background="#333" HorizontalAlignment="Left"
-                        IsVisible="{Binding ReadinessDisplay.HasPairing}">
-                  <ItemsControl ItemsSource="{Binding ReadinessDisplay.Bar}">
-                    <ItemsControl.ItemsPanel>
-                      <ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
-                      <DataTemplate x:DataType="vm:BarSegment">
-                        <Border Width="{Binding Width}" Background="{Binding Brush}"/>
-                      </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                  </ItemsControl>
-                </Border>
-                <ItemsControl ItemsSource="{Binding ReadinessDisplay.Pairing}" IsVisible="{Binding ReadinessDisplay.HasPairing}">
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="vm:PairingLine">
-                      <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,1">
-                        <TextBlock Text="{Binding Icon}" Foreground="{Binding Brush}" Width="14"/>
-                        <TextBlock Text="{Binding Text}" Foreground="{Binding Brush}"/>
+                      <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Text="{Binding StatusIcon}" Foreground="{Binding StatusBrush}" FontWeight="Bold"/>
+                        <TextBlock Text="{Binding StatusText}" Foreground="{Binding StatusBrush}" FontWeight="SemiBold" TextWrapping="Wrap"/>
                       </StackPanel>
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
-              </StackPanel>
-            </Border>
+
+                      <TextBlock Text="Složky" Foreground="{DynamicResource InkDim}" FontSize="12" Margin="0,4,0,0"/>
+                      <SelectableTextBlock Text="{Binding BasePath}" Foreground="{DynamicResource InkFaint}" FontSize="11" TextWrapping="Wrap"/>
+                      <ItemsControl ItemsSource="{Binding Folders}">
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate x:DataType="vm:FolderLine">
+                            <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,1">
+                              <TextBlock Grid.Column="0" Text="●" Foreground="{Binding Dot}" Margin="0,0,6,0"/>
+                              <TextBlock Grid.Column="1" Text="{Binding Name}"/>
+                              <TextBlock Grid.Column="2" Text="{Binding Value}" Foreground="{Binding ValueBrush}"/>
+                            </Grid>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+
+                      <TextBlock Text="Párování" Foreground="{DynamicResource InkDim}" FontSize="12" Margin="0,4,0,0" IsVisible="{Binding HasPairing}"/>
+                      <Border Height="6" CornerRadius="3" ClipToBounds="True" Background="{DynamicResource NeutralFill}" HorizontalAlignment="Left"
+                              IsVisible="{Binding HasPairing}">
+                        <ItemsControl ItemsSource="{Binding Bar}">
+                          <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>
+                          </ItemsControl.ItemsPanel>
+                          <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:BarSegment">
+                              <Border Width="{Binding Width}" Background="{Binding Brush}"/>
+                            </DataTemplate>
+                          </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                      </Border>
+                      <ItemsControl ItemsSource="{Binding Pairing}" IsVisible="{Binding HasPairing}">
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate x:DataType="vm:PairingLine">
+                            <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,1">
+                              <TextBlock Text="{Binding Icon}" Foreground="{Binding Brush}" Width="14"/>
+                              <TextBlock Text="{Binding Text}" Foreground="{Binding Brush}"/>
+                            </StackPanel>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ContentControl.ContentTemplate>
+            </ContentControl>
           </StackPanel>
         </StackPanel>
       </ScrollViewer>

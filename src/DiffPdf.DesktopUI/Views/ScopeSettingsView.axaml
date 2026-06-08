@@ -12,7 +12,7 @@
         <TextBlock Text="{Binding Heading}" FontSize="18" FontWeight="Bold"/>
 
         <!-- Trigger Settings -->
-        <Border BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="4" Padding="12">
+        <Border Classes="cardStatic" Padding="12">
           <StackPanel Spacing="8">
             <TextBlock Text="Konfigurace spouštěčů" FontWeight="Bold" FontSize="14"/>
             <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsSourceSelectable}">
@@ -25,7 +25,7 @@
                 </ComboBox.ItemTemplate>
               </ComboBox>
             </StackPanel>
-            <TextBlock Text="{Binding TriggerSourceInfo}" Foreground="#9CDCFE"
+            <TextBlock Text="{Binding TriggerSourceInfo}" Foreground="{DynamicResource Info}"
                        IsVisible="{Binding TriggerSourceInfo, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
 
             <StackPanel Spacing="8" IsVisible="{Binding TriggerFieldsVisible}">
@@ -45,7 +45,7 @@
         </Border>
 
         <!-- Comparer Settings -->
-        <Border BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="4" Padding="12">
+        <Border Classes="cardStatic" Padding="12">
           <StackPanel Spacing="8">
             <TextBlock Text="Konfigurace porovnávačů" FontWeight="Bold" FontSize="14"/>
             <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsSourceSelectable}">
@@ -58,7 +58,7 @@
                 </ComboBox.ItemTemplate>
               </ComboBox>
             </StackPanel>
-            <TextBlock Text="{Binding ComparerSourceInfo}" Foreground="#9CDCFE"
+            <TextBlock Text="{Binding ComparerSourceInfo}" Foreground="{DynamicResource Info}"
                        IsVisible="{Binding ComparerSourceInfo, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
 
             <ContentControl IsVisible="{Binding ComparerFieldsVisible}">
@@ -68,29 +68,29 @@
         </Border>
 
         <!-- Scheduled run (cron) — branch / instance only -->
-        <Border BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="4" Padding="12" IsVisible="{Binding IsScheduleAvailable}">
+        <Border Classes="cardStatic" Padding="12" IsVisible="{Binding IsScheduleAvailable}">
           <StackPanel Spacing="8">
             <TextBlock Text="Plán běhu" FontWeight="Bold" FontSize="14"/>
             <CheckBox Content="Spouštět automaticky podle plánu" IsChecked="{Binding ScheduleEnabled}"/>
             <StackPanel Width="240" IsEnabled="{Binding ScheduleEnabled}">
               <TextBlock Text="Cron (UTC, 5 polí)"/>
-              <TextBox Text="{Binding ScheduleCron}" Watermark="0 6 * * *"/>
+              <TextBox Text="{Binding ScheduleCron}" PlaceholderText="0 6 * * *"/>
             </StackPanel>
             <TextBlock Text="Formát: minuta hodina den měsíc den-v-týdnu (UTC). Např. „0 6 * * *“ = každý den v 6:00 UTC. Spuštěné instance se zařadí do fronty větve a poběží postupně."
-                       Foreground="#9CDCFE" TextWrapping="Wrap" FontSize="12"/>
+                       Foreground="{DynamicResource Info}" TextWrapping="Wrap" FontSize="12"/>
           </StackPanel>
         </Border>
 
-        <TextBlock Text="{Binding Error}" Foreground="#C0392B" TextWrapping="Wrap"
+        <TextBlock Text="{Binding Error}" Foreground="{DynamicResource Bad}" TextWrapping="Wrap"
                    IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"/>
-        <TextBlock Text="{Binding Info}" Foreground="#6A9955"
+        <TextBlock Text="{Binding Info}" Foreground="{DynamicResource Good}"
                    IsVisible="{Binding Info, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
       </StackPanel>
     </ScrollViewer>
 
     <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,10,0,0">
       <ProgressBar IsIndeterminate="True" Width="80" Height="4" VerticalAlignment="Center" IsVisible="{Binding IsBusy}"/>
-      <Button Content="💾 Uložit" Command="{Binding SaveCommand}"/>
+      <Button Content="Uložit" Classes="accent" Command="{Binding SaveCommand}"/>
       <Button Content="Zavřít" Command="{Binding CancelCommand}" IsVisible="{Binding IsModal}"/>
     </StackPanel>
   </Grid>
