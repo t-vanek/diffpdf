@@ -10,6 +10,7 @@ namespace DiffPdf.DesktopUI.ViewModels;
 public partial class SubscriptionsViewModel : PageViewModel
 {
     private readonly ServerSession _session;
+    private readonly DialogService _dialogs;
 
     public override string Title => "Notifikace";
     public override string Icon => "✉︎";
@@ -29,10 +30,15 @@ public partial class SubscriptionsViewModel : PageViewModel
     [ObservableProperty] private bool _enabled = true;
     [ObservableProperty] private long? _editingVersion;
     [ObservableProperty] private string? _info;
+    [ObservableProperty] private bool _hasNoSubscriptions;
 
     public bool IsEditing => EditingVersion is not null;
 
-    public SubscriptionsViewModel(ServerSession session) => _session = session;
+    public SubscriptionsViewModel(ServerSession session, DialogService dialogs)
+    {
+        _session = session;
+        _dialogs = dialogs;
+    }
 
     public override Task ActivateAsync() => RunAsync(LoadAsync);
 
@@ -40,6 +46,7 @@ public partial class SubscriptionsViewModel : PageViewModel
     {
         Subscriptions.Clear();
         foreach (var s in await _session.Require().ListSubscriptionsAsync()) Subscriptions.Add(s);
+        HasNoSubscriptions = Subscriptions.Count == 0;
     }
 
     partial void OnEditingVersionChanged(long? value) => OnPropertyChanged(nameof(IsEditing));
@@ -102,15 +109,19 @@ public partial class SubscriptionsViewModel : PageViewModel
             Info = "Vytvořeno.";
         }
         await LoadAsync();
+        _dialogs.ShowToast(Info!, ToastKind.Success);
     });
 
     [RelayCommand]
     private Task DeleteAsync() => RunAsync(async () =>
     {
         if (Selected is not { } s) throw new InvalidOperationException("Vyber odběr.");
+        if (!await _dialogs.ConfirmAsync("Smazat odběr", $"Opravdu smazat odběr {s.Channel} → {s.Target}?"))
+            return;
         await _session.Require().DeleteSubscriptionAsync(s.Id);
         Info = "Smazáno.";
         await LoadAsync();
+        _dialogs.ShowToast("Odběr smazán.", ToastKind.Success);
     });
 
     private IReadOnlyList<NotificationEvent> Events()

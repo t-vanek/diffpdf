@@ -18,7 +18,7 @@ public sealed record FilePairLine(string Name, string Icon, string StatusText, I
         var (icon, text, brush, differing) = Classify(r.Status);
         string detail = r.Status switch
         {
-            FilePairStatus.Differs => $"{r.Similarity:P0} · {r.DifferingPages} str.",
+            FilePairStatus.Differs => $"{Format.Percent(r.Similarity)} · {r.DifferingPages} str.",
             FilePairStatus.Error => r.Error ?? "chyba",
             _ => "",
         };

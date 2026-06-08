@@ -1,0 +1,43 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:DiffPdf.DesktopUI.ViewModels"
+        xmlns:controls="using:DiffPdf.DesktopUI.Controls"
+        x:Class="DiffPdf.DesktopUI.Views.FilePairDetailWindow"
+        x:DataType="vm:FilePairDetailViewModel"
+        Width="1100" Height="800" MinWidth="640" MinHeight="420"
+        WindowStartupLocation="CenterOwner" WindowState="Maximized"
+        Title="{Binding FileName}">
+
+  <DockPanel>
+    <!-- Úzká lišta: stav · název · metriky · Uložit PDF; náhled vyplní zbytek okna. -->
+    <Border DockPanel.Dock="Top" Background="#252526" Padding="12,8">
+      <DockPanel>
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+          <TextBlock Text="{Binding Error}" Foreground="#E06C75" VerticalAlignment="Center"
+                     MaxWidth="360" TextTrimming="CharacterEllipsis"
+                     IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+          <TextBlock Text="{Binding Status}" Foreground="#9CDCFE" VerticalAlignment="Center"
+                     IsVisible="{Binding Status, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+          <Button Content="💾 Uložit PDF" Command="{Binding SaveCommand}" IsVisible="{Binding HasDiff}"/>
+        </StackPanel>
+        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+          <TextBlock Text="{Binding StatusIcon}" Foreground="{Binding StatusBrush}" FontSize="15" VerticalAlignment="Center"/>
+          <TextBlock Text="{Binding StatusText}" Foreground="{Binding StatusBrush}" FontWeight="Bold" VerticalAlignment="Center"/>
+          <TextBlock Text="{Binding FileName}" Foreground="#DDD" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+          <TextBlock Text="{Binding Detail}" Foreground="#888" VerticalAlignment="Center"
+                     IsVisible="{Binding Detail, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+        </StackPanel>
+      </DockPanel>
+    </Border>
+
+    <!-- PDF náhled přes celé okno (WebView2/Edge) -->
+    <Panel Background="#1E1E1E">
+      <controls:WebView2Host Source="{Binding FileUri}" IsVisible="{Binding HasDiff}"/>
+      <StackPanel IsVisible="{Binding !HasDiff}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="6" MaxWidth="520">
+        <TextBlock Text="Pro tuto dvojici není diff k zobrazení." Foreground="#777" HorizontalAlignment="Center"/>
+        <TextBlock Text="{Binding PairError}" Foreground="#E06C75" TextWrapping="Wrap" TextAlignment="Center"
+                   IsVisible="{Binding PairError, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+      </StackPanel>
+    </Panel>
+  </DockPanel>
+</Window>

@@ -1,6 +1,7 @@
+using System.Linq;
+using Avalonia.Media;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
-using CommunityToolkit.Mvvm.Input;
 using DiffPdf.Client;
 using DiffPdf.DesktopUI.Services;
 
@@ -16,10 +17,28 @@ public partial class DashboardViewModel : PageViewModel
     public override string Icon => "⌂";
     public override int NavOrder => 0;
 
-    [ObservableProperty] private bool? _healthy;
-    [ObservableProperty] private OperationalStatusResponse? _status;
-    [ObservableProperty] private ReadinessResponse? _readiness;
-    [ObservableProperty] private bool _autoRefresh;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(OverallText), nameof(OverallBrush))]
+    private bool? _healthy;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(OverallText), nameof(OverallBrush))]
+    private OperationalStatusResponse? _status;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(OverallText), nameof(OverallBrush))]
+    private ReadinessResponse? _readiness;
+
+    [ObservableProperty] private DateTimeOffset? _lastUpdated;
+
+    // Stable live-count props (updated each refresh). The count-up / stagger animations bind to controls that
+    // must PERSIST across the 5 s refresh; the Status ContentControl rebuilds its template each refresh, which
+    // would re-trigger the entrance animations — so these counts live in the static part of the page.
+    [ObservableProperty] private int _runningJobs;
+    [ObservableProperty] private int _queuedJobs;
+    [ObservableProperty] private int _pausedJobs;
+    [ObservableProperty] private int _activeTasks;
+    [ObservableProperty] private int _enabledChecks;
 
     public DashboardViewModel(ServerSession session)
     {
@@ -28,20 +47,55 @@ public partial class DashboardViewModel : PageViewModel
         _timer.Tick += (_, _) => { if (!IsBusy) _ = RefreshAsync(); };
     }
 
-    public override Task ActivateAsync() => RefreshAsync();
+    // The Přehled polls itself every 5 s while it is the visible page, and stops when navigated away.
+    public override Task ActivateAsync()
+    {
+        _timer.Start();
+        return RefreshAsync();
+    }
 
-    [RelayCommand]
+    public override Task DeactivateAsync()
+    {
+        _timer.Stop();
+        return Task.CompletedTask;
+    }
+
     private Task RefreshAsync() => RunAsync(async () =>
     {
         var c = _session.Require();
         Healthy = await c.HealthAsync();
         Status = await c.GetStatusAsync();
+        RunningJobs = Status.Backlog.RunningJobs;
+        QueuedJobs = Status.Backlog.QueuedJobs;
+        PausedJobs = Status.Backlog.PausedJobs;
+        ActiveTasks = Status.Backlog.ActiveTasks;
+        EnabledChecks = Status.EnabledChecks;
         Readiness = await c.GetReadinessAsync();
-    });
+        LastUpdated = DateTimeOffset.UtcNow;
+    }, toastOnError: false); // periodic auto-refresh: errors show in the hero, don't spam a toast every 5 s
 
-    partial void OnAutoRefreshChanged(bool value)
+    // ----- Overall health summary (liveness + dependency health + readiness + leader lease) -----
+
+    private bool DependenciesHealthy => Status is { } s
+        && s.Dependencies.Database.Ok && s.Dependencies.Renderer.Ok && s.Dependencies.Storage.Ok;
+    private bool ReadinessHealthy => Readiness is not { } r || r.Checks.All(c => c.Ok);
+    private bool LeaseHealthy => Status is not { } s || s.Leader.LeaseHealthy;
+
+    /// <summary>The headline system state shown in the hero banner.</summary>
+    public string OverallText => Healthy switch
     {
-        if (value) _timer.Start();
-        else _timer.Stop();
-    }
+        null => "Zjišťuji stav…",
+        false => "Nedostupné",
+        _ => Status is null ? "Připojeno"
+            : DependenciesHealthy && ReadinessHealthy && LeaseHealthy ? "Plně provozní" : "Zhoršený provoz",
+    };
+
+    /// <summary>Hero accent colour: green operational, amber degraded, red down, muted while still loading.</summary>
+    public IBrush OverallBrush => Healthy switch
+    {
+        null => Palette.Muted,
+        false => Palette.Bad,
+        _ => Status is null ? Palette.Info
+            : DependenciesHealthy && ReadinessHealthy && LeaseHealthy ? Palette.Good : Palette.Warning,
+    };
 }

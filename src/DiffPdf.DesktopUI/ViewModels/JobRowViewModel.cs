@@ -39,7 +39,7 @@ public partial class JobRowViewModel(JobSummary job) : ObservableObject
 
     public double Progress => Job.Progress;
     public bool InProgress => Job.Status is JobStatus.Running or JobStatus.Paused;
-    public string ProgressText => Job.Status.ToString() is "Completed" ? "100 %" : $"{Job.Progress:P0}";
+    public string ProgressText => Job.Status is JobStatus.Completed ? "100 %" : $"{Job.Progress:P0}";
 
     /// <summary>A finished job shows a verdict; an in-flight one shows nothing (the progress speaks for it).</summary>
     public bool HasVerdict => Job.Status is JobStatus.Completed or JobStatus.Failed or JobStatus.Cancelled;
@@ -49,8 +49,8 @@ public partial class JobRowViewModel(JobSummary job) : ObservableObject
         JobStatus.Failed => "✗ Selhalo",
         JobStatus.Cancelled => "⊘ Zrušeno",
         JobStatus.Completed when Job.GatePassed == true => "✓ Prošlo",
-        JobStatus.Completed when (Job.Differing ?? 0) > 0 => $"✗ {Job.Differing} odlišných",
-        JobStatus.Completed when (Job.Errors ?? 0) > 0 => $"⚠ {Job.Errors} chyb",
+        JobStatus.Completed when (Job.Differing ?? 0) > 0 => $"✗ {Format.Plural(Job.Differing ?? 0, "odlišný", "odlišné", "odlišných")}",
+        JobStatus.Completed when (Job.Errors ?? 0) > 0 => $"⚠ {Format.Plural(Job.Errors ?? 0, "chyba", "chyby", "chyb")}",
         JobStatus.Completed => Job.GatePassed == false ? "✗ Neprošlo" : "✓ Hotovo",
         _ => "",
     };

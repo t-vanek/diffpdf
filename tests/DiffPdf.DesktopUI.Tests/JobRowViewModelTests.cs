@@ -35,7 +35,7 @@ public class JobRowViewModelTests
     public void Completed_with_differences_shows_count_verdict()
     {
         var r = new JobRowViewModel(Job(JobStatus.Completed, differing: 4, gate: false));
-        Assert.Equal("✗ 4 odlišných", r.VerdictText);
+        Assert.Equal("✗ 4 odlišné", r.VerdictText); // Czech plural: 2–4 → "odlišné" (ne "odlišných")
     }
 
     [Fact]

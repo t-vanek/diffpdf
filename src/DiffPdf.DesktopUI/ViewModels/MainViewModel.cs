@@ -13,8 +13,12 @@ public partial class MainViewModel : ViewModelBase
     private readonly ClientConfig _config;
     private readonly ServerDiscoveryClient _discovery;
     private readonly ClientSettingsStore _settings;
+    private readonly ToastService _toasts;
 
     public IReadOnlyList<PageViewModel> Pages { get; }
+
+    /// <summary>Backs the transient toast overlay in the shell window.</summary>
+    public ToastService Toasts => _toasts;
 
     [ObservableProperty] private PageViewModel? _selectedPage;
     [ObservableProperty] private string _serverUrl = "http://localhost:5275";
@@ -29,13 +33,15 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private string? _saveNote;
 
     public MainViewModel(ServerSession session, JobProgressHubClient hub, NavigationService navigation,
-        ClientConfig config, ServerDiscoveryClient discovery, ClientSettingsStore settings, IEnumerable<PageViewModel> pages)
+        ClientConfig config, ServerDiscoveryClient discovery, ClientSettingsStore settings, ToastService toasts,
+        IEnumerable<PageViewModel> pages)
     {
         _session = session;
         _hub = hub;
         _config = config;
         _discovery = discovery;
         _settings = settings;
+        _toasts = toasts;
         Pages = pages.OrderBy(p => p.NavOrder).ToList();
         navigation.Navigated += page => SelectedPage = page;
 
@@ -93,6 +99,7 @@ public partial class MainViewModel : ViewModelBase
         IsConnected = true;
         AuthEnabled = _session.ServerRequiresAuth;
         ConnectionStatus = $"Připojeno: {ServerUrl}";
+        _toasts.Show($"Připojeno k {ServerUrl}.", ToastKind.Success);
 
         try { await _hub.EnsureStartedAsync(); } catch { /* live progress is best-effort */ }
 
@@ -108,6 +115,7 @@ public partial class MainViewModel : ViewModelBase
         _session.Disconnect();
         IsConnected = false;
         ConnectionStatus = "Nepřipojeno";
+        _toasts.Show("Odpojeno od serveru.", ToastKind.Info);
     });
 
     partial void OnSelectedPageChanged(PageViewModel? oldValue, PageViewModel? newValue)

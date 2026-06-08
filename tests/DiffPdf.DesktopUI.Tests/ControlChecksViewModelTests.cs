@@ -10,7 +10,7 @@ public class ControlChecksViewModelTests
     [Fact]
     public void Summary_counts_check_health_from_the_list()
     {
-        var vm = new ControlChecksViewModel(new ServerSession());
+        var vm = new ControlChecksViewModel(new ServerSession(), new DialogService(new ToastService()));
         vm.Checks.Add(new CheckResponse { Id = Guid.NewGuid(), Enabled = true, LastOutcome = CheckRunOutcome.Ok });
         vm.Checks.Add(new CheckResponse { Id = Guid.NewGuid(), Enabled = true, LastOutcome = CheckRunOutcome.Failed });
         vm.Checks.Add(new CheckResponse { Id = Guid.NewGuid(), Enabled = false, LastOutcome = null });

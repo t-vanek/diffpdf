@@ -9,14 +9,14 @@
 
     <StackPanel Spacing="4">
       <TextBlock Text="Klíč" Foreground="#CCC"/>
-      <TextBox Text="{Binding Key}" PlaceholderText="Klíč (např. Alfa)" IsEnabled="{Binding !IsEditMode}"/>
+      <TextBox x:Name="KeyBox" Text="{Binding Key}" PlaceholderText="Klíč (např. Alfa)" IsEnabled="{Binding !IsEditMode}"/>
       <TextBlock Text="Klíč je neměnná identita a po vytvoření ho nelze změnit."
                  Foreground="#808080" FontSize="11" TextWrapping="Wrap" IsVisible="{Binding IsEditMode}"/>
     </StackPanel>
 
     <StackPanel Spacing="4">
       <TextBlock Text="Název" Foreground="#CCC"/>
-      <TextBox Text="{Binding Name}" PlaceholderText="Název"/>
+      <TextBox x:Name="NameBox" Text="{Binding Name}" PlaceholderText="Název"/>
     </StackPanel>
 
     <CheckBox Content="Povoleno" IsChecked="{Binding Enabled}" IsVisible="{Binding IsEditMode}"/>

@@ -1,4 +1,5 @@
 using System.Globalization;
+using Avalonia.Data;
 using DiffPdf.DesktopUI.ViewModels;
 
 namespace DiffPdf.DesktopUI.Tests;
@@ -29,5 +30,13 @@ public class LocalTimeConverterTests
     public void Null_yields_empty_string()
     {
         Assert.Equal(string.Empty, Run(null, null));
+    }
+
+    [Fact]
+    public void ConvertBack_returns_DoNothing_instead_of_throwing()
+    {
+        // The DataGrid can call ConvertBack on a read-only bound column; it must not throw (that crashed the grid).
+        var result = LocalTimeConverter.Instance.ConvertBack("x", typeof(DateTimeOffset), null, CultureInfo.InvariantCulture);
+        Assert.Same(BindingOperations.DoNothing, result);
     }
 }
