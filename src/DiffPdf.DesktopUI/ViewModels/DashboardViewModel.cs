@@ -3,6 +3,7 @@ using Avalonia.Media;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using DiffPdf.Client;
+using DiffPdf.DesktopUI.Controls;
 using DiffPdf.DesktopUI.Services;
 
 namespace DiffPdf.DesktopUI.ViewModels;
@@ -18,18 +19,16 @@ public partial class DashboardViewModel : PageViewModel
     public override int NavOrder => 0;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(OverallText), nameof(OverallBrush))]
+    [NotifyPropertyChangedFor(nameof(OverallText), nameof(OverallBrush), nameof(Rhythm))]
     private bool? _healthy;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(OverallText), nameof(OverallBrush))]
+    [NotifyPropertyChangedFor(nameof(OverallText), nameof(OverallBrush), nameof(Rhythm))]
     private OperationalStatusResponse? _status;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(OverallText), nameof(OverallBrush))]
+    [NotifyPropertyChangedFor(nameof(OverallText), nameof(OverallBrush), nameof(Rhythm))]
     private ReadinessResponse? _readiness;
-
-    [ObservableProperty] private DateTimeOffset? _lastUpdated;
 
     // Stable live-count props (updated each refresh). The count-up / stagger animations bind to controls that
     // must PERSIST across the 5 s refresh; the Status ContentControl rebuilds its template each refresh, which
@@ -71,7 +70,6 @@ public partial class DashboardViewModel : PageViewModel
         ActiveTasks = Status.Backlog.ActiveTasks;
         EnabledChecks = Status.EnabledChecks;
         Readiness = await c.GetReadinessAsync();
-        LastUpdated = DateTimeOffset.UtcNow;
     }, toastOnError: false); // periodic auto-refresh: errors show in the hero, don't spam a toast every 5 s
 
     // ----- Overall health summary (liveness + dependency health + readiness + leader lease) -----
@@ -81,13 +79,24 @@ public partial class DashboardViewModel : PageViewModel
     private bool ReadinessHealthy => Readiness is not { } r || r.Checks.All(c => c.Ok);
     private bool LeaseHealthy => Status is not { } s || s.Leader.LeaseHealthy;
 
+    /// <summary>Drives the hero ECG — maps health to a vital-signs rhythm (waveform, on-screen rate and
+    /// scroll speed; colour comes from <see cref="OverallBrush"/>): a calm beat when operational, a faster
+    /// "stressed" beat when degraded, a flat line when down, and a slow shallow wander while still resolving.</summary>
+    public EcgRhythm Rhythm => Healthy switch
+    {
+        null => EcgRhythm.Searching,
+        false => EcgRhythm.Flatline,
+        _ => Status is null ? EcgRhythm.Normal
+            : DependenciesHealthy && ReadinessHealthy && LeaseHealthy ? EcgRhythm.Normal : EcgRhythm.Elevated,
+    };
+
     /// <summary>The headline system state shown in the hero banner.</summary>
     public string OverallText => Healthy switch
     {
         null => "Zjišťuji stav…",
         false => "Nedostupné",
         _ => Status is null ? "Připojeno"
-            : DependenciesHealthy && ReadinessHealthy && LeaseHealthy ? "Plně provozní" : "Zhoršený provoz",
+            : DependenciesHealthy && ReadinessHealthy && LeaseHealthy ? "Dostupné" : "Zhoršený provoz",
     };
 
     /// <summary>Hero accent colour: green operational, amber degraded, red down, muted while still loading.</summary>
