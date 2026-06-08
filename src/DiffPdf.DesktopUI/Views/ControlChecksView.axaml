@@ -50,7 +50,7 @@
         <DataGrid x:CompileBindings="False" ItemsSource="{Binding Runs}" IsReadOnly="True"
                   AutoGenerateColumns="False" CanUserResizeColumns="True">
           <DataGrid.Columns>
-            <DataGridTextColumn Header="Začátek" Binding="{Binding StartedAt}" Width="180"/>
+            <DataGridTextColumn Header="Začátek" Binding="{Binding StartedAt, Converter={x:Static vm:LocalTimeConverter.Instance}}" Width="180"/>
             <DataGridTextColumn Header="Výsledek" Binding="{Binding Outcome}" Width="90"/>
             <DataGridTextColumn Header="Detail" Binding="{Binding Detail}" Width="*"/>
           </DataGrid.Columns>

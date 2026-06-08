@@ -99,6 +99,10 @@ public sealed record FilePairResult
     public string? HighlightedPdfPath { get; init; }
 
     public string? Error { get; init; }
+
+    /// <summary>Wall-clock of the comparison engine alone (probe + extract + render + highlight), in milliseconds.
+    /// Null when no comparison ran (only-in-one-side) or for results written before this was tracked.</summary>
+    public long? CompareMs { get; init; }
 }
 
 /// <summary>Aggregate report for a whole batch run.</summary>

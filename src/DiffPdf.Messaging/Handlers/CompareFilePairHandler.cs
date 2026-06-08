@@ -1,6 +1,8 @@
+using System.Diagnostics;
 using DiffPdf.Core.Abstractions;
 using DiffPdf.Core.Models;
 using DiffPdf.Messaging.Messages;
+using DiffPdf.Messaging.Observability;
 using DiffPdf.Persistence;
 using DiffPdf.Worker;
 using Microsoft.Extensions.Logging;
@@ -122,6 +124,11 @@ public sealed class CompareFilePairHandler
         // pair is left Running and recovered after restart.
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(options.FilePairComparisonTimeout);
+
+        // Time the comparison engine ALONE (probe + extract + render + highlight). This window excludes the
+        // queue wait, the claim/complete DB writes and the progress/finalize bookkeeping around it — so it is the
+        // true per-pair compare cost. Recorded on the result (CompareMs) and the diffpdf.pair.compare.duration metric.
+        var sw = Stopwatch.StartNew();
         var compare = Task.Run(
             () => engine.CompareAsync(task.OldFilePath, task.NewFilePath, job.Request.Options, artifacts, timeoutCts.Token),
             timeoutCts.Token);
@@ -129,11 +136,17 @@ public sealed class CompareFilePairHandler
         try
         {
             var fr = await compare.WaitAsync(timeoutCts.Token);
+            sw.Stop();
+            long compareMs = (long)sw.Elapsed.TotalMilliseconds;
 
             // A readable-but-broken PDF is a handled (permanent) outcome, not a thrown error.
             if (fr.Outcome == ComparisonOutcome.Failed)
-                return new FilePairResult { RelativePath = task.RelativePath, Status = FilePairStatus.Error, Error = fr.Error };
+            {
+                ComparisonMetrics.Record(sw.Elapsed, "error");
+                return new FilePairResult { RelativePath = task.RelativePath, Status = FilePairStatus.Error, Error = fr.Error, CompareMs = compareMs };
+            }
 
+            ComparisonMetrics.Record(sw.Elapsed, "ok");
             return new FilePairResult
             {
                 RelativePath = task.RelativePath,
@@ -142,15 +155,19 @@ public sealed class CompareFilePairHandler
                 DifferingPages = fr.DifferingPages,
                 ContentErrorCount = fr.ContentErrors.Count,
                 HighlightedPdfPath = fr.HighlightedPdfPath,
+                CompareMs = compareMs,
             };
         }
         catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
         {
+            sw.Stop();
+            ComparisonMetrics.Record(sw.Elapsed, "timeout");
             return new FilePairResult
             {
                 RelativePath = task.RelativePath,
                 Status = FilePairStatus.Error,
                 Error = $"Comparison exceeded the {options.FilePairComparisonTimeout.TotalMinutes:0} min limit.",
+                CompareMs = (long)sw.Elapsed.TotalMilliseconds,
             };
         }
     }

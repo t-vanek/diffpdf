@@ -50,7 +50,7 @@
               </DataTemplate>
             </DataGridTemplateColumn.CellTemplate>
           </DataGridTemplateColumn>
-          <DataGridTextColumn Header="Vytvořeno" Binding="{Binding Job.CreatedAt, StringFormat='{}{0:dd.MM HH:mm}'}" Width="*"/>
+          <DataGridTextColumn Header="Vytvořeno" Binding="{Binding Job.CreatedAt, Converter={x:Static vm:LocalTimeConverter.Instance}, ConverterParameter='dd.MM HH:mm'}" Width="*"/>
         </DataGrid.Columns>
       </DataGrid>
 
@@ -66,10 +66,10 @@
               <TextBlock Text="{Binding SelectedJob.StatusText}" Foreground="{Binding SelectedJob.StatusBrush}" FontWeight="SemiBold" VerticalAlignment="Center"/>
             </StackPanel>
             <TextBlock Foreground="#808080" FontSize="12"
-                       Text="{Binding SelectedSummary.CreatedAt, StringFormat='Vytvořeno {0:dd.MM.yyyy HH:mm}'}"/>
+                       Text="{Binding SelectedSummary.CreatedAt, Converter={x:Static vm:LocalTimeConverter.Instance}, ConverterParameter='Vytvořeno|dd.MM.yyyy HH:mm'}"/>
             <TextBlock Foreground="#808080" FontSize="12"
                        IsVisible="{Binding SelectedSummary.CompletedAt, Converter={x:Static ObjectConverters.IsNotNull}}"
-                       Text="{Binding SelectedSummary.CompletedAt, StringFormat='Dokončeno {0:dd.MM.yyyy HH:mm}'}"/>
+                       Text="{Binding SelectedSummary.CompletedAt, Converter={x:Static vm:LocalTimeConverter.Instance}, ConverterParameter='Dokončeno|dd.MM.yyyy HH:mm'}"/>
           </StackPanel>
 
           <!-- Živý průběh -->

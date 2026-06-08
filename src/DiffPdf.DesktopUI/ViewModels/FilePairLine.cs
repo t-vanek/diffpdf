@@ -22,8 +22,13 @@ public sealed record FilePairLine(string Name, string Icon, string StatusText, I
             FilePairStatus.Error => r.Error ?? "chyba",
             _ => "",
         };
+        // Append the engine-only compare time for pairs that were actually compared.
+        if (r.CompareMs is { } ms && r.Status is FilePairStatus.Identical or FilePairStatus.Differs)
+            detail = detail.Length == 0 ? FormatMs(ms) : $"{detail} · {FormatMs(ms)}";
         return new FilePairLine(r.RelativePath, icon, text, brush, detail, differing, r);
     }
+
+    private static string FormatMs(long ms) => ms >= 1000 ? $"{ms / 1000.0:0.0} s" : $"{ms} ms";
 
     public static FilePairLine FromTask(FilePairTaskSummary t)
     {

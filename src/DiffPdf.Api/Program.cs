@@ -93,7 +93,8 @@ builder.Services.AddOpenTelemetry()
             .AddRuntimeInstrumentation()
             .AddMeter("Wolverine*")
             .AddMeter(DiffPdfMetrics.MeterName)
-            .AddMeter("DiffPdf.Render");
+            .AddMeter("DiffPdf.Render")
+            .AddMeter("DiffPdf.Compare");
         m.AddPrometheusExporter(); // exposes /metrics (mapped below)
         if (otlpConfigured) m.AddOtlpExporter();
     });

@@ -322,6 +322,9 @@ public sealed record FilePairResult
     public int ContentErrorCount { get; init; }
     public string? HighlightedPdfPath { get; init; }
     public string? Error { get; init; }
+
+    /// <summary>Comparison-engine wall-clock in ms (probe+extract+render+highlight); null if no compare ran.</summary>
+    public long? CompareMs { get; init; }
 }
 
 /// <summary>Aggregate report for a whole batch run.</summary>
