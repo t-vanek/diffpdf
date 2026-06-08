@@ -1,8 +1,9 @@
+using DiffPdf.Application.Abstractions;
 using DiffPdf.Core.Models;
 using DiffPdf.Core.Storage;
 using DiffPdf.Persistence;
 
-namespace DiffPdf.Messaging.Configuration;
+namespace DiffPdf.Application.Configuration;
 
 /// <summary>Fields for upserting a scope's configuration (sources + custom payloads, with a concurrency guard).</summary>
 public sealed record UpsertScopeConfigInput

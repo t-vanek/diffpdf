@@ -1,13 +1,13 @@
-using DiffPdf.Core.Abstractions;
+using DiffPdf.Application.Jobs;
 using DiffPdf.Core.Models;
-using DiffPdf.Messaging.Messages;
-using DiffPdf.Messaging.Scheduling;
-using DiffPdf.Persistence;
-using Wolverine;
 
 namespace DiffPdf.Api.Endpoints;
 
-/// <summary>Job status, tasks, report, CI-gate result, artifacts, cancel and retry.</summary>
+/// <summary>
+/// Job status, tasks, report, CI-gate result, artifacts, cancel and retry. The handlers bind the request,
+/// call <see cref="IJobService"/> and map the outcome to HTTP — the lifecycle orchestration (cancel → skip
+/// pending + dispatch; pause → publish; resume; retry → requeue + reopen + re-enqueue) lives in DiffPdf.Application.
+/// </summary>
 public static class JobEndpoints
 {
     public static void MapJobEndpoints(this IEndpointRouteBuilder app)
@@ -16,50 +16,35 @@ public static class JobEndpoints
 
         group.MapGet("/", async (
             string? branchKey, string? instanceKey, string? status, int? limit, int? offset,
-            IJobStore jobStore, HttpResponse response, CancellationToken ct) =>
+            IJobService jobs, HttpResponse response, CancellationToken ct) =>
         {
-            JobStatus? parsed = Enum.TryParse<JobStatus>(status, true, out var s) ? s : null;
-            var query = new JobListQuery
-            {
-                BranchKey = branchKey,
-                InstanceKey = instanceKey,
-                Status = parsed,
-                Limit = Math.Clamp(limit ?? 100, 1, 500),
-                Offset = Math.Max(0, offset ?? 0),
-            };
-            // Lightweight projection: scalar columns + denormalized verdict, no request/report JSON deserialized.
-            var jobs = await jobStore.ListSummariesAsync(query, ct);
+            var page = await jobs.ListAsync(new JobFilter(branchKey, instanceKey, status, limit, offset), ct);
             // Non-breaking pagination: the body stays a plain array; the matching total is in a header.
-            response.Headers["X-Total-Count"] = (await jobStore.CountAsync(query, ct)).ToString();
-            return Results.Ok(jobs.Select(JobSummary.From));
+            response.Headers["X-Total-Count"] = page.Total.ToString();
+            return Results.Ok(page.Items.Select(JobSummary.From));
         }).WithSummary("List jobs (filter by scope/status; page with limit<=500 + offset; total count in the X-Total-Count header)")
           .Produces<IEnumerable<JobSummary>>();
 
-        group.MapGet("/{id:guid}", async (Guid id, IJobStore jobStore, CancellationToken ct) =>
-        {
-            var job = await jobStore.GetAsync(id, ct);
-            return job is null ? Results.NotFound() : Results.Ok(JobSummary.From(job));
-        }).WithSummary("Get job status + progress").Produces<JobSummary>().ProducesProblem(StatusCodes.Status404NotFound);
+        group.MapGet("/{id:guid}", async (Guid id, IJobService jobs, CancellationToken ct) =>
+            await jobs.GetAsync(id, ct) is { } job ? Results.Ok(JobSummary.From(job)) : Results.NotFound())
+            .WithSummary("Get job status + progress").Produces<JobSummary>().ProducesProblem(StatusCodes.Status404NotFound);
 
-        group.MapGet("/{id:guid}/tasks", async (Guid id, IJobStore jobStore, IFilePairTaskStore taskStore, CancellationToken ct) =>
-        {
-            if (await jobStore.GetAsync(id, ct) is null) return Results.NotFound();
-            var tasks = await taskStore.ListByJobAsync(id, ct);
-            return Results.Ok(tasks.Select(FilePairTaskSummary.From));
-        }).WithSummary("List the job's file-pair tasks").Produces<IEnumerable<FilePairTaskSummary>>().ProducesProblem(StatusCodes.Status404NotFound);
+        group.MapGet("/{id:guid}/tasks", async (Guid id, IJobService jobs, CancellationToken ct) =>
+            await jobs.ListTasksAsync(id, ct) is { } tasks ? Results.Ok(tasks.Select(FilePairTaskSummary.From)) : Results.NotFound())
+            .WithSummary("List the job's file-pair tasks").Produces<IEnumerable<FilePairTaskSummary>>().ProducesProblem(StatusCodes.Status404NotFound);
 
-        group.MapGet("/{id:guid}/report", async (Guid id, IJobStore jobStore, CancellationToken ct) =>
+        group.MapGet("/{id:guid}/report", async (Guid id, IJobService jobs, CancellationToken ct) =>
         {
-            var job = await jobStore.GetAsync(id, ct);
+            var job = await jobs.GetAsync(id, ct);
             if (job is null) return Results.NotFound();
             if (job.Report is null)
                 return Results.Problem("Report not ready.", statusCode: StatusCodes.Status409Conflict);
             return Results.Ok(job.Report);
         }).WithSummary("Aggregate batch report").Produces<BatchComparisonReport>().ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
 
-        group.MapGet("/{id:guid}/result", async (Guid id, IJobStore jobStore, CancellationToken ct) =>
+        group.MapGet("/{id:guid}/result", async (Guid id, IJobService jobs, CancellationToken ct) =>
         {
-            var job = await jobStore.GetAsync(id, ct);
+            var job = await jobs.GetAsync(id, ct);
             if (job is null) return Results.NotFound();
             if (job.Report is null)
                 return Results.Problem("Report not ready.", statusCode: StatusCodes.Status409Conflict);
@@ -79,86 +64,61 @@ public static class JobEndpoints
             return report.Passed ? Results.Ok(payload) : Results.Json(payload, statusCode: StatusCodes.Status422UnprocessableEntity);
         }).WithSummary("CI gate verdict (200 pass / 422 fail)").ProducesProblem(StatusCodes.Status404NotFound);
 
-        group.MapPost("/{id:guid}/cancel", async (Guid id, IJobStore jobStore, IFilePairTaskStore tasks, IBranchQueueDispatcher dispatcher, CancellationToken ct) =>
-        {
-            if (await jobStore.GetAsync(id, ct) is null) return Results.NotFound();
-            var cancelled = await jobStore.CancelAsync(id, ct);
-            if (cancelled is null)
-                return Results.Problem("Job is not in a cancellable state.", statusCode: StatusCodes.Status409Conflict);
-            // Cancellation leaves un-started pairs Queued; skip them so they don't linger as pending comparisons.
-            await tasks.SkipPendingForJobAsync(id, ct);
-            // Cancelling frees the branch — release the next pending run.
-            await dispatcher.DispatchBranchAsync(cancelled.BranchId, ct);
-            return Results.Ok(JobSummary.From(cancelled));
-        }).WithSummary("Cancel a Draft/queued/running/paused job").Produces<JobSummary>().ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
+        group.MapPost("/{id:guid}/cancel", (Guid id, IJobService jobs, CancellationToken ct) =>
+            Run(async () =>
+            {
+                var job = await jobs.CancelAsync(id, ct);
+                return job is null ? Results.NotFound() : Results.Ok(JobSummary.From(job));
+            }))
+            .WithSummary("Cancel a Draft/queued/running/paused job").Produces<JobSummary>().ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
 
-        group.MapPost("/{id:guid}/pause", async (
-            Guid id, IJobStore jobStore, IJobProgressPublisher progress, CancellationToken ct) =>
-        {
-            if (await jobStore.GetAsync(id, ct) is null) return Results.NotFound();
-            var paused = await jobStore.PauseAsync(id, ct);
-            if (paused is null)
-                return Results.Problem("Only a Running job can be paused.", statusCode: StatusCodes.Status409Conflict);
+        group.MapPost("/{id:guid}/pause", (Guid id, IJobService jobs, CancellationToken ct) =>
+            Run(async () =>
+            {
+                var job = await jobs.PauseAsync(id, ct);
+                return job is null ? Results.NotFound() : Results.Ok(JobSummary.From(job));
+            }))
+            .WithSummary("Pause a Running job (in-flight pairs finish; pending pairs wait for resume)")
+            .Produces<JobSummary>().ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
 
-            await progress.PublishAsync(JobProgressChanged.From(paused), ct);
-            return Results.Ok(JobSummary.From(paused));
-        }).WithSummary("Pause a Running job (in-flight pairs finish; pending pairs wait for resume)")
-          .Produces<JobSummary>().ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
+        group.MapPost("/{id:guid}/resume", (Guid id, IJobService jobs, CancellationToken ct) =>
+            Run(async () =>
+            {
+                var outcome = await jobs.ResumeAsync(id, ct);
+                return outcome is null
+                    ? Results.NotFound()
+                    : Results.Ok(new { resumed = outcome.Redispatched, job = JobSummary.From(outcome.Job) });
+            }))
+            .WithSummary("Resume a Paused job (re-dispatches the pending pairs)")
+            .ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
 
-        group.MapPost("/{id:guid}/resume", async (Guid id, IJobStore jobStore, IJobResumeService resume, CancellationToken ct) =>
-        {
-            if (await jobStore.GetAsync(id, ct) is null) return Results.NotFound();
-            var (resumed, redispatched) = await resume.ResumeAsync(id, ct);
-            return resumed is null
-                ? Results.Problem("Only a Paused job can be resumed.", statusCode: StatusCodes.Status409Conflict)
-                : Results.Ok(new { resumed = redispatched, job = JobSummary.From(resumed) });
-        }).WithSummary("Resume a Paused job (re-dispatches the pending pairs)")
-          .ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
-
-        group.MapPost("/{id:guid}/retry", async (
-            Guid id, IJobStore jobStore, IFilePairTaskStore taskStore, IMessageBus bus, CancellationToken ct) =>
-        {
-            var job = await jobStore.GetAsync(id, ct);
-            if (job is null) return Results.NotFound();
-            if (job.Status is not (JobStatus.Completed or JobStatus.Failed))
-                return Results.Problem("Only a finished (Completed/Failed) job can be retried.", statusCode: StatusCodes.Status409Conflict);
-
-            var tasks = await taskStore.ListByJobAsync(id, ct);
-            var failed = tasks.Where(t =>
-                t.Status == FilePairTaskStatus.Failed ||
-                (t.Status == FilePairTaskStatus.Completed && t.Result?.Status == FilePairStatus.Error)).ToList();
-
-            if (failed.Count == 0)
-                return Results.Ok(new { retried = 0, job = JobSummary.From(job) });
-
-            foreach (var t in failed)
-                await taskStore.RequeueForRetryAsync(t.Id, ct);
-
-            int processed = Math.Max(0, job.TotalCount - failed.Count);
-            var reopened = await jobStore.ReopenAsync(id, processed, ct);
-            if (reopened is null)
-                return Results.Problem("Job could not be reopened for retry.", statusCode: StatusCodes.Status409Conflict);
-
-            foreach (var t in failed)
-                await bus.PublishAsync(new CompareFilePair(id, t.Id));
-
-            return Results.Ok(new { retried = failed.Count, job = JobSummary.From(reopened) });
-        }).WithSummary("Re-run the failed file-pairs of a finished job").ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
+        group.MapPost("/{id:guid}/retry", (Guid id, IJobService jobs, CancellationToken ct) =>
+            Run(async () =>
+            {
+                var outcome = await jobs.RetryAsync(id, ct);
+                return outcome is null
+                    ? Results.NotFound()
+                    : Results.Ok(new { retried = outcome.Retried, job = JobSummary.From(outcome.Job) });
+            }))
+            .WithSummary("Re-run the failed file-pairs of a finished job").ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapGet("/{id:guid}/artifacts/{**relativePath}", async (
-            Guid id, string relativePath, IJobStore jobStore, IJobStoragePathProvider paths, CancellationToken ct) =>
+            Guid id, string relativePath, IJobService jobs, CancellationToken ct) =>
         {
-            var job = await jobStore.GetAsync(id, ct);
-            if (job is null) return Results.NotFound();
-
-            string artifactsRoot = Path.GetFullPath(paths.GetArtifactsPath(job));
-            string requested = Path.GetFullPath(Path.Combine(artifactsRoot, relativePath));
-            if (!requested.StartsWith(artifactsRoot, StringComparison.Ordinal))
-                return Results.Problem("Invalid path.", statusCode: StatusCodes.Status400BadRequest);
-            if (!File.Exists(requested))
-                return Results.NotFound();
-
-            return Results.File(requested, "application/pdf", Path.GetFileName(requested));
+            var artifact = await jobs.ResolveArtifactAsync(id, relativePath, ct);
+            return artifact.Outcome switch
+            {
+                ArtifactOutcome.InvalidPath => Results.Problem("Invalid path.", statusCode: StatusCodes.Status400BadRequest),
+                ArtifactOutcome.JobNotFound or ArtifactOutcome.FileNotFound => Results.NotFound(),
+                _ => Results.File(artifact.AbsolutePath!, "application/pdf", Path.GetFileName(artifact.AbsolutePath!)),
+            };
         }).WithSummary("Download a highlighted diff PDF artifact").ProducesProblem(StatusCodes.Status404NotFound);
+    }
+
+    /// <summary>Maps a job lifecycle conflict (<see cref="JobConflictException"/>) to 409; everything else flows through.</summary>
+    private static async Task<IResult> Run(Func<Task<IResult>> action)
+    {
+        try { return await action(); }
+        catch (JobConflictException ex) { return Results.Problem(ex.Message, statusCode: StatusCodes.Status409Conflict); }
     }
 }

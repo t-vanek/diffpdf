@@ -1,7 +1,6 @@
 using Cronos;
+using DiffPdf.Application.Configuration;
 using DiffPdf.Core.Storage;
-using DiffPdf.Messaging.Configuration;
-using DiffPdf.Messaging.ControlPlane;
 
 namespace DiffPdf.Api.Endpoints;
 

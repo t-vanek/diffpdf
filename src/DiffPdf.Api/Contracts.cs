@@ -125,22 +125,8 @@ public sealed record SetScheduleRequest(bool Enabled, string? Cron);
 /// <summary>A scope's current scheduled-run setting.</summary>
 public sealed record ScheduleResponse(bool Enabled, string? Cron);
 
-// ---------------- Per-scope statistics (branch / instance detail) ----------------
-
-/// <summary>Job counts by status for one scope.</summary>
-public sealed record JobStats(int Queued, int Running, int Paused, int Completed, int Failed);
-
-/// <summary>Control-check counts for one scope (Running has no persistent state today, so it is 0).</summary>
-public sealed record CheckStats(int Active, int Running, int Completed, int Failed);
-
-/// <summary>Automation counts for one scope — the umbrella over every automation type (control checks are the only type today).</summary>
-public sealed record AutomationStats(int Active, int Running, int Paused, int Completed, int Failed);
-
-/// <summary>Comparison (file-pair) counts by status for one scope. Paused/Stopped are not modelled, so they are omitted.</summary>
-public sealed record ComparisonStats(int Waiting, int Running, int Completed, int Failed, int Skipped);
-
-/// <summary>Aggregated statistics for a single branch or instance scope (jobs, checks, automations, comparisons).</summary>
-public sealed record ScopeStatsResponse(JobStats Jobs, CheckStats Checks, AutomationStats Automations, ComparisonStats Comparisons);
+// Per-scope statistics (branch / instance detail): the stat records + ScopeStatsService now live in
+// DiffPdf.Application.Stats (the endpoint returns that ScopeStatsResponse directly — identical JSON).
 
 /// <summary>
 /// Pre-flight readiness of an instance for a batch. Combines the folder-skeleton

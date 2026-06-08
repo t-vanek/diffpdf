@@ -1,36 +1,10 @@
+using DiffPdf.Application.Abstractions;
 using DiffPdf.Core.Models;
 using DiffPdf.Core.Storage;
 using DiffPdf.Persistence;
 using Microsoft.Extensions.Logging;
 
-namespace DiffPdf.Messaging.Configuration;
-
-/// <summary>
-/// Auto-provisions the per-scope configuration rows so every scope has a row to inherit from / edit.
-/// Idempotent and best-effort (mirrors <see cref="ControlPlane.IControlCheckProvisioner"/> and the trigger
-/// provisioner): a row is created only when none exists, so manual edits are never overwritten, and
-/// failures are logged rather than thrown. New branches/instances default to inheriting from their parent.
-/// </summary>
-public interface IScopeConfigurationProvisioner
-{
-    /// <summary>Ensure the single global config row exists (custom defaults). No-op if present.</summary>
-    Task EnsureGlobalAsync(CancellationToken ct = default);
-
-    /// <summary>Ensure a branch row exists, defaulting both sources to inherit (Global). No-op if present.</summary>
-    Task EnsureBranchConfigAsync(Guid branchId, CancellationToken ct = default);
-
-    /// <summary>Ensure an instance row exists, defaulting both sources to inherit (Branch). No-op if present.</summary>
-    Task EnsureInstanceConfigAsync(Guid branchId, Guid instanceId, CancellationToken ct = default);
-
-    /// <summary>Remove a branch's config row (called when the branch is deleted).</summary>
-    Task RemoveBranchConfigAsync(Guid branchId, CancellationToken ct = default);
-
-    /// <summary>Remove an instance's config row (called when the instance is deleted).</summary>
-    Task RemoveInstanceConfigAsync(Guid instanceId, CancellationToken ct = default);
-
-    /// <summary>Ensure the global row plus a row for every existing branch/instance (startup backfill).</summary>
-    Task ProvisionExistingAsync(CancellationToken ct = default);
-}
+namespace DiffPdf.Application.Configuration;
 
 /// <inheritdoc />
 public sealed class ScopeConfigurationProvisioner(

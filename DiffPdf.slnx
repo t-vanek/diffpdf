@@ -1,6 +1,8 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/DiffPdf.Api/DiffPdf.Api.csproj" />
+    <Project Path="src/DiffPdf.Application/DiffPdf.Application.csproj" />
+    <Project Path="src/DiffPdf.Application.Abstractions/DiffPdf.Application.Abstractions.csproj" />
     <Project Path="src/DiffPdf.Client/DiffPdf.Client.csproj" />
     <Project Path="src/DiffPdf.Core/DiffPdf.Core.csproj" />
     <Project Path="src/DiffPdf.DesktopUI/DiffPdf.DesktopUI.csproj">

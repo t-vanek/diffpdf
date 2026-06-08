@@ -1,6 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <ProjectReference Include="..\DiffPdf.Application.Abstractions\DiffPdf.Application.Abstractions.csproj" />
     <ProjectReference Include="..\DiffPdf.Core\DiffPdf.Core.csproj" />
     <ProjectReference Include="..\DiffPdf.Notifications\DiffPdf.Notifications.csproj" />
     <ProjectReference Include="..\DiffPdf.Persistence\DiffPdf.Persistence.csproj" />

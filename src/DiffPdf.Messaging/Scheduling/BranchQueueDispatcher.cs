@@ -1,7 +1,7 @@
+using DiffPdf.Application.Abstractions;
 using DiffPdf.Core.Abstractions;
 using DiffPdf.Core.Models;
 using DiffPdf.Messaging.Messages;
-using DiffPdf.Messaging.Observability;
 using DiffPdf.Persistence;
 using Microsoft.Extensions.Logging;
 using Wolverine;
@@ -18,28 +18,6 @@ public interface IRunCommandPublisher
 public sealed class WolverineRunCommandPublisher(IMessageBus bus) : IRunCommandPublisher
 {
     public Task PublishRunAsync(RunBatchComparison command, CancellationToken ct = default) => bus.PublishAsync(command).AsTask();
-}
-
-/// <summary>
-/// Enforces the per-branch sequential queue: at most one active (Queued/Running/Paused) job per branch.
-/// When the branch is idle and not held, releases the next pending (Draft) job — highest priority, then
-/// oldest — by transitioning it Draft → Queued and publishing its <see cref="RunBatchComparison"/>. Called
-/// after enqueue, after a job reaches a terminal state, after a cancel, and by a leader-gated timer (which
-/// also makes the queue survive restarts).
-/// </summary>
-public interface IBranchQueueDispatcher
-{
-    /// <summary>Release the next pending job for the branch if it is idle and not paused, then publish the branch state.</summary>
-    Task DispatchBranchAsync(Guid branchId, CancellationToken ct = default);
-
-    /// <summary>Recompute and publish the branch's queue state without releasing anything.</summary>
-    Task PublishStateAsync(Guid branchId, CancellationToken ct = default);
-
-    /// <summary>The branch's current queue state (null if the branch does not exist). Does not release or publish.</summary>
-    Task<BranchQueueState?> GetStateAsync(Guid branchId, CancellationToken ct = default);
-
-    /// <summary>Builds queue state for many branches with a single jobs query (avoids a per-branch round-trip).</summary>
-    Task<IReadOnlyDictionary<Guid, BranchQueueState>> GetStatesAsync(IReadOnlyList<Branch> branches, CancellationToken ct = default);
 }
 
 /// <inheritdoc />

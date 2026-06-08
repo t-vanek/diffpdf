@@ -86,9 +86,9 @@ public sealed class ControlPlaneService(
         {
             await scope.ServiceProvider.GetRequiredService<IControlCheckProvisioner>()
                 .ProvisionBaselineAndExistingAsync(ct);
-            await scope.ServiceProvider.GetRequiredService<Triggers.ITriggerProvisioner>()
+            await scope.ServiceProvider.GetRequiredService<ITriggerProvisioner>()
                 .ProvisionExistingAsync(ct);
-            await scope.ServiceProvider.GetRequiredService<Configuration.IScopeConfigurationProvisioner>()
+            await scope.ServiceProvider.GetRequiredService<IScopeConfigurationProvisioner>()
                 .ProvisionExistingAsync(ct);
             _provisioned = true;
         }

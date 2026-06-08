@@ -1,9 +1,8 @@
 using DiffPdf.Core.Abstractions;
 using DiffPdf.Core.Models;
+using DiffPdf.Application.Configuration;
+using DiffPdf.Application.Triggers;
 using DiffPdf.Core.Storage;
-using DiffPdf.Messaging.Configuration;
-using DiffPdf.Messaging.Scheduling;
-using DiffPdf.Messaging.Triggers;
 using DiffPdf.Persistence;
 using Microsoft.Extensions.Logging.Abstractions;
 

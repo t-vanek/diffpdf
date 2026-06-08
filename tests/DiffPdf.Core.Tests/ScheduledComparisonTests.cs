@@ -1,5 +1,5 @@
+using DiffPdf.Application.Configuration;
 using DiffPdf.Core.Models;
-using DiffPdf.Messaging.Configuration;
 using DiffPdf.Messaging.ControlPlane;
 using DiffPdf.Messaging.Scheduling;
 using DiffPdf.Persistence;

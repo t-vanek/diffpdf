@@ -18,7 +18,6 @@ public static class BranchQueueServiceCollectionExtensions
         services.AddScoped<IJobResumeService, JobResumeService>();
         services.AddScoped<IRunCommandPublisher, WolverineRunCommandPublisher>();
         services.AddScoped<IBranchQueueDispatcher, BranchQueueDispatcher>();
-        services.AddScoped<IBranchQueueControl, BranchQueueControl>();
         services.TryAddSingleton<IBranchQueueStatePublisher, NullBranchQueueStatePublisher>();
         services.AddHostedService<BranchQueueDispatcherService>();
         return services;

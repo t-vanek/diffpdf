@@ -1,14 +1,13 @@
+using DiffPdf.Application.ControlChecks;
 using DiffPdf.Core.Models;
 using DiffPdf.Core.Storage;
-using DiffPdf.Messaging.ControlPlane;
-using DiffPdf.Persistence;
 
 namespace DiffPdf.Api.Endpoints;
 
 /// <summary>
 /// Runtime-managed control checks (top-level, key-addressed): the unified control/monitoring mechanism.
-/// The control-plane runner executes the enabled ones on their cadence; this surface is CRUD plus
-/// run-now and run history.
+/// The control-plane runner executes the enabled ones on their cadence; this surface is CRUD plus run-now
+/// and run history. The handlers bind the request and delegate to <see cref="IControlCheckService"/>.
 /// </summary>
 public static class ControlCheckEndpoints
 {
@@ -16,138 +15,64 @@ public static class ControlCheckEndpoints
     {
         var group = app.MapGroup("/checks").WithTags("Control checks");
 
-        group.MapPost("/", async (CreateCheckRequest request, IControlCheckStore store, CancellationToken ct) =>
-        {
-            if (!Validate(request.Key, request.ScopeKind, request.BranchKey, request.InstanceKey, request.Cron, request.IntervalSeconds, out string? error))
-                return Results.Problem(error, statusCode: StatusCodes.Status400BadRequest);
-
-            var check = new ControlCheck
+        group.MapPost("/", (CreateCheckRequest request, IControlCheckService checks, CancellationToken ct) =>
+            Run(async () =>
             {
-                Id = Guid.NewGuid(),
-                Key = request.Key,
-                Name = string.IsNullOrWhiteSpace(request.Name) ? request.Key : request.Name,
-                Type = request.Type,
-                ScopeKind = request.ScopeKind,
-                BranchKey = request.BranchKey,
-                InstanceKey = request.InstanceKey,
-                Cron = request.Cron,
-                IntervalSeconds = request.IntervalSeconds,
-                Parameters = request.Parameters ?? new Dictionary<string, string>(),
-                Events = request.Events ?? [],
-                Enabled = request.Enabled,
-            };
-            try
-            {
-                var created = await store.CreateAsync(check, ct);
+                var created = await checks.CreateAsync(ToInput(request), ct);
                 return Results.Created($"/api/v1/checks/{created.Id}", CheckResponse.From(created));
-            }
-            catch (DuplicateKeyException ex)
-            {
-                return Results.Problem(ex.Message, statusCode: StatusCodes.Status409Conflict);
-            }
-        }).WithSummary("Create a control check")
-          .Produces<CheckResponse>(StatusCodes.Status201Created)
-          .ProducesProblem(StatusCodes.Status400BadRequest).ProducesProblem(StatusCodes.Status409Conflict);
+            }))
+            .WithSummary("Create a control check")
+            .Produces<CheckResponse>(StatusCodes.Status201Created)
+            .ProducesProblem(StatusCodes.Status400BadRequest).ProducesProblem(StatusCodes.Status409Conflict);
 
-        group.MapGet("/", async (IControlCheckStore store, CancellationToken ct) =>
-            Results.Ok((await store.ListAsync(ct)).Select(CheckResponse.From)))
+        group.MapGet("/", async (IControlCheckService checks, CancellationToken ct) =>
+            Results.Ok((await checks.ListAsync(ct)).Select(CheckResponse.From)))
             .WithSummary("List control checks").Produces<IEnumerable<CheckResponse>>();
 
-        group.MapGet("/{id:guid}", async (Guid id, IControlCheckStore store, CancellationToken ct) =>
-        {
-            var check = await store.GetAsync(id, ct);
-            return check is null ? Results.NotFound() : Results.Ok(CheckResponse.From(check));
-        }).WithSummary("Get a control check").Produces<CheckResponse>().ProducesProblem(StatusCodes.Status404NotFound);
+        group.MapGet("/{id:guid}", async (Guid id, IControlCheckService checks, CancellationToken ct) =>
+            await checks.GetAsync(id, ct) is { } check ? Results.Ok(CheckResponse.From(check)) : Results.NotFound())
+            .WithSummary("Get a control check").Produces<CheckResponse>().ProducesProblem(StatusCodes.Status404NotFound);
 
-        group.MapPut("/{id:guid}", async (Guid id, UpdateCheckRequest request, IControlCheckStore store, CancellationToken ct) =>
-        {
-            if (!Validate(request.Key, request.ScopeKind, request.BranchKey, request.InstanceKey, request.Cron, request.IntervalSeconds, out string? error))
-                return Results.Problem(error, statusCode: StatusCodes.Status400BadRequest);
-
-            var existing = await store.GetAsync(id, ct);
-            if (existing is null) return Results.NotFound();
-
-            var updated = existing with
+        group.MapPut("/{id:guid}", (Guid id, UpdateCheckRequest request, IControlCheckService checks, CancellationToken ct) =>
+            Run(async () =>
             {
-                Key = request.Key,
-                Name = string.IsNullOrWhiteSpace(request.Name) ? request.Key : request.Name,
-                Type = request.Type,
-                ScopeKind = request.ScopeKind,
-                BranchKey = request.BranchKey,
-                InstanceKey = request.InstanceKey,
-                Cron = request.Cron,
-                IntervalSeconds = request.IntervalSeconds,
-                Parameters = request.Parameters ?? new Dictionary<string, string>(),
-                Events = request.Events ?? [],
-                Enabled = request.Enabled,
-            };
-            try
-            {
-                var saved = await store.UpdateAsync(updated, request.Version, ct);
-                return Results.Ok(CheckResponse.From(saved));
-            }
-            catch (ConcurrencyConflictException ex)
-            {
-                return Results.Problem(ex.Message, statusCode: StatusCodes.Status409Conflict);
-            }
-            catch (DuplicateKeyException ex)
-            {
-                return Results.Problem(ex.Message, statusCode: StatusCodes.Status409Conflict);
-            }
-        }).WithSummary("Update a control check (optimistic concurrency via Version)")
-          .Produces<CheckResponse>().ProducesProblem(StatusCodes.Status400BadRequest)
-          .ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
+                var saved = await checks.UpdateAsync(id, ToInput(request), request.Version, ct);
+                return saved is null ? Results.NotFound() : Results.Ok(CheckResponse.From(saved));
+            }))
+            .WithSummary("Update a control check (optimistic concurrency via Version)")
+            .Produces<CheckResponse>().ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
 
-        group.MapDelete("/{id:guid}", async (Guid id, IControlCheckStore store, CancellationToken ct) =>
-        {
-            var ok = await store.DeleteAsync(id, ct);
-            return ok ? Results.NoContent() : Results.NotFound();
-        }).WithSummary("Delete a control check").Produces(StatusCodes.Status204NoContent).ProducesProblem(StatusCodes.Status404NotFound);
+        group.MapDelete("/{id:guid}", async (Guid id, IControlCheckService checks, CancellationToken ct) =>
+            await checks.DeleteAsync(id, ct) ? Results.NoContent() : Results.NotFound())
+            .WithSummary("Delete a control check").Produces(StatusCodes.Status204NoContent).ProducesProblem(StatusCodes.Status404NotFound);
 
-        group.MapPost("/{id:guid}/run", async (Guid id, IControlCheckStore store, IControlCheckRunner runner, CancellationToken ct) =>
-        {
-            var check = await store.GetAsync(id, ct);
-            if (check is null) return Results.NotFound();
-            var run = await runner.RunAsync(check, ct);
-            return Results.Ok(CheckRunResponse.From(run));
-        }).WithSummary("Run a control check now").Produces<CheckRunResponse>().ProducesProblem(StatusCodes.Status404NotFound)
-          .RequireRateLimiting("expensive");
+        group.MapPost("/{id:guid}/run", async (Guid id, IControlCheckService checks, CancellationToken ct) =>
+            await checks.RunAsync(id, ct) is { } run ? Results.Ok(CheckRunResponse.From(run)) : Results.NotFound())
+            .WithSummary("Run a control check now").Produces<CheckRunResponse>().ProducesProblem(StatusCodes.Status404NotFound)
+            .RequireRateLimiting("expensive");
 
-        group.MapGet("/{id:guid}/runs", async (Guid id, int? limit, IControlCheckStore store, IControlCheckRunStore runs, CancellationToken ct) =>
-        {
-            if (await store.GetAsync(id, ct) is null) return Results.NotFound();
-            var history = await runs.ListByCheckAsync(id, limit is > 0 ? limit.Value : 50, ct);
-            return Results.Ok(history.Select(CheckRunResponse.From));
-        }).WithSummary("List a control check's run history (newest first)")
-          .Produces<IEnumerable<CheckRunResponse>>().ProducesProblem(StatusCodes.Status404NotFound);
+        group.MapGet("/{id:guid}/runs", async (Guid id, int? limit, IControlCheckService checks, CancellationToken ct) =>
+            await checks.ListRunsAsync(id, limit is > 0 ? limit.Value : 50, ct) is { } history
+                ? Results.Ok(history.Select(CheckRunResponse.From))
+                : Results.NotFound())
+            .WithSummary("List a control check's run history (newest first)")
+            .Produces<IEnumerable<CheckRunResponse>>().ProducesProblem(StatusCodes.Status404NotFound);
     }
 
-    private static bool Validate(
-        string key, CheckScopeKind scope, string? branchKey, string? instanceKey,
-        string? cron, int? intervalSeconds, out string? error)
+    private static CheckInput ToInput(CreateCheckRequest r) => new(
+        r.Key, r.Name, r.Type, r.ScopeKind, r.BranchKey, r.InstanceKey, r.Cron, r.IntervalSeconds, r.Parameters, r.Events, r.Enabled);
+
+    private static CheckInput ToInput(UpdateCheckRequest r) => new(
+        r.Key, r.Name, r.Type, r.ScopeKind, r.BranchKey, r.InstanceKey, r.Cron, r.IntervalSeconds, r.Parameters, r.Events, r.Enabled);
+
+    /// <summary>Maps the service's validation/conflict outcomes to HTTP (preserving the prior status codes).</summary>
+    private static async Task<IResult> Run(Func<Task<IResult>> action)
     {
-        if (!StorageKeyValidator.IsValidKey(key))
-        {
-            error = "Key must be 1-64 chars of [a-zA-Z0-9_.-] with no '..'.";
-            return false;
-        }
-        if (scope is CheckScopeKind.Branch or CheckScopeKind.Instance && string.IsNullOrWhiteSpace(branchKey))
-        {
-            error = "BranchKey is required for Branch / Instance scope.";
-            return false;
-        }
-        if (scope is CheckScopeKind.Instance && string.IsNullOrWhiteSpace(instanceKey))
-        {
-            error = "InstanceKey is required for Instance scope.";
-            return false;
-        }
-        if (string.IsNullOrWhiteSpace(cron) && !(intervalSeconds is > 0))
-        {
-            error = "Either a cron expression or a positive intervalSeconds is required.";
-            return false;
-        }
-        error = null;
-        return true;
+        try { return await action(); }
+        catch (CheckValidationException ex) { return Results.Problem(ex.Message, statusCode: StatusCodes.Status400BadRequest); }
+        catch (DuplicateKeyException ex) { return Results.Problem(ex.Message, statusCode: StatusCodes.Status409Conflict); }
+        catch (ConcurrencyConflictException ex) { return Results.Problem(ex.Message, statusCode: StatusCodes.Status409Conflict); }
     }
 }
 

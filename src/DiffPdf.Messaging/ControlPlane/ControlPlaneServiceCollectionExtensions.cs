@@ -24,7 +24,6 @@ public static class ControlPlaneServiceCollectionExtensions
 
         services.AddScoped<IControlCheckRunner, ControlCheckRunner>();
         services.AddScoped<IControlCheckProvisioner, ControlCheckProvisioner>();
-        services.AddScoped<IScheduleService, ScheduleService>();
         services.AddHostedService<ControlPlaneService>();
         return services;
     }

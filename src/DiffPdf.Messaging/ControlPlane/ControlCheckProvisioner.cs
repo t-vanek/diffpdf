@@ -1,31 +1,12 @@
 using System.Globalization;
+using DiffPdf.Application.Abstractions;
 using DiffPdf.Core.Models;
 using DiffPdf.Core.Storage;
-using DiffPdf.Messaging.ScopeSync;
 using DiffPdf.Persistence;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace DiffPdf.Messaging.ControlPlane;
-
-/// <summary>
-/// Creates the standard control checks automatically so monitoring exists without manual setup: a
-/// per-branch <see cref="CheckType.Readiness"/> check (which covers every enabled instance under the
-/// branch) when a branch is created, and the server-wide baseline — <see cref="CheckType.Health"/>,
-/// <see cref="CheckType.Retention"/> and, when a ScopeSync root is configured,
-/// <see cref="CheckType.StructureSync"/> — plus a backfill of existing branches at startup.
-/// </summary>
-public interface IControlCheckProvisioner
-{
-    /// <summary>Idempotently ensure the per-branch Readiness check exists. No-op when auto-provision is off.</summary>
-    Task EnsureBranchChecksAsync(string branchKey, CancellationToken ct = default);
-
-    /// <summary>Remove the auto-provisioned per-branch check (called when a branch is deleted, to avoid orphans).</summary>
-    Task RemoveBranchChecksAsync(string branchKey, CancellationToken ct = default);
-
-    /// <summary>Ensure the server-wide baseline and a Readiness check for every existing branch. Runs once at startup.</summary>
-    Task ProvisionBaselineAndExistingAsync(CancellationToken ct = default);
-}
 
 /// <summary>
 /// Default <see cref="IControlCheckProvisioner"/>. Idempotent and non-destructive: a check is created only

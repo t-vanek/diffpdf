@@ -1,9 +1,9 @@
 using System.Security.Claims;
+using DiffPdf.Application.Runs;
 using DiffPdf.Core.Models;
 using DiffPdf.Core.Storage;
-using DiffPdf.Messaging.Configuration;
+using DiffPdf.Application.Triggers;
 using DiffPdf.Messaging.Scheduling;
-using DiffPdf.Messaging.Triggers;
 using DiffPdf.Persistence;
 
 namespace DiffPdf.Api.Endpoints;
@@ -18,11 +18,9 @@ public static class TriggerEndpoints
     public static void MapTriggerEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapPost("/triggers/{branchKey}/{instanceKey}", async (
-            string branchKey, string instanceKey, IBatchLauncher launcher,
-            IBranchStore branches, IInstanceStore instances, IScopeConfigurationResolver resolver, CancellationToken ct) =>
+            string branchKey, string instanceKey, IScopeRunService runs, CancellationToken ct) =>
         {
-            var spec = await ResolveInstanceSpecAsync(branches, instances, resolver, branchKey, instanceKey, ct);
-            var result = await launcher.LaunchAsync(branchKey, instanceKey, spec, ct: ct);
+            var result = await runs.RunInstanceAsync(branchKey, instanceKey, ct);
             var body = new TriggerResult(result.Outcome.ToString(), result.JobId, result.Detail);
             return result.Outcome switch
             {
@@ -39,23 +37,14 @@ public static class TriggerEndpoints
         .RequireRateLimiting("expensive");
 
         app.MapPost("/branches/{branchKey}/run", async (
-            string branchKey, IBranchStore branches, IInstanceStore instances, IBatchLauncher launcher,
-            IScopeConfigurationResolver resolver, CancellationToken ct) =>
+            string branchKey, IScopeRunService runs, CancellationToken ct) =>
         {
-            var branch = await branches.GetByKeyAsync(branchKey, ct);
-            if (branch is null)
+            var outcome = await runs.RunBranchAsync(branchKey, ct);
+            if (outcome is null)
                 return Results.Problem($"Branch '{branchKey}' not found.", statusCode: StatusCodes.Status404NotFound);
 
-            var list = await instances.ListAsync(branch.Id, ct);
-            var results = new List<InstanceRunResult>();
-            foreach (var instance in list.Where(i => i.Enabled))
-            {
-                // Each instance launches with its own effective (inherited) configuration.
-                var eff = await resolver.ResolveForInstanceAsync(branch.Id, instance.Id, ct);
-                var r = await launcher.LaunchAsync(branchKey, instance.Key, LaunchSpec.FromEffective(eff), ct: ct);
-                results.Add(new InstanceRunResult(instance.Key, r.Outcome.ToString(), r.JobId, r.Detail));
-            }
-
+            var results = outcome.Instances
+                .Select(i => new InstanceRunResult(i.InstanceKey, i.Outcome.ToString(), i.JobId, i.Detail)).ToList();
             int launched = results.Count(r => r.JobId is not null);
             return Results.Ok(new BranchRunResult(branchKey, launched, results.Count - launched, results));
         })
@@ -88,7 +77,7 @@ public static class TriggerEndpoints
                 {
                     BranchKey = req.BranchKey, InstanceKey = req.InstanceKey, Name = req.Name,
                     Description = req.Description, Enabled = req.Enabled,
-                }, Actor(user), JobSource.RestApi, ct);
+                }, user.Actor(), JobSource.RestApi, ct);
                 return Results.Created($"/api/v1/triggers/{t.Id}", TriggerResponse.From(t));
             }
             catch (TriggerValidationException ex)
@@ -104,7 +93,7 @@ public static class TriggerEndpoints
                 var t = await svc.UpdateAsync(triggerId, new UpdateTriggerInput
                 {
                     Name = req.Name, Description = req.Description, Enabled = req.Enabled, ExpectedVersion = req.Version,
-                }, Actor(user), ct);
+                }, user.Actor(), ct);
                 return t is null ? Results.NotFound() : Results.Ok(TriggerResponse.From(t));
             }
             catch (ConcurrencyConflictException ex)
@@ -115,22 +104,22 @@ public static class TriggerEndpoints
           .Produces<TriggerResponse>().ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapDelete("/{triggerId:guid}", async (Guid triggerId, ITriggerService svc, ClaimsPrincipal user, CancellationToken ct) =>
-            await svc.DeleteAsync(triggerId, Actor(user), JobSource.RestApi, ct) is null ? Results.NotFound() : Results.NoContent())
+            await svc.DeleteAsync(triggerId, user.Actor(), JobSource.RestApi, ct) is null ? Results.NotFound() : Results.NoContent())
             .WithSummary("Soft-delete a trigger (run history, jobs and results are preserved)")
             .Produces(StatusCodes.Status204NoContent).ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPost("/{triggerId:guid}/enable", async (Guid triggerId, ITriggerService svc, ClaimsPrincipal user, CancellationToken ct) =>
-            await svc.SetEnabledAsync(triggerId, true, Actor(user), JobSource.RestApi, ct) is { } t ? Results.Ok(TriggerResponse.From(t)) : Results.NotFound())
+            await svc.SetEnabledAsync(triggerId, true, user.Actor(), JobSource.RestApi, ct) is { } t ? Results.Ok(TriggerResponse.From(t)) : Results.NotFound())
             .WithSummary("Enable a trigger").Produces<TriggerResponse>().ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPost("/{triggerId:guid}/disable", async (Guid triggerId, ITriggerService svc, ClaimsPrincipal user, CancellationToken ct) =>
-            await svc.SetEnabledAsync(triggerId, false, Actor(user), JobSource.RestApi, ct) is { } t ? Results.Ok(TriggerResponse.From(t)) : Results.NotFound())
+            await svc.SetEnabledAsync(triggerId, false, user.Actor(), JobSource.RestApi, ct) is { } t ? Results.Ok(TriggerResponse.From(t)) : Results.NotFound())
             .WithSummary("Disable a trigger").Produces<TriggerResponse>().ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPost("/{triggerId:guid}/run", async (Guid triggerId, HttpRequest http, ITriggerService svc, ClaimsPrincipal user, CancellationToken ct) =>
         {
             string? idempotencyKey = http.Headers["Idempotency-Key"].FirstOrDefault();
-            var r = await svc.RunAsync(triggerId, JobSource.RestApi, Actor(user), idempotencyKey, ct);
+            var r = await svc.RunAsync(triggerId, JobSource.RestApi, user.Actor(), idempotencyKey, ct);
             var body = new RunTriggerResponse(r.Success, r.TriggerId, r.BatchJobId, r.Status, r.Message, r.ErrorCode);
             if (r.Success) return Results.Accepted($"/api/v1/jobs/{r.BatchJobId}", body);
             return r.ErrorCode switch
@@ -163,26 +152,4 @@ public static class TriggerEndpoints
             Results.Ok((await store.ListAsync(new TriggerQuery { BranchId = branchId }, ct)).Select(TriggerResponse.From)))
             .WithTags("Triggers").WithSummary("List a branch's triggers").Produces<IEnumerable<TriggerResponse>>();
     }
-
-    /// <summary>
-    /// Builds the launch spec for an on-demand instance run from its resolved effective configuration. Falls
-    /// back to defaults when the branch/instance is unknown — the launcher then reports the not-found outcome.
-    /// </summary>
-    private static async Task<LaunchSpec> ResolveInstanceSpecAsync(
-        IBranchStore branches, IInstanceStore instances, IScopeConfigurationResolver resolver,
-        string branchKey, string instanceKey, CancellationToken ct)
-    {
-        var branch = await branches.GetByKeyAsync(branchKey, ct);
-        if (branch is null) return LaunchSpec.Default;
-        var instance = await instances.GetByKeyAsync(branch.Id, instanceKey, ct);
-        if (instance is null) return LaunchSpec.Default;
-        var eff = await resolver.ResolveForInstanceAsync(branch.Id, instance.Id, ct);
-        return LaunchSpec.FromEffective(eff);
-    }
-
-    /// <summary>The acting principal for audit (token client id / subject), or null when unauthenticated.</summary>
-    private static string? Actor(ClaimsPrincipal user) =>
-        user.Identity?.IsAuthenticated == true
-            ? user.FindFirst("client_id")?.Value ?? user.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? user.Identity.Name
-            : null;
 }

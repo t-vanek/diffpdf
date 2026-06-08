@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
 
-namespace DiffPdf.Messaging.Scheduling;
+namespace DiffPdf.Application.Abstractions;
 
 /// <summary>
 /// Process-wide per-branch mutex. Serializes the "is the branch free? release / claim the next job"

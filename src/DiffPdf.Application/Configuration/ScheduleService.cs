@@ -2,7 +2,7 @@ using DiffPdf.Core.Models;
 using DiffPdf.Core.Storage;
 using DiffPdf.Persistence;
 
-namespace DiffPdf.Messaging.ControlPlane;
+namespace DiffPdf.Application.Configuration;
 
 /// <summary>The current scheduled-run setting for a scope: whether it is enabled and its cron expression.</summary>
 public sealed record ScheduleView(bool Enabled, string? Cron);
