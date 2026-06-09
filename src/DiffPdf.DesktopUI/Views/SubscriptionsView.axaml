@@ -93,21 +93,21 @@
             <TextBlock Text="Pravidlo musí mít aspoň jednoho příjemce." Classes="caption"/>
           </StackPanel>
 
-          <!-- Rozsah: větve + instance — rozbalovátko s víc výběrem (zaškrtávátka v popupu; prázdné = vše). -->
+          <!-- Rozsah: větve + instance — combo-style rozbalovátko s víc výběrem (prázdné = vše). -->
           <StackPanel Spacing="4">
             <TextBlock Text="Větve" FontWeight="SemiBold"/>
-            <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" ToolTip.Tip="Vyber větve (prázdné = všechny)">
+            <Button Classes="combo" ToolTip.Tip="Vyber větve (prázdné = všechny)">
               <Grid ColumnDefinitions="*,Auto">
-                <TextBlock Grid.Column="0" Text="{Binding BranchScopeSummary}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
-                <TextBlock Grid.Column="1" Text="▾" Margin="8,0,0,0" VerticalAlignment="Center" Foreground="{DynamicResource InkDim}"/>
+                <TextBlock Grid.Column="0" Text="{Binding BranchScopeSummary}" Foreground="{DynamicResource Ink}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="1" Text="▾" FontSize="11" Margin="8,0,0,0" VerticalAlignment="Center" Foreground="{DynamicResource InkDim}"/>
               </Grid>
               <Button.Flyout>
-                <Flyout Placement="Bottom">
-                  <ScrollViewer MaxHeight="240">
-                    <ItemsControl ItemsSource="{Binding BranchChoices}" MinWidth="220">
+                <Flyout Placement="BottomEdgeAlignedLeft" FlyoutPresenterClasses="scopeFlyout">
+                  <ScrollViewer MaxHeight="260">
+                    <ItemsControl ItemsSource="{Binding BranchChoices}" MinWidth="240">
                       <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:CheckableKey">
-                          <CheckBox Content="{Binding Key}" IsChecked="{Binding IsChecked}" Margin="2"/>
+                          <CheckBox Content="{Binding Key}" IsChecked="{Binding IsChecked}" Padding="6,3" Margin="0,1"/>
                         </DataTemplate>
                       </ItemsControl.ItemTemplate>
                     </ItemsControl>
@@ -119,18 +119,18 @@
 
           <StackPanel Spacing="4">
             <TextBlock Text="Instance" FontWeight="SemiBold"/>
-            <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" ToolTip.Tip="Vyber instance (prázdné = všechny)">
+            <Button Classes="combo" ToolTip.Tip="Vyber instance (prázdné = všechny)">
               <Grid ColumnDefinitions="*,Auto">
-                <TextBlock Grid.Column="0" Text="{Binding InstanceScopeSummary}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
-                <TextBlock Grid.Column="1" Text="▾" Margin="8,0,0,0" VerticalAlignment="Center" Foreground="{DynamicResource InkDim}"/>
+                <TextBlock Grid.Column="0" Text="{Binding InstanceScopeSummary}" Foreground="{DynamicResource Ink}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="1" Text="▾" FontSize="11" Margin="8,0,0,0" VerticalAlignment="Center" Foreground="{DynamicResource InkDim}"/>
               </Grid>
               <Button.Flyout>
-                <Flyout Placement="Bottom">
-                  <ScrollViewer MaxHeight="240">
-                    <ItemsControl ItemsSource="{Binding InstanceChoices}" MinWidth="220">
+                <Flyout Placement="BottomEdgeAlignedLeft" FlyoutPresenterClasses="scopeFlyout">
+                  <ScrollViewer MaxHeight="260">
+                    <ItemsControl ItemsSource="{Binding InstanceChoices}" MinWidth="240">
                       <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:CheckableKey">
-                          <CheckBox Content="{Binding Key}" IsChecked="{Binding IsChecked}" Margin="2"/>
+                          <CheckBox Content="{Binding Key}" IsChecked="{Binding IsChecked}" Padding="6,3" Margin="0,1"/>
                         </DataTemplate>
                       </ItemsControl.ItemTemplate>
                     </ItemsControl>
