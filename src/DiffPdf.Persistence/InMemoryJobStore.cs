@@ -6,8 +6,8 @@ namespace DiffPdf.Persistence;
 
 /// <summary>
 /// Thread-safe in-memory job store for single-instance / dev use. Mirrors the
-/// optimistic-concurrency semantics of the Postgres store so handlers behave
-/// identically. Does not survive restart; use the Postgres store in production.
+/// optimistic-concurrency semantics of the SQL Server store so handlers behave
+/// identically. Does not survive restart; use the SQL Server store in production.
 /// </summary>
 public sealed class InMemoryJobStore : IJobStore
 {

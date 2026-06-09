@@ -20,7 +20,6 @@ using DiffPdf.Messaging.ScopeSync;
 using DiffPdf.Notifications.DependencyInjection;
 using DiffPdf.Pdf.DependencyInjection;
 using DiffPdf.Persistence;
-using DiffPdf.Persistence.Postgres.DependencyInjection;
 using DiffPdf.Persistence.SqlServer.DependencyInjection;
 using DiffPdf.Worker.DependencyInjection;
 using OpenTelemetry;
@@ -135,27 +134,14 @@ builder.Services.AddDiffPdfWorker();
 // and the operational status endpoint reads the snapshot.
 builder.Services.AddSingleton<IAutomationHeartbeat, AutomationHeartbeat>();
 
-string? postgres = builder.Configuration.GetConnectionString("Postgres");
-string? sqlServer = builder.Configuration.GetConnectionString("SqlServer");
-
-// SQL Server wins when both relational connection strings are configured.
-bool useSqlServer = !string.IsNullOrWhiteSpace(sqlServer);
-string? relational = useSqlServer ? sqlServer : postgres;
+string? relational = builder.Configuration.GetConnectionString("SqlServer");
 
 if (!string.IsNullOrWhiteSpace(relational))
 {
-    // Production / full stack: relational source of truth + DB-backed durable local queues
+    // Production / full stack: SQL Server source of truth + DB-backed durable local queues
     // (no external broker) via Wolverine.
-    if (useSqlServer)
-    {
-        builder.Services.AddSqlServerPersistence(relational);
-        builder.Host.UseWolverine(opts => opts.ConfigureDiffPdfMessaging(relational, DiffPdfDatabase.SqlServer));
-    }
-    else
-    {
-        builder.Services.AddPostgresPersistence(relational);
-        builder.Host.UseWolverine(opts => opts.ConfigureDiffPdfMessaging(relational, DiffPdfDatabase.Postgres));
-    }
+    builder.Services.AddSqlServerPersistence(relational);
+    builder.Host.UseWolverine(opts => opts.ConfigureDiffPdfMessaging(relational));
 }
 else
 {
@@ -182,7 +168,7 @@ else
 
 // Operational visibility: persistence backend name + the status/readiness composer (singleton;
 // resolves scoped stores per request and caches the renderer probe).
-string persistenceProvider = string.IsNullOrWhiteSpace(relational) ? "In-memory" : useSqlServer ? "SQL Server" : "PostgreSQL";
+string persistenceProvider = string.IsNullOrWhiteSpace(relational) ? "In-memory" : "SQL Server";
 builder.Services.AddSingleton(new PersistenceInfo(persistenceProvider));
 builder.Services.AddSingleton<OperationalStatusService>();
 
@@ -225,9 +211,9 @@ builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection("Auth")
 bool authEnabled = auth.Enabled && !string.IsNullOrWhiteSpace(relational);
 builder.Services.AddSingleton(new ServerAuthInfo(authEnabled));
 if (auth.Enabled && string.IsNullOrWhiteSpace(relational))
-    Log.Warning("Auth:Enabled is set but no PostgreSQL/SQL Server connection is configured — authentication is disabled.");
+    Log.Warning("Auth:Enabled is set but no SQL Server connection is configured — authentication is disabled.");
 if (authEnabled)
-    builder.Services.AddDiffPdfAuth(useSqlServer, auth);
+    builder.Services.AddDiffPdfAuth(auth);
 
 // LAN server discovery: answer UDP broadcast probes so the desktop client can auto-find this server.
 builder.Services.Configure<DiscoveryOptions>(builder.Configuration.GetSection(DiscoveryOptions.SectionName));
@@ -289,7 +275,7 @@ app.MapHub<JobsHub>("/hubs/jobs");
 // listening; as a Windows Service, make the service depend on the database service
 // (sc config DiffPdfApi depend= MSSQLSERVER) and enable Recovery → Restart so a longer outage self-heals.
 if (!string.IsNullOrWhiteSpace(relational))
-    await DatabaseStartupGate.WaitAndEnsureDatabaseAsync(relational!, useSqlServer);
+    await DatabaseStartupGate.WaitAndEnsureDatabaseAsync(relational!);
 
 app.Run();
 Log.CloseAndFlush();

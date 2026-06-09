@@ -69,37 +69,73 @@ public class JobsViewModelTests
         });
     }
 
-    [Fact]
-    public void File_search_and_diff_filter_narrow_the_list_and_report_the_count()
+    private static FilePairTaskSummary FileTask(string path, FilePairStatus status, double similarity = 1, int differingPages = 0) => new()
     {
-        AsyncPump.Run(() =>
-        {
-            var vm = NewVm(new FakeApi());
-            vm.Files.Add(FilePairLine.FromResult(new FilePairResult { RelativePath = "alfa_invoice.pdf", Status = FilePairStatus.Identical }));
-            vm.Files.Add(FilePairLine.FromResult(new FilePairResult { RelativePath = "beta_invoice.pdf", Status = FilePairStatus.Differs, Similarity = 0.8, DifferingPages = 1 }));
-            vm.Files.Add(FilePairLine.FromResult(new FilePairResult { RelativePath = "gamma_report.pdf", Status = FilePairStatus.Identical }));
+        Id = Guid.NewGuid(), RelativePath = path, Status = "Completed", ResultStatus = status.ToString(),
+        Result = new FilePairResult { RelativePath = path, Status = status, Similarity = similarity, DifferingPages = differingPages },
+    };
 
-            // Name search is case-insensitive and matches a substring; the count reflects "shown of total".
-            vm.FileSearch = "INVOICE";
-            Assert.Equal(2, vm.FilesView.Count);
-            Assert.Equal("Zobrazeno 2 z 3", vm.FileCountLabel);
+    [Fact]
+    public void File_search_and_diff_filter_reload_from_the_server_and_report_the_count()
+    {
+        AsyncPump.Run(async () =>
+        {
+            var jobId = Guid.NewGuid();
+            // Filtering is server-side now: GET /tasks applies the name search + "jen odlišné" and returns the
+            // matching page plus the filtered total (X-Total-Count). FilesView is a plain view over the loaded page
+            // (no client predicate), so each filter change reloads page 1 and the VM shows exactly what came back.
+            var api = new FakeApi
+            {
+                Tasks =
+                [
+                    FileTask("alfa_invoice.pdf", FilePairStatus.Identical),
+                    FileTask("beta_invoice.pdf", FilePairStatus.Differs, similarity: 0.8, differingPages: 1),
+                    FileTask("gamma_report.pdf", FilePairStatus.Identical),
+                ],
+            };
+            var vm = NewVm(api);
+            // Select a job without going through the property setter (which would kick off a fire-and-forget detail
+            // load that races these assertions) — we drive the file reload explicitly below.
+            VmTest.SetField(vm, "_selectedJob", new JobRowViewModel(new JobSummary
+            {
+                Id = jobId, BranchKey = "alfa", InstanceKey = "LamaEnergy", Status = JobStatus.Completed, TotalCount = 3,
+            }));
+
+            // Reloads page 1 for the current search + "jen odlišné" as the filter-change paths do: fetch the
+            // server-filtered page, then recompute the "shown of total" label + empty-state hint (in its settled
+            // state — no IsLoadingFiles spinner toggle to model, which is a UI concern, not part of the filtering).
+            async Task ReloadAsync()
+            {
+                await VmTest.InvokeAsync(vm, "LoadFilesPageAsync", jobId, 0, true);
+                VmTest.Invoke(vm, "RefreshFilesView");
+            }
+
+            // Name search is case-insensitive + substring; with "jen odlišné" off both invoices come back (not the report).
+            VmTest.SetField(vm, "_showOnlyDiffering", false);
+            VmTest.SetField(vm, "_fileSearch", "INVOICE");
+            await ReloadAsync();
+            Assert.Equal(new[] { "alfa_invoice.pdf", "beta_invoice.pdf" },
+                vm.FilesView.Cast<FilePairLine>().Select(f => f.Name).ToArray());
+            Assert.Equal("Zobrazeno 2 z 2", vm.FileCountLabel); // count reflects the filtered total the server reported
             Assert.False(vm.HasNoMatchingFiles);
 
-            // Combined with "jen odlišné" → only the differing invoice survives both filters.
-            vm.ShowOnlyDiffering = true;
+            // Combined with "jen odlišné" → only the differing invoice survives both server filters.
+            VmTest.SetField(vm, "_showOnlyDiffering", true);
+            await ReloadAsync();
             Assert.Equal("beta_invoice.pdf", vm.FilesView.Cast<FilePairLine>().Single().Name);
 
-            // A search that matches nothing (with files present) raises the empty-state hint.
-            vm.FileSearch = "does-not-exist";
-            Assert.Equal(0, vm.FilesView.Count);
+            // A search that matches nothing (files present) → an empty page + the empty-state hint.
+            VmTest.SetField(vm, "_showOnlyDiffering", false);
+            VmTest.SetField(vm, "_fileSearch", "does-not-exist");
+            await ReloadAsync();
+            Assert.Empty(vm.FilesView);
             Assert.True(vm.HasNoMatchingFiles);
 
-            // Clearing both filters restores the full list and clears the hint.
-            vm.FileSearch = "";
-            vm.ShowOnlyDiffering = false;
+            // Clearing the search restores the full list and clears the hint.
+            VmTest.SetField(vm, "_fileSearch", "");
+            await ReloadAsync();
             Assert.Equal(3, vm.FilesView.Count);
             Assert.False(vm.HasNoMatchingFiles);
-            return Task.CompletedTask;
         });
     }
 

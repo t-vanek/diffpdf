@@ -1,8 +1,15 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:DiffPdf.DesktopUI.ViewModels"
+             xmlns:conv="using:DiffPdf.DesktopUI.Converters"
              x:Class="DiffPdf.DesktopUI.Views.ComparisonOptionsEditor"
              x:DataType="vm:ComparisonOptionsViewModel">
+
+  <UserControl.Resources>
+    <DataTemplate x:Key="EnumLabelTemplate" x:CompileBindings="False">
+      <TextBlock Text="{Binding Converter={x:Static conv:ComparisonEnumLabelConverter.Instance}}"/>
+    </DataTemplate>
+  </UserControl.Resources>
 
   <StackPanel Spacing="6">
     <TextBlock Text="Možnosti porovnání" FontWeight="Bold"/>
@@ -10,11 +17,13 @@
     <WrapPanel>
       <StackPanel Width="150" Margin="0,0,8,6">
         <TextBlock Text="Režim"/>
-        <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Modes}" SelectedItem="{Binding Mode}"/>
+        <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Modes}" SelectedItem="{Binding Mode}"
+                  ItemTemplate="{StaticResource EnumLabelTemplate}"/>
       </StackPanel>
       <StackPanel Width="150" Margin="0,0,8,6">
         <TextBlock Text="Přísnost"/>
-        <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Strictnesses}" SelectedItem="{Binding Strictness}"/>
+        <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Strictnesses}" SelectedItem="{Binding Strictness}"
+                  ItemTemplate="{StaticResource EnumLabelTemplate}"/>
       </StackPanel>
       <StackPanel Width="150" Margin="0,0,8,6">
         <TextBlock Text="Renderer"/>
@@ -52,11 +61,13 @@
     <WrapPanel>
       <StackPanel Width="160" Margin="0,0,8,6">
         <TextBlock Text="Rozložení zvýraznění"/>
-        <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Layouts}" SelectedItem="{Binding HighlightLayout}"/>
+        <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Layouts}" SelectedItem="{Binding HighlightLayout}"
+                  ItemTemplate="{StaticResource EnumLabelTemplate}"/>
       </StackPanel>
       <StackPanel Width="160" Margin="0,0,8,6">
         <TextBlock Text="Styl zvýraznění"/>
-        <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Styles}" SelectedItem="{Binding HighlightStyle}"/>
+        <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Styles}" SelectedItem="{Binding HighlightStyle}"
+                  ItemTemplate="{StaticResource EnumLabelTemplate}"/>
       </StackPanel>
     </WrapPanel>
 

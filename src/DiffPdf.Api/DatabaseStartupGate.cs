@@ -1,5 +1,4 @@
 using Microsoft.Data.SqlClient;
-using Npgsql;
 using Serilog;
 
 namespace DiffPdf.Api;
@@ -18,7 +17,7 @@ internal static class DatabaseStartupGate
     private static readonly TimeSpan InitialDelay = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan MaxDelay = TimeSpan.FromSeconds(30);
 
-    public static async Task WaitAndEnsureDatabaseAsync(string connectionString, bool useSqlServer, CancellationToken ct = default)
+    public static async Task WaitAndEnsureDatabaseAsync(string connectionString, CancellationToken ct = default)
     {
         var delay = InitialDelay;
         var waitingLogged = false;
@@ -27,10 +26,7 @@ internal static class DatabaseStartupGate
         {
             try
             {
-                if (useSqlServer)
-                    await EnsureSqlServerDatabaseAsync(connectionString, ct);
-                else
-                    await EnsurePostgresDatabaseAsync(connectionString, ct);
+                await EnsureSqlServerDatabaseAsync(connectionString, ct);
 
                 if (waitingLogged)
                     Log.Information("Database server reachable and application database present; continuing host startup.");
@@ -81,33 +77,4 @@ internal static class DatabaseStartupGate
         command.Parameters.AddWithValue("@db", database);
         await command.ExecuteNonQueryAsync(ct);
     }
-
-    // Connect to the maintenance "postgres" database, then create the application database if it is missing.
-    // CREATE DATABASE cannot be parameterised, so the identifier is quoted explicitly.
-    private static async Task EnsurePostgresDatabaseAsync(string connectionString, CancellationToken ct)
-    {
-        var builder = new NpgsqlConnectionStringBuilder(connectionString) { Timeout = 5 };
-        string? database = builder.Database;
-        builder.Database = "postgres";
-
-        await using var connection = new NpgsqlConnection(builder.ConnectionString);
-        await connection.OpenAsync(ct);
-
-        if (string.IsNullOrWhiteSpace(database))
-            return;
-
-        await using (var check = connection.CreateCommand())
-        {
-            check.CommandText = "select 1 from pg_database where datname = @db";
-            check.Parameters.AddWithValue("db", database);
-            if (await check.ExecuteScalarAsync(ct) is not null)
-                return;
-        }
-
-        await using var create = connection.CreateCommand();
-        create.CommandText = $"create database {QuotePostgresIdentifier(database)}";
-        await create.ExecuteNonQueryAsync(ct);
-    }
-
-    private static string QuotePostgresIdentifier(string name) => "\"" + name.Replace("\"", "\"\"") + "\"";
 }

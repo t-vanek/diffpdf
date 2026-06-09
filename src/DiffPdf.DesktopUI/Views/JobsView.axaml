@@ -150,7 +150,7 @@
             <Button Content="↺ Opakovat" Classes="ghost" Command="{Binding RetryCommand}" IsVisible="{Binding CanRetry}" Margin="0,0,6,6"/>
           </WrapPanel>
 
-          <!-- Souhrn (barevné chipy) + CI brána -->
+          <!-- Souhrn (barevné chipy) -->
           <ItemsControl ItemsSource="{Binding Summary}">
             <ItemsControl.ItemsPanel>
               <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
@@ -165,29 +165,6 @@
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>
-
-          <ContentControl Content="{Binding Result}">
-            <ContentControl.ContentTemplate>
-              <DataTemplate x:DataType="models:JobResult">
-                <Border Classes="cardStatic" Padding="12">
-                  <StackPanel Spacing="4">
-                    <StackPanel Orientation="Horizontal" Spacing="6">
-                      <TextBlock Text="CI brána:" Foreground="{DynamicResource InkDim}"/>
-                      <TextBlock Text="ⓘ" Foreground="{DynamicResource InkFaint}" FontSize="11" VerticalAlignment="Center"
-                                 ToolTip.Tip="Automatická brána kvality: podle nastavených pravidel (např. max. počet odlišných souborů nebo minimální podobnost) rozhodne, jestli dávka prošla. Funguje jako kontrola v CI/CD — při příliš velkých rozdílech označí výsledek jako neprošlý."/>
-                      <TextBlock Text="✓ Prošlo" Foreground="{DynamicResource Good}" FontWeight="SemiBold" IsVisible="{Binding Passed}"/>
-                      <TextBlock Text="✗ Neprošlo" Foreground="{DynamicResource Bad}" FontWeight="SemiBold" IsVisible="{Binding !Passed}"/>
-                    </StackPanel>
-                    <ItemsControl ItemsSource="{Binding Violations}">
-                      <ItemsControl.ItemTemplate>
-                        <DataTemplate><TextBlock Text="{Binding}" Foreground="{DynamicResource Bad}" FontSize="12" TextWrapping="Wrap"/></DataTemplate>
-                      </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                  </StackPanel>
-                </Border>
-              </DataTemplate>
-            </ContentControl.ContentTemplate>
-          </ContentControl>
 
           <!-- Soubory: hlavička, hledání podle názvu, počet a filtr; seznam níže vyplní zbytek výšky. -->
           <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">

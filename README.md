@@ -44,40 +44,30 @@ Když přegeneruješ tiskové sestavy (nová verze šablony, knihovny, dat), pot
 
 ## Rychlý start
 
-### Docker (doporučeno)
-
-```bash
-docker compose up --build
-# PostgreSQL + API na http://localhost:8080. Žádný broker — práce běží nad DB.
-# Vstup: vzorová instance ./samples/LamaEnergy (old/ vs new/).
-```
-
-Pak založ větev → instanci → rozvrh a nech to běžet:
-
-```bash
-curl -X POST http://localhost:8080/api/v1/branches \
-  -d '{"key":"Alfa","name":"Alfa"}' -H 'Content-Type: application/json'
-
-curl -X POST http://localhost:8080/api/v1/branches/Alfa/instances \
-  -d '{"key":"LamaEnergy","name":"Lama Energy","basePath":"/pdfs/LamaEnergy"}' -H 'Content-Type: application/json'
-
-# cron + porovnávací volby (+ volitelně CI brána) — od teď běží automaticky
-curl -X POST http://localhost:8080/api/v1/branches/Alfa/instances/LamaEnergy/schedules \
-  -d '{"key":"nightly","cron":"0 2 * * *","options":{"mode":"Both"}}' -H 'Content-Type: application/json'
-
-# spusť teď (mimo rozvrh) → 202 + jobId; pak GET /jobs/{id} a /jobs/{id}/report
-curl -X POST http://localhost:8080/api/v1/branches/Alfa/instances/LamaEnergy/schedules/nightly/run
-```
-
-Interaktivní **Swagger** je na `/swagger`. Kompletní API: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#rest-api).
-
-### Lokálně
-
 ```bash
 dotnet run --project src/DiffPdf.Api        # http://localhost:5275, auth vypnuto
 ```
 
-Pro vizuální režim je potřeba **Ghostscript** na `PATH` (nebo `GHOSTSCRIPT_PATH`) — viz [Konfigurace](#konfigurace-ve-zkratce). Kořen artefaktů přepíšeš přes `DIFFPDF_ARTIFACT_ROOT`.
+Bez connection stringu běží **jednoinstanční dev režim** (in-memory úložiště, žádná DB). Pro plný stack nastav `ConnectionStrings__SqlServer` — relační zdroj pravdy + **DB-backed durable local queues** (žádný broker); schéma se vytvoří idempotentně při startu. Pro vizuální režim je potřeba **Ghostscript** na `PATH` (nebo `GHOSTSCRIPT_PATH`) — viz [Konfigurace](#konfigurace-ve-zkratce). Kořen artefaktů přepíšeš přes `DIFFPDF_ARTIFACT_ROOT`.
+
+Pak založ větev → instanci → rozvrh a nech to běžet:
+
+```bash
+curl -X POST http://localhost:5275/api/v1/branches \
+  -d '{"key":"Alfa","name":"Alfa"}' -H 'Content-Type: application/json'
+
+curl -X POST http://localhost:5275/api/v1/branches/Alfa/instances \
+  -d '{"key":"LamaEnergy","name":"Lama Energy","basePath":"C:/pdfs/LamaEnergy"}' -H 'Content-Type: application/json'
+
+# cron + porovnávací volby (+ volitelně CI brána) — od teď běží automaticky
+curl -X POST http://localhost:5275/api/v1/branches/Alfa/instances/LamaEnergy/schedules \
+  -d '{"key":"nightly","cron":"0 2 * * *","options":{"mode":"Both"}}' -H 'Content-Type: application/json'
+
+# spusť teď (mimo rozvrh) → 202 + jobId; pak GET /jobs/{id} a /jobs/{id}/report
+curl -X POST http://localhost:5275/api/v1/branches/Alfa/instances/LamaEnergy/schedules/nightly/run
+```
+
+Interaktivní **Swagger** je na `/swagger`. Kompletní API: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#rest-api).
 
 ### Desktop klient (Avalonia)
 
@@ -96,7 +86,7 @@ Vše přes `appsettings.json` / proměnné prostředí. Detaily a příklady v [
 
 | Oblast | Výchozí | Poznámka |
 |---|---|---|
-| **Databáze** | in-memory (dev) | Nastav `ConnectionStrings__Postgres` nebo `__SqlServer` (SQL Server má přednost). Schéma se vytvoří idempotentně při startu; bez DB jede jednoinstanční dev režim. |
+| **Databáze** | in-memory (dev) | Nastav `ConnectionStrings__SqlServer`. Schéma se vytvoří idempotentně při startu; bez DB jede jednoinstanční dev režim. |
 | **Renderer** | Ghostscript (AGPL) | `gs` na `PATH` / `GHOSTSCRIPT_PATH`. Bez něj vizuální režim selže — alternativa je **PDFium** (BSD, in-process): `options.renderer = "Pdfium"`. |
 | **Autentizace** | vypnuto | `Auth:Enabled=true` (vyžaduje DB) → každý endpoint chce bearer token (mimo `/health` a OAuth). Token přes client-credentials na `/connect/token`. |
 | **Notifikace** | — | SMTP transport + `BaseUrl` v `appsettings`; samotné odběry jsou API resource (`/api/v1/subscriptions`). |
@@ -112,7 +102,7 @@ Vše přes `appsettings.json` / proměnné prostředí. Detaily a příklady v [
 | **Ghostscript** / **PDFium** | Rendering stránek na obrázky pro pixelový diff. |
 | **SkiaSharp** | Porovnání bitmap a detekce prázdných stránek. |
 | **PdfSharp** | Generování zvýrazněného diff-PDF (raster i vektor). |
-| **PostgreSQL / SQL Server** + **EF Core** + **Mapperly** | Perzistentní zdroj pravdy; mapování bez reflexe. |
+| **SQL Server** + **EF Core** + **Mapperly** | Perzistentní zdroj pravdy; mapování bez reflexe. |
 | **Wolverine** | DB-backed durable queues (inbox/outbox, retry, dead-letter) — bez externího brokeru. |
 | **SignalR** | Realtime push progressu úloh. |
 | **Serilog** · **OpenIddict** | Strukturované logování · OAuth2 server. |

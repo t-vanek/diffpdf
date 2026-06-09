@@ -1,8 +1,0 @@
-using Avalonia.Controls;
-
-namespace DiffPdf.DesktopUI.Views;
-
-public partial class BatchGateEditor : UserControl
-{
-    public BatchGateEditor() => InitializeComponent();
-}

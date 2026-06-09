@@ -3,7 +3,7 @@ namespace DiffPdf.Api.Auth;
 /// <summary>OAuth2 / OpenID Connect configuration.</summary>
 public sealed class AuthOptions
 {
-    /// <summary>Turn authentication on. Requires a configured PostgreSQL / SQL Server connection.</summary>
+    /// <summary>Turn authentication on. Requires a configured SQL Server connection.</summary>
     public bool Enabled { get; set; }
 
     /// <summary>Seeded client for the client-credentials (machine-to-machine) flow.</summary>

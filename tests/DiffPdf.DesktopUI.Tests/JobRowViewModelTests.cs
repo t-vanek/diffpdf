@@ -6,11 +6,11 @@ namespace DiffPdf.DesktopUI.Tests;
 /// <summary>The Úlohy list presentation: status chip + the outcome verdict derived from the enriched JobSummary.</summary>
 public class JobRowViewModelTests
 {
-    private static JobSummary Job(JobStatus status, int? differing = null, int? errors = null, bool? gate = null) => new()
+    private static JobSummary Job(JobStatus status, int? differing = null, int? errors = null) => new()
     {
         Id = Guid.NewGuid(), BranchKey = "alfa", InstanceKey = "LamaEnergy",
         Status = status, Progress = status == JobStatus.Running ? 0.8 : 1.0,
-        Differing = differing, Errors = errors, GatePassed = gate,
+        Differing = differing, Errors = errors,
     };
 
     [Fact]
@@ -24,17 +24,17 @@ public class JobRowViewModelTests
     }
 
     [Fact]
-    public void Completed_and_passed_shows_pass_verdict()
+    public void Completed_clean_shows_done_verdict()
     {
-        var r = new JobRowViewModel(Job(JobStatus.Completed, differing: 0, gate: true));
+        var r = new JobRowViewModel(Job(JobStatus.Completed, differing: 0));
         Assert.True(r.HasVerdict);
-        Assert.Equal("✓ Prošlo", r.VerdictText);
+        Assert.Equal("✓ Hotovo", r.VerdictText);
     }
 
     [Fact]
     public void Completed_with_differences_shows_count_verdict()
     {
-        var r = new JobRowViewModel(Job(JobStatus.Completed, differing: 4, gate: false));
+        var r = new JobRowViewModel(Job(JobStatus.Completed, differing: 4));
         Assert.Equal("✗ 4 odlišné", r.VerdictText); // Czech plural: 2–4 → "odlišné" (ne "odlišných")
     }
 
@@ -42,9 +42,9 @@ public class JobRowViewModelTests
     public void Apply_updates_the_row_in_place()
     {
         var r = new JobRowViewModel(Job(JobStatus.Running));
-        r.Apply(Job(JobStatus.Completed, differing: 0, gate: true));
+        r.Apply(Job(JobStatus.Completed, differing: 0));
         Assert.Equal("Hotovo", r.StatusText);
-        Assert.Equal("✓ Prošlo", r.VerdictText);
+        Assert.Equal("✓ Hotovo", r.VerdictText);
     }
 
     [Fact]

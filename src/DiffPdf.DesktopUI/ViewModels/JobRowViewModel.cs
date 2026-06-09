@@ -5,7 +5,7 @@ using DiffPdf.Client;
 namespace DiffPdf.DesktopUI.ViewModels;
 
 /// <summary>
-/// One job row in the Úlohy grid: a coloured status chip, progress, and a quick outcome verdict (✓ Prošlo /
+/// One job row in the Úlohy grid: a coloured status chip, progress, and a quick outcome verdict (✓ Hotovo /
 /// ✗ N odlišných / ⚠ chyby) derived from the enriched <see cref="JobSummary"/>. Settable so a realtime event
 /// can update the row in place (preserving selection).
 /// </summary>
@@ -49,18 +49,17 @@ public partial class JobRowViewModel(JobSummary job) : ObservableObject
     {
         JobStatus.Failed => "✗ Selhalo",
         JobStatus.Cancelled => "⊘ Zrušeno",
-        JobStatus.Completed when Job.GatePassed == true => "✓ Prošlo",
         JobStatus.Completed when (Job.Differing ?? 0) > 0 => $"✗ {Format.Plural(Job.Differing ?? 0, "odlišný", "odlišné", "odlišných")}",
         JobStatus.Completed when (Job.Errors ?? 0) > 0 => $"⚠ {Format.Plural(Job.Errors ?? 0, "chyba", "chyby", "chyb")}",
-        JobStatus.Completed => Job.GatePassed == false ? "✗ Neprošlo" : "✓ Hotovo",
+        JobStatus.Completed => "✓ Hotovo",
         _ => "",
     };
 
     public IBrush VerdictBrush => Job.Status switch
     {
-        JobStatus.Completed when Job.GatePassed == true => Palette.Good,
-        JobStatus.Completed when (Job.Differing ?? 0) == 0 && (Job.Errors ?? 0) > 0 => Palette.Warning,
-        JobStatus.Completed => Palette.Bad,
+        JobStatus.Completed when (Job.Differing ?? 0) > 0 => Palette.Bad,
+        JobStatus.Completed when (Job.Errors ?? 0) > 0 => Palette.Warning,
+        JobStatus.Completed => Palette.Good,
         JobStatus.Failed => Palette.Bad,
         JobStatus.Cancelled => Palette.Skipped,
         _ => Palette.Muted,

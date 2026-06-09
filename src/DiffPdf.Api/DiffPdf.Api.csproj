@@ -9,7 +9,6 @@
     <ProjectReference Include="..\DiffPdf.Application\DiffPdf.Application.csproj" />
     <ProjectReference Include="..\DiffPdf.Application.Abstractions\DiffPdf.Application.Abstractions.csproj" />
     <ProjectReference Include="..\DiffPdf.Notifications\DiffPdf.Notifications.csproj" />
-    <ProjectReference Include="..\DiffPdf.Persistence.Postgres\DiffPdf.Persistence.Postgres.csproj" />
     <ProjectReference Include="..\DiffPdf.Persistence.SqlServer\DiffPdf.Persistence.SqlServer.csproj" />
   </ItemGroup>
 

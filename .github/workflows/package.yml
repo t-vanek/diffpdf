@@ -1,7 +1,7 @@
 name: Package
 
-# Packs the client SDK NuGet and builds the API Docker image, uploading both as
-# workflow artifacts. No registry/feed publishing (no secrets required).
+# Packs the client SDK NuGet and uploads it as a workflow artifact.
+# No registry/feed publishing (no secrets required).
 on:
   push:
     branches: ["main"]
@@ -36,23 +36,4 @@ jobs:
         with:
           name: DiffPdf.Client-nupkg
           path: nupkg/*.nupkg
-          if-no-files-found: error
-
-  docker-image:
-    name: Build API image (artifact)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Build image
-        run: docker build -t diffpdf-api:ci .
-
-      - name: Save image
-        run: docker save diffpdf-api:ci | gzip > diffpdf-api-image.tar.gz
-
-      - name: Upload image
-        uses: actions/upload-artifact@v4
-        with:
-          name: diffpdf-api-image
-          path: diffpdf-api-image.tar.gz
           if-no-files-found: error

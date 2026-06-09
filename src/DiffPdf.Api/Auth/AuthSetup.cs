@@ -17,19 +17,13 @@ public static class AuthSetup
     /// client-credentials (M2M) flow, plus token validation. Every endpoint
     /// requires a valid token by default.
     /// </summary>
-    public static void AddDiffPdfAuth(this IServiceCollection services, bool useSqlServer, AuthOptions auth)
+    public static void AddDiffPdfAuth(this IServiceCollection services, AuthOptions auth)
     {
         // OpenIddict shares the application's DbContext: its tables are created and versioned by the EF
         // migration runner (the persistence layer already registered the context). No separate AuthDbContext.
         services.AddOpenIddict()
-            .AddCore(o =>
-            {
-                var ef = o.UseEntityFrameworkCore();
-                if (useSqlServer)
-                    ef.UseDbContext<DiffPdf.Persistence.SqlServer.DiffPdfDbContext>();
-                else
-                    ef.UseDbContext<DiffPdf.Persistence.Postgres.DiffPdfDbContext>();
-            })
+            .AddCore(o => o.UseEntityFrameworkCore()
+                .UseDbContext<DiffPdf.Persistence.SqlServer.DiffPdfDbContext>())
             .AddServer(o =>
             {
                 // Standard endpoints — OpenIddict generates and protocol-handles them;
@@ -72,7 +66,7 @@ public static class AuthSetup
             .SetDefaultPolicy(requireAuth)
             .SetFallbackPolicy(requireAuth); // every endpoint requires a token unless AllowAnonymous
 
-        services.AddHostedService(sp => ActivatorUtilities.CreateInstance<OpenIddictClientSeeder>(sp, useSqlServer));
+        services.AddHostedService(sp => ActivatorUtilities.CreateInstance<OpenIddictClientSeeder>(sp));
     }
 
     /// <summary>
