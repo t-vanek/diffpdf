@@ -398,24 +398,6 @@ public sealed class DiffPdfClient(HttpClient http)
     public Task<BranchRunResult> RunBranchAsync(string branchKey, CancellationToken ct = default) =>
         JsonAsync<BranchRunResult>(HttpMethod.Post, $"/api/v1/branches/{Esc(branchKey)}/run", null, ct);
 
-    // ---------------- Print and compare (D3Soft Tisk SOA) ----------------
-
-    /// <summary>Lists scopes ("branchKey/instanceKey") that have a configured print source — use to show the action.</summary>
-    public Task<PrintSourcesResponse> GetPrintSourcesAsync(CancellationToken ct = default) =>
-        JsonAsync<PrintSourcesResponse>(HttpMethod.Get, "/api/v1/print-sources", null, ct);
-
-    /// <summary>
-    /// Starts a print-and-compare for one instance: prints a fresh sample batch, fetches it + the previous
-    /// batch, and runs a comparison. Returns the operation to poll via <see cref="GetPrintOperationAsync"/>;
-    /// throws <see cref="DiffPdfApiException"/> 404 when the instance has no configured print source.
-    /// </summary>
-    public Task<PrintOperationResponse> StartPrintAndCompareAsync(string branchKey, string instanceKey, CancellationToken ct = default) =>
-        JsonAsync<PrintOperationResponse>(HttpMethod.Post, $"/api/v1/triggers/{Esc(branchKey)}/{Esc(instanceKey)}/print", null, ct);
-
-    /// <summary>Gets a print-and-compare operation's status (null when unknown / expired).</summary>
-    public Task<PrintOperationResponse?> GetPrintOperationAsync(Guid operationId, CancellationToken ct = default) =>
-        GetOrNullAsync<PrintOperationResponse>($"/api/v1/print-operations/{operationId}", ct);
-
     /// <summary>Compares a single old/new pair synchronously. Returns the raw result JSON (the per-page model is deep).</summary>
     public Task<JsonElement> CompareSingleAsync(SingleComparisonRequest request, CancellationToken ct = default) =>
         JsonAsync<JsonElement>(HttpMethod.Post, "/api/v1/comparisons", request, ct);
