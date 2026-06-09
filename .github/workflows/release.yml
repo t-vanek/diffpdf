@@ -1,0 +1,47 @@
+name: Release
+
+# On a v* tag: publish self-contained win-x64 bundles for the server and desktop client and attach
+# them (zipped) to a GitHub Release. Runs on Windows so the desktop client (WinExe) publishes natively.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write   # create the GitHub Release + upload assets
+
+jobs:
+  release:
+    name: Publish server + client bundles
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Compute version
+        id: ver
+        shell: bash
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish bundles
+        shell: pwsh
+        run: ./deploy/publish.ps1 -Version ${{ steps.ver.outputs.version }} -OutDir publish
+
+      - name: Create GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = "${{ steps.ver.outputs.version }}"
+          $assets = Get-ChildItem publish/*.zip | ForEach-Object { $_.FullName }
+          gh release create "v$version" $assets --title "v$version" --generate-notes
+
+      - name: Upload bundles as workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: diffpdf-bundles-${{ steps.ver.outputs.version }}
+          path: publish/*.zip
+          if-no-files-found: error

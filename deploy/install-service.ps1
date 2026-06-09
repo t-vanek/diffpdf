@@ -39,6 +39,11 @@ param(
     # Optional connection string, stored as a service-scoped environment variable.
     [string] $ConnectionString,
 
+    # ASP.NET Core environment + bind URL, stored as service-scoped environment variables.
+    # Url 0.0.0.0 binds all interfaces so LAN clients can reach the server.
+    [string] $Environment = 'Production',
+    [string] $Url = 'http://0.0.0.0:5275',
+
     # Optional logon account for the service (default: LocalSystem).
     [string] $ServiceAccount,
     [System.Security.SecureString] $ServicePassword,
@@ -106,13 +111,21 @@ if (-not [string]::IsNullOrWhiteSpace($ServiceAccount)) {
     Write-Host "Service logon account set to '$ServiceAccount'." -ForegroundColor Green
 }
 
-if (-not [string]::IsNullOrWhiteSpace($ConnectionString)) {
-    # Service-scoped env var (visible only to this service), picked up on next start.
-    $serviceKey = "HKLM:\SYSTEM\CurrentControlSet\Services\$Name"
-    $envEntry = "ConnectionStrings__SqlServer=$ConnectionString"
-    New-ItemProperty -Path $serviceKey -Name 'Environment' -PropertyType MultiString -Value @($envEntry) -Force | Out-Null
-    Write-Host "Set service-scoped environment variable 'ConnectionStrings__SqlServer'." -ForegroundColor Green
+# Service-scoped environment variables (visible only to this service), picked up on next start. Merge with any
+# existing values so re-running without -ConnectionString keeps the previously stored one.
+$serviceKey = "HKLM:\SYSTEM\CurrentControlSet\Services\$Name"
+$env = [ordered]@{}
+$current = (Get-ItemProperty -Path $serviceKey -Name 'Environment' -ErrorAction SilentlyContinue).Environment
+foreach ($entry in @($current)) {
+    if ($entry -match '^(.*?)=(.*)$') { $env[$matches[1]] = $matches[2] }
 }
+$env['ASPNETCORE_ENVIRONMENT'] = $Environment
+$env['ASPNETCORE_URLS'] = $Url
+if (-not [string]::IsNullOrWhiteSpace($ConnectionString)) { $env['ConnectionStrings__SqlServer'] = $ConnectionString }
+$multi = @($env.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" })
+New-ItemProperty -Path $serviceKey -Name 'Environment' -PropertyType MultiString -Value $multi -Force | Out-Null
+$hasConn = $env.Contains('ConnectionStrings__SqlServer')
+Write-Host "Set service environment: ASPNETCORE_ENVIRONMENT=$Environment, ASPNETCORE_URLS=$Url$(if ($hasConn) { ', ConnectionStrings__SqlServer=***' })." -ForegroundColor Green
 
 if ($NoStart) {
     Write-Host "Service '$Name' installed (not started; -NoStart was specified)." -ForegroundColor Green
