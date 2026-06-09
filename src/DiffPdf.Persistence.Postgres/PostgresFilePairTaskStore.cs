@@ -42,6 +42,7 @@ public sealed class PostgresFilePairTaskStore(DiffPdfDbContext db, EntityMapper 
             .ExecuteUpdateAsync(s => s
                 .SetProperty(t => t.Status, status.ToString())
                 .SetProperty(t => t.ResultJson, resultJson)
+                .SetProperty(t => t.ResultStatus, result.Status.ToString())
                 .SetProperty(t => t.CompletedAt, now)
                 .SetProperty(t => t.LockedBy, (string?)null)
                 .SetProperty(t => t.LockedUntil, (DateTimeOffset?)null)
@@ -173,6 +174,37 @@ public sealed class PostgresFilePairTaskStore(DiffPdfDbContext db, EntityMapper 
         var rows = await db.FilePairTasks.AsNoTracking()
             .Where(t => t.JobId == jobId).OrderBy(t => t.RelativePath).ToListAsync(ct);
         return rows.Select(mapper.ToDomain).ToList();
+    }
+
+    public async Task<(IReadOnlyList<FilePairTask> Items, int Total)> ListByJobPagedAsync(
+        Guid jobId, int limit, int offset, string? search, bool onlyDiffering, CancellationToken ct = default)
+    {
+        var q = db.FilePairTasks.AsNoTracking().Where(t => t.JobId == jobId);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.ToLower();
+            q = q.Where(t => t.RelativePath.ToLower().Contains(term)); // LOWER(..) LIKE — case-insensitive on both providers
+        }
+        if (onlyDiffering)
+            q = q.Where(t => t.ResultStatus == "Differs" || t.ResultStatus == "OnlyInOld"
+                          || t.ResultStatus == "OnlyInNew" || t.ResultStatus == "Error");
+
+        int total = await q.CountAsync(ct);
+        var rows = await q.OrderBy(t => t.RelativePath)
+            .Skip(Math.Max(0, offset)).Take(limit).ToListAsync(ct);
+        return (rows.Select(mapper.ToDomain).ToList(), total);
+    }
+
+    public async Task<int> BackfillResultStatusAsync(int max, CancellationToken ct = default)
+    {
+        var rows = await db.FilePairTasks
+            .Where(t => t.Status == "Completed" && t.ResultJson != null && t.ResultStatus == null)
+            .OrderBy(t => t.CreatedAt).Take(max).ToListAsync(ct);
+        foreach (var e in rows)
+            if (DiffPdfJson.Deserialize<FilePairResult>(e.ResultJson!) is { } r)
+                e.ResultStatus = r.Status.ToString();
+        if (rows.Count > 0) await db.SaveChangesAsync(ct);
+        return rows.Count;
     }
 
     public async Task<int> CountActiveAsync(CancellationToken ct = default) =>

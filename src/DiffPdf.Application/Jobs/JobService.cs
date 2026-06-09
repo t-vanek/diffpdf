@@ -33,6 +33,12 @@ public interface IJobService
     Task<JobListPage> ListAsync(JobFilter filter, CancellationToken ct = default);
     Task<ComparisonJob?> GetAsync(Guid id, CancellationToken ct = default);
     Task<IReadOnlyList<FilePairTask>?> ListTasksAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>A page of a job's file-pair tasks (optional name <c>search</c> + <c>onlyDiffering</c> filter); null
+    /// if the job is unknown. Returns the page plus the filtered total — for the client's lazy-loaded file list.</summary>
+    Task<(IReadOnlyList<FilePairTask> Items, int Total)?> ListTasksPagedAsync(
+        Guid id, int limit, int offset, string? search, bool onlyDiffering, CancellationToken ct = default);
+
     Task<ComparisonJob?> CancelAsync(Guid id, CancellationToken ct = default);
     Task<ComparisonJob?> PauseAsync(Guid id, CancellationToken ct = default);
     Task<JobResumeOutcome?> ResumeAsync(Guid id, CancellationToken ct = default);
@@ -74,6 +80,13 @@ public sealed class JobService(
     {
         if (await jobStore.GetAsync(id, ct) is null) return null;
         return await taskStore.ListByJobAsync(id, ct);
+    }
+
+    public async Task<(IReadOnlyList<FilePairTask> Items, int Total)?> ListTasksPagedAsync(
+        Guid id, int limit, int offset, string? search, bool onlyDiffering, CancellationToken ct = default)
+    {
+        if (await jobStore.GetAsync(id, ct) is null) return null;
+        return await taskStore.ListByJobPagedAsync(id, limit, offset, search, onlyDiffering, ct);
     }
 
     public async Task<ComparisonJob?> CancelAsync(Guid id, CancellationToken ct = default)

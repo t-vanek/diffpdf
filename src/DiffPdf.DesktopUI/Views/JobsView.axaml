@@ -18,14 +18,24 @@
       <ComboBox Width="150" ItemsSource="{Binding InstanceOptions}" SelectedItem="{Binding FilterInstance}"/>
       <ComboBox Width="120" ItemsSource="{Binding StatusFilters}" SelectedItem="{Binding FilterStatus}"/>
       <Button Content="Obnovit" Classes="ghost" Command="{Binding RefreshCommand}" ToolTip.Tip="Obnovit (F5)"/>
+      <!-- Vytisknout a porovnat: jen pro instanci s nakonfigurovaným tiskovým zdrojem (SOA). -->
+      <Button Content="🖨 Vytisknout a porovnat" Classes="accent"
+              Command="{Binding PrintAndCompareCommand}"
+              IsVisible="{Binding CanPrintAndCompare}"
+              ToolTip.Tip="Vytiskne novou vzorovou dávku a porovná ji s předchozí dávkou"/>
+      <TextBlock Text="{Binding PrintStatus}" Foreground="{DynamicResource Info}" FontWeight="SemiBold" VerticalAlignment="Center"/>
       <TextBlock Text="{Binding Info}" Foreground="{DynamicResource Info}" VerticalAlignment="Center"/>
       <TextBlock Text="{Binding Error}" Foreground="{DynamicResource Bad}" VerticalAlignment="Center"/>
       <ProgressBar IsIndeterminate="True" Width="100" Height="4" VerticalAlignment="Center" IsVisible="{Binding IsBusy}"/>
     </WrapPanel>
 
     <Grid ColumnDefinitions="3*,2*">
-      <!-- Seznam úloh -->
-      <DataGrid Grid.Column="0" Margin="0,0,12,0" x:CompileBindings="False" ItemsSource="{Binding Jobs}"
+      <!-- Seznam úloh; "Načíst další úlohy" je footer pod seznamem (nepřekrývá řádky). -->
+      <DockPanel Grid.Column="0" Margin="0,0,12,0">
+        <Button DockPanel.Dock="Bottom" Content="Načíst další úlohy" Classes="ghost" HorizontalAlignment="Center" Margin="0,6,0,0"
+                IsVisible="{Binding MoreJobsAvailable}" Command="{Binding LoadMoreJobsCommand}"/>
+        <Panel>
+      <DataGrid x:Name="JobsGrid" x:CompileBindings="False" ItemsSource="{Binding Jobs}"
                 SelectedItem="{Binding SelectedJob}" IsReadOnly="True" AutoGenerateColumns="False" CanUserResizeColumns="True">
         <DataGrid.Columns>
           <DataGridTemplateColumn Header="Stav" Width="140">
@@ -63,15 +73,16 @@
           <DataGridTextColumn Header="Vytvořeno" Binding="{Binding Job.CreatedAt, Converter={x:Static vm:LocalTimeConverter.Instance}, ConverterParameter='dd.MM HH:mm'}" Width="*"/>
         </DataGrid.Columns>
       </DataGrid>
-
-      <!-- Prázdný stav přes seznam úloh -->
-      <TextBlock Grid.Column="0" Margin="0,0,12,0" Text="Žádné úlohy odpovídající filtru." Foreground="{DynamicResource InkFaint}"
-                 HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding HasNoJobs}"/>
+          <!-- Prázdný stav přes seznam úloh -->
+          <TextBlock Text="Žádné úlohy odpovídající filtru." Foreground="{DynamicResource InkFaint}"
+                     HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding HasNoJobs}"/>
+        </Panel>
+      </DockPanel>
 
       <DockPanel Grid.Column="1"
                  IsVisible="{Binding SelectedSummary, Converter={x:Static ObjectConverters.IsNotNull}}">
         <!-- Horní část: kompaktní metadata úlohy; seznam souborů níže vyplní zbytek výšky. -->
-        <StackPanel DockPanel.Dock="Top" Spacing="10">
+        <StackPanel DockPanel.Dock="Top" Spacing="6">
           <!-- Hlavička: instance · větev + stav -->
           <StackPanel Spacing="2">
             <StackPanel Orientation="Horizontal" Spacing="8">
@@ -102,7 +113,7 @@
             <ContentControl Content="{Binding SelectedSummary}">
               <ContentControl.ContentTemplate>
                 <DataTemplate x:DataType="models:JobSummary">
-                  <StackPanel Spacing="2">
+                  <StackPanel Orientation="Horizontal" Spacing="14"><!-- timestamps on one line to save vertical space -->
                     <TextBlock Foreground="{DynamicResource InkFaint}" FontSize="12"
                                Text="{Binding CreatedAt, Converter={x:Static vm:LocalTimeConverter.Instance}, ConverterParameter='Vytvořeno|dd.MM.yyyy HH:mm'}"/>
                     <TextBlock Foreground="{DynamicResource InkFaint}" FontSize="12"
@@ -197,33 +208,38 @@
           </Grid>
         </StackPanel>
 
-        <!-- Seznam souborů vyplní zbytek výšky panelu; dvojklik na řádek otevře okno s detailem dvojice. -->
-        <Panel Margin="0,8,0,0">
-          <DataGrid x:CompileBindings="False" ItemsSource="{Binding FilesView}" IsReadOnly="True" MinHeight="160"
-                    AutoGenerateColumns="False" CanUserResizeColumns="True" DoubleTapped="OnFileDoubleTapped">
-            <DataGrid.Columns>
-              <DataGridTemplateColumn Header="Stav" Width="140">
-                <DataGridTemplateColumn.CellTemplate>
-                  <DataTemplate>
-                    <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
-                      <TextBlock Text="{Binding Icon}" Foreground="{Binding Brush}"/>
-                      <TextBlock Text="{Binding StatusText}" Foreground="{Binding Brush}"/>
-                    </StackPanel>
-                  </DataTemplate>
-                </DataGridTemplateColumn.CellTemplate>
-              </DataGridTemplateColumn>
-              <DataGridTextColumn Header="Soubor" Binding="{Binding Name}" Width="*"/>
-            </DataGrid.Columns>
-          </DataGrid>
-          <TextBlock Text="Žádné soubory neodpovídají filtru." Foreground="{DynamicResource InkFaint}"
-                     HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding ShowNoFilesMessage}"/>
-          <!-- Načítací indikátor přes seznam, dokud se soubory stahují (velký job má stovky párů). -->
-          <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Center"
-                      IsVisible="{Binding IsLoadingFiles}">
-            <ProgressBar IsIndeterminate="True" Width="130" Height="4" VerticalAlignment="Center"/>
-            <TextBlock Text="Načítání souborů…" Foreground="{DynamicResource InkFaint}" VerticalAlignment="Center"/>
-          </StackPanel>
-        </Panel>
+        <!-- Seznam souborů vyplní zbytek výšky; "Načíst další" je footer pod seznamem (nepřekrývá řádky). -->
+        <DockPanel Margin="0,8,0,0">
+          <!-- Footer: doučte další stránku souborů (i scrollem na konec); jen když je co dočítat. -->
+          <Button DockPanel.Dock="Bottom" Content="Načíst další" Classes="ghost" HorizontalAlignment="Center" Margin="0,6,0,0"
+                  IsVisible="{Binding MoreFilesAvailable}" Command="{Binding LoadMoreFilesCommand}"/>
+          <Panel>
+            <DataGrid x:Name="FilesGrid" x:CompileBindings="False" ItemsSource="{Binding FilesView}" IsReadOnly="True" MinHeight="160"
+                      AutoGenerateColumns="False" CanUserResizeColumns="True" DoubleTapped="OnFileDoubleTapped">
+              <DataGrid.Columns>
+                <DataGridTemplateColumn Header="Stav" Width="140">
+                  <DataGridTemplateColumn.CellTemplate>
+                    <DataTemplate>
+                      <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Icon}" Foreground="{Binding Brush}"/>
+                        <TextBlock Text="{Binding StatusText}" Foreground="{Binding Brush}"/>
+                      </StackPanel>
+                    </DataTemplate>
+                  </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTextColumn Header="Soubor" Binding="{Binding Name}" Width="*"/>
+              </DataGrid.Columns>
+            </DataGrid>
+            <TextBlock Text="Žádné soubory neodpovídají filtru." Foreground="{DynamicResource InkFaint}"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding ShowNoFilesMessage}"/>
+            <!-- Načítací indikátor přes seznam, dokud se soubory stahují (velký job má stovky párů). -->
+            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Center"
+                        IsVisible="{Binding IsLoadingFiles}">
+              <ProgressBar IsIndeterminate="True" Width="130" Height="4" VerticalAlignment="Center"/>
+              <TextBlock Text="Načítání souborů…" Foreground="{DynamicResource InkFaint}" VerticalAlignment="Center"/>
+            </StackPanel>
+          </Panel>
+        </DockPanel>
       </DockPanel>
     </Grid>
   </DockPanel>

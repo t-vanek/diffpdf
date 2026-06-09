@@ -21,6 +21,7 @@ public sealed partial class EntityMapper
     public partial ComparisonJob ToDomain(JobEntity entity);
 
     [MapProperty(nameof(FilePairTaskEntity.ResultJson), nameof(FilePairTask.Result))]
+    [MapperIgnoreSource(nameof(FilePairTaskEntity.ResultStatus))] // denormalized verdict (list filter only); domain derives it from Result
     public partial FilePairTask ToDomain(FilePairTaskEntity entity);
 
     [MapProperty(nameof(SubscriptionEntity.EventsJson), nameof(NotificationSubscription.Events))]

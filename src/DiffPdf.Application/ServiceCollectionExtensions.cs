@@ -2,6 +2,7 @@ using DiffPdf.Application.Abstractions;
 using DiffPdf.Application.Configuration;
 using DiffPdf.Application.ControlChecks;
 using DiffPdf.Application.Jobs;
+using DiffPdf.Application.Printing;
 using DiffPdf.Application.Queue;
 using DiffPdf.Application.Runs;
 using DiffPdf.Application.Scope;
@@ -43,6 +44,11 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IScopeConfigurationResolver, ScopeConfigurationResolver>();
         services.AddScoped<IScopeConfigurationProvisioner, ScopeConfigurationProvisioner>();
         services.AddScoped<IScheduleService, ScheduleService>();
+
+        // Print-and-compare (Tisk SOA): scope→connection resolver + in-memory operation status.
+        // Singletons: the resolver reads IOptions, the operation store shares state across requests + the handler.
+        services.AddSingleton<IPrintSourceResolver, PrintSourceResolver>();
+        services.AddSingleton<IPrintOperationStore, InMemoryPrintOperationStore>();
 
         return services;
     }

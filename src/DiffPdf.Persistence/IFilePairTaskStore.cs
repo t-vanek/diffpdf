@@ -64,6 +64,22 @@ public interface IFilePairTaskStore
 
     Task<IReadOnlyList<FilePairTask>> ListByJobAsync(Guid jobId, CancellationToken ct = default);
 
+    /// <summary>
+    /// A page of a job's file-pair tasks (ordered by relative path) for the client's lazy-loaded file list.
+    /// <paramref name="search"/> (when set) matches the relative path (contains, case-insensitive);
+    /// <paramref name="onlyDiffering"/> keeps only pairs whose verdict differs (Differs/OnlyInOld/OnlyInNew/Error).
+    /// Returns the page plus the total tasks matching the filter (for "loaded / total" + scroll-to-load).
+    /// </summary>
+    Task<(IReadOnlyList<FilePairTask> Items, int Total)> ListByJobPagedAsync(
+        Guid jobId, int limit, int offset, string? search, bool onlyDiffering, CancellationToken ct = default);
+
+    /// <summary>
+    /// One-time backfill of the denormalized <c>ResultStatus</c> verdict column from <c>ResultJson</c> for up to
+    /// <paramref name="max"/> completed tasks missing it (pre-migration rows). Returns rows updated. (No-op for the
+    /// in-memory store, which derives the verdict from the live result.)
+    /// </summary>
+    Task<int> BackfillResultStatusAsync(int max, CancellationToken ct = default);
+
     /// <summary>Counts active (Queued or Running) file-pair tasks across all jobs (operational backlog depth).</summary>
     Task<int> CountActiveAsync(CancellationToken ct = default);
 

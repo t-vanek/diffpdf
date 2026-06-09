@@ -91,6 +91,9 @@ internal sealed class EfCoreMigrationBackgroundService(
                 // One-time (idempotent) backfill of denormalized verdict counts for jobs completed before the
                 // AddJobVerdictColumns migration — so the jobs list keeps showing their verdict without the report.
                 await BackfillJobVerdictsAsync(scope.ServiceProvider, stoppingToken);
+                // One-time (idempotent) backfill of the denormalized task verdict (ResultStatus) so the client's
+                // "Jen odlišné" filter is correct for pairs completed before the AddTaskResultStatus migration.
+                await BackfillTaskResultStatusAsync(scope.ServiceProvider, stoppingToken);
                 // One-time heal: skip Queued pairs left stranded by a cancel that predated the cancel→skip fix.
                 await SkipStrandedTasksAsync(scope.ServiceProvider, stoppingToken);
                 return;
@@ -122,6 +125,22 @@ internal sealed class EfCoreMigrationBackgroundService(
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Job verdict backfill failed (non-fatal; the list falls back to a null verdict).");
+        }
+    }
+
+    private async Task BackfillTaskResultStatusAsync(IServiceProvider services, CancellationToken ct)
+    {
+        try
+        {
+            var tasks = services.GetRequiredService<IFilePairTaskStore>();
+            int total = 0, batch;
+            do { batch = await tasks.BackfillResultStatusAsync(500, ct); total += batch; }
+            while (batch > 0 && !ct.IsCancellationRequested);
+            if (total > 0) logger.LogInformation("Backfilled verdict (ResultStatus) for {Count} completed file-pair task(s).", total);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Task result-status backfill failed (non-fatal; 'only differing' may miss old pairs).");
         }
     }
 

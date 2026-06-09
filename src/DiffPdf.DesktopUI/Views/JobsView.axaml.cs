@@ -1,12 +1,44 @@
+using System;
+using System.Linq;
+using System.Windows.Input;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
+using Avalonia.Layout;
+using Avalonia.VisualTree;
 using DiffPdf.DesktopUI.ViewModels;
 
 namespace DiffPdf.DesktopUI.Views;
 
 public partial class JobsView : UserControl
 {
-    public JobsView() => InitializeComponent();
+    public JobsView()
+    {
+        InitializeComponent();
+        // Lazy "load more on scroll" for both grids; the visible "Načíst další" button is the reliable fallback.
+        HookLoadMoreOnScroll(JobsGrid, () => (DataContext as JobsViewModel)?.LoadMoreJobsCommand);
+        HookLoadMoreOnScroll(FilesGrid, () => (DataContext as JobsViewModel)?.LoadMoreFilesCommand);
+    }
+
+    // Best-effort: when the DataGrid's vertical scrollbar nears the end, invoke the supplied "load more" command.
+    // The command itself guards re-entry, so a doubled event is harmless.
+    private static void HookLoadMoreOnScroll(DataGrid grid, Func<ICommand?> command)
+    {
+        grid.Loaded += (_, _) =>
+        {
+            if (grid.GetVisualDescendants().OfType<ScrollBar>().FirstOrDefault(b => b.Orientation == Orientation.Vertical) is not { } bar
+                || bar.Tag as string == "lm-hooked")
+                return;
+            bar.Tag = "lm-hooked"; // subscribe once, even if the view re-attaches
+            bar.PropertyChanged += (_, e) =>
+            {
+                if (e.Property != RangeBase.ValueProperty) return;
+                if (bar.Maximum > 0 && bar.Value >= bar.Maximum - Math.Max(bar.LargeChange, 1)
+                    && command() is { } cmd && cmd.CanExecute(null))
+                    cmd.Execute(null);
+            };
+        };
+    }
 
     // Ctrl+F jumps to the file search box (when a job's file list is open).
     protected override void OnKeyDown(KeyEventArgs e)

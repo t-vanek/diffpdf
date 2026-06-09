@@ -87,13 +87,14 @@ public sealed class DiffPdfDbContext(DbContextOptions<DiffPdfDbContext> options)
             e.HasKey(x => x.Id);
             e.Property(x => x.Id).HasColumnName("id");
             e.Property(x => x.JobId).HasColumnName("job_id");
-            e.Property(x => x.RelativePath).HasColumnName("relative_path");
+            e.Property(x => x.RelativePath).HasColumnName("relative_path").HasMaxLength(400); // bounded so it's indexable
             e.Property(x => x.OldFilePath).HasColumnName("old_file_path");
             e.Property(x => x.NewFilePath).HasColumnName("new_file_path");
             e.Property(x => x.Status).HasColumnName("status");
             e.Property(x => x.AttemptCount).HasColumnName("attempt_count");
             e.Property(x => x.Error).HasColumnName("error");
             e.Property(x => x.ResultJson).HasColumnName("result_json").HasColumnType("jsonb");
+            e.Property(x => x.ResultStatus).HasMaxLength(32); // verdict name; small so the (JobId, ResultStatus) index is compact
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
             e.Property(x => x.StartedAt).HasColumnName("started_at");
             e.Property(x => x.CompletedAt).HasColumnName("completed_at");
@@ -101,6 +102,8 @@ public sealed class DiffPdfDbContext(DbContextOptions<DiffPdfDbContext> options)
             e.Property(x => x.LockedBy).HasColumnName("locked_by");
             e.Property(x => x.LockedUntil).HasColumnName("locked_until");
             e.HasIndex(x => new { x.JobId, x.Status });
+            e.HasIndex(x => new { x.JobId, x.RelativePath });   // paged file list: WHERE JobId + ORDER BY RelativePath (no sort)
+            e.HasIndex(x => new { x.JobId, x.ResultStatus });   // server-side "jen odlišné" verdict filter
         });
 
         b.Entity<SubscriptionEntity>(e =>

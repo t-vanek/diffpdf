@@ -499,6 +499,32 @@ public sealed record BranchRunResult
     public IReadOnlyList<InstanceRunResult> Instances { get; init; } = [];
 }
 
+// ---------------- Print and compare (D3Soft Tisk SOA) ----------------
+
+/// <summary>Scope keys ("branchKey/instanceKey") that have a configured print source.</summary>
+public sealed record PrintSourcesResponse
+{
+    public IReadOnlyList<string> Scopes { get; init; } = [];
+}
+
+/// <summary>
+/// Status of a "Vytisknout a porovnat" operation. <see cref="Phase"/> is one of
+/// Printing / FindingPrevious / Fetching / Launching / Completed / NoPreviousBatch / Failed;
+/// <see cref="JobId"/> is set once the comparison launches (it then appears in the Jobs list).
+/// </summary>
+public sealed record PrintOperationResponse
+{
+    public Guid OperationId { get; init; }
+    public string BranchKey { get; init; } = "";
+    public string InstanceKey { get; init; } = "";
+    public string Phase { get; init; } = "";
+    public string? NewBatch { get; init; }
+    public string? PreviousBatch { get; init; }
+    public Guid? JobId { get; init; }
+    public string? ValidationSummary { get; init; }
+    public string? Error { get; init; }
+}
+
 // ---------------- Operational visibility ----------------
 
 /// <summary>Identity, build version and uptime of the responding API replica.</summary>

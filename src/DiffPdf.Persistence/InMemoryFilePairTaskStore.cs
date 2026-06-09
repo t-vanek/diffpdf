@@ -173,6 +173,25 @@ public sealed class InMemoryFilePairTaskStore : IFilePairTaskStore
         Task.FromResult<IReadOnlyList<FilePairTask>>(
             _tasks.Values.Where(t => t.JobId == jobId).OrderBy(t => t.RelativePath).ToList());
 
+    public Task<(IReadOnlyList<FilePairTask> Items, int Total)> ListByJobPagedAsync(
+        Guid jobId, int limit, int offset, string? search, bool onlyDiffering, CancellationToken ct = default)
+    {
+        IEnumerable<FilePairTask> q;
+        lock (_gate)
+            q = _tasks.Values.Where(t => t.JobId == jobId).ToList();
+        if (!string.IsNullOrWhiteSpace(search))
+            q = q.Where(t => t.RelativePath.Contains(search, StringComparison.OrdinalIgnoreCase));
+        if (onlyDiffering)
+            q = q.Where(t => t.Result?.Status is FilePairStatus.Differs or FilePairStatus.OnlyInOld
+                          or FilePairStatus.OnlyInNew or FilePairStatus.Error);
+        var ordered = q.OrderBy(t => t.RelativePath, StringComparer.Ordinal).ToList();
+        var page = ordered.Skip(Math.Max(0, offset)).Take(limit).ToList();
+        return Task.FromResult<(IReadOnlyList<FilePairTask>, int)>((page, ordered.Count));
+    }
+
+    // In-memory derives the verdict from the live result — nothing to backfill.
+    public Task<int> BackfillResultStatusAsync(int max, CancellationToken ct = default) => Task.FromResult(0);
+
     public Task<int> CountActiveAsync(CancellationToken ct = default) =>
         Task.FromResult(_tasks.Values.Count(t => t.Status is FilePairTaskStatus.Queued or FilePairTaskStatus.Running));
 

@@ -37,7 +37,7 @@ public class ComparisonTracingTests
         {
             ShouldListenTo = s => s.Name == "DiffPdf.Comparison",
             Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllData,
-            ActivityStopped = captured.Add,
+            ActivityStopped = a => { lock (captured) captured.Add(a); }, // thread-safe: concurrent tests' spans hit this global listener
         };
         ActivitySource.AddActivityListener(listener);
 
@@ -73,9 +73,12 @@ public class ComparisonTracingTests
             new NullJobProgressPublisher(), new WorkerInstanceIdProvider(), Options.Create(new WorkerOptions { MaxPdfSizeBytes = 0 }),
             null!, NullLogger<CompareFilePairHandler>.Instance, CancellationToken.None);
 
-        // Filter to THIS test's job: the listener is process-global, so a comparison.pair span from another
-        // test's handler running in parallel would otherwise pollute the count (xUnit runs classes concurrently).
-        var span = Assert.Single(captured, a => a.OperationName == "comparison.pair"
+        // Filter to THIS test's job: the listener is process-global, so a comparison.pair span from another test's
+        // handler running in parallel would otherwise pollute the count (xUnit runs classes concurrently). Snapshot
+        // under the lock first so a concurrent add never races the enumeration.
+        List<Activity> snapshot;
+        lock (captured) snapshot = captured.ToList();
+        var span = Assert.Single(snapshot, a => a.OperationName == "comparison.pair"
             && a.GetTagItem("diffpdf.job_id")?.ToString() == job.Id.ToString());
         Assert.Equal(job.Id.ToString(), span.GetTagItem("diffpdf.job_id")?.ToString());
         Assert.Equal("doc.pdf", span.GetTagItem("diffpdf.pair"));
