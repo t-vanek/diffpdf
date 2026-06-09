@@ -14,6 +14,9 @@ public sealed record PageText
     public int Rotation { get; init; }
     public IReadOnlyList<PositionedWord> Words { get; init; } = [];
 
+    /// <summary>True when this page's text could not be extracted (a contained per-page failure); <see cref="Words"/> is empty.</summary>
+    public bool ExtractionFailed { get; init; }
+
     /// <summary>True when the page has any extractable text.</summary>
     public bool HasText => Words.Count > 0;
 

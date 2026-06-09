@@ -11,10 +11,11 @@ using Wolverine;
 namespace DiffPdf.Messaging;
 
 /// <summary>
-/// Periodically requeues file-pair tasks whose worker lease expired (crashed
-/// mid-comparison) and re-dispatches them, so a batch resumes instead of
-/// stalling. Recovery is safe: re-dispatched pairs are idempotent (claim +
-/// complete-once), and a finished job's CompleteAsync is a no-op.
+/// Periodic queue-maintenance sweep. Two jobs per tick: (1) requeues file-pair tasks whose worker lease
+/// expired (crashed mid-comparison) and re-dispatches them, so a batch resumes instead of stalling; (2) heals
+/// pairs left Queued under a now-terminal job (a cancel that raced the per-pair dispatch), which would otherwise
+/// linger as "pending" comparisons until the next restart. Recovery is safe: re-dispatched pairs are idempotent
+/// (claim + complete-once), and a finished job's CompleteAsync is a no-op.
 /// </summary>
 public sealed class StaleTaskRecoveryService(
     IServiceScopeFactory scopeFactory,
@@ -41,6 +42,13 @@ public sealed class StaleTaskRecoveryService(
 
                 if (recovered.Count > 0)
                     logger.LogInformation("Recovered {Count} stale file-pair task(s)", recovered.Count);
+
+                // Heal pairs stranded Queued under a now-terminal (Cancelled/Failed/Completed) job. Runs AFTER the
+                // requeue above so a stale-Running pair of a terminal job is first returned to Queued, then skipped
+                // here in the same tick. No-op on the in-memory store (no cross-store job view); effective on SQL.
+                int healed = await taskStore.SkipPendingForTerminalJobsAsync(stoppingToken);
+                if (healed > 0)
+                    logger.LogInformation("Skipped {Count} stranded Queued pair(s) under terminal jobs", healed);
 
                 // Not leader-gated — runs on every replica — so each tick is "active work".
                 heartbeat.Record(ServiceName, leaderActive: true);

@@ -23,6 +23,14 @@ public enum NotificationEvent
 
     /// <summary>A previously failing control check passed again.</summary>
     CheckRecovered,
+
+    /// <summary>A Running comparison job stopped making progress (stalled) past the watchdog's stall window.</summary>
+    JobStalled,
+
+    /// <summary>A batch completed (gate passed, or no gate) but some file pairs could not be compared — they
+    /// errored, e.g. after exhausting their retries or an unreadable PDF. Escalated so the failures are not
+    /// announced silently under a plain <see cref="Completed"/>.</summary>
+    CompletedWithErrors,
 }
 
 /// <summary>

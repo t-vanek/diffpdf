@@ -31,12 +31,14 @@ public sealed class SqlServerFilePairTaskStore(DiffPdfDbContext db, EntityMapper
         return mapper.ToDomain(entity);
     }
 
-    public async Task CompleteAsync(Guid taskId, FilePairResult result, FilePairTaskStatus status, CancellationToken ct = default)
+    public async Task<bool> CompleteAsync(Guid taskId, FilePairResult result, FilePairTaskStatus status, CancellationToken ct = default)
     {
         var now = DateTimeOffset.UtcNow;
         string resultJson = DiffPdfJson.Serialize(result);
-        await db.FilePairTasks
-            .Where(t => t.Id == taskId)
+        // Guard on Running so a duplicate/late completion (e.g. a lease-expiry re-run) is a no-op rather than a
+        // second result write + a double processed-count increment. Rows affected == whether this call won.
+        int rows = await db.FilePairTasks
+            .Where(t => t.Id == taskId && t.Status == "Running")
             .ExecuteUpdateAsync(s => s
                 .SetProperty(t => t.Status, status.ToString())
                 .SetProperty(t => t.ResultJson, resultJson)
@@ -44,6 +46,7 @@ public sealed class SqlServerFilePairTaskStore(DiffPdfDbContext db, EntityMapper
                 .SetProperty(t => t.LockedBy, (string?)null)
                 .SetProperty(t => t.LockedUntil, (DateTimeOffset?)null)
                 .SetProperty(t => t.Version, t => t.Version + 1), ct);
+        return rows > 0;
     }
 
     public async Task FailAsync(Guid taskId, string error, CancellationToken ct = default)
@@ -118,6 +121,36 @@ public sealed class SqlServerFilePairTaskStore(DiffPdfDbContext db, EntityMapper
                 .SetProperty(t => t.Version, t => t.Version + 1), ct);
 
         return stale.Select(x => (x.JobId, x.Id)).ToList();
+    }
+
+    public async Task<IReadOnlyList<(Guid JobId, Guid TaskId)>> ListStaleQueuedAsync(DateTimeOffset idleSince, int limit, CancellationToken ct = default)
+    {
+        var rows = await db.FilePairTasks.AsNoTracking()
+            .Where(t => t.Status == "Queued"
+                && db.Jobs.Any(j => j.Id == t.JobId && j.Status == "Running" && j.TotalCount > 0 && j.UpdatedAt < idleSince))
+            .Select(t => new { t.JobId, t.Id })
+            .Take(limit)
+            .ToListAsync(ct);
+        return rows.Select(x => (x.JobId, x.Id)).ToList();
+    }
+
+    public async Task<IReadOnlyList<(Guid JobId, Guid TaskId)>> RequeueRunningTasksAsync(string? lockedBy, CancellationToken ct = default)
+    {
+        var snapshot = await db.FilePairTasks.AsNoTracking()
+            .Where(t => t.Status == "Running" && (lockedBy == null || t.LockedBy == lockedBy))
+            .Select(t => new { t.Id, t.JobId })
+            .ToListAsync(ct);
+        if (snapshot.Count == 0) return [];
+
+        await db.FilePairTasks
+            .Where(t => t.Status == "Running" && (lockedBy == null || t.LockedBy == lockedBy))
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(t => t.Status, "Queued")
+                .SetProperty(t => t.LockedBy, (string?)null)
+                .SetProperty(t => t.LockedUntil, (DateTimeOffset?)null)
+                .SetProperty(t => t.Version, t => t.Version + 1), ct);
+
+        return snapshot.Select(x => (x.JobId, x.Id)).ToList();
     }
 
     public async Task RequeueForRetryAsync(Guid taskId, CancellationToken ct = default)

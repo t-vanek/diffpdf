@@ -47,7 +47,7 @@ public sealed class OperationalStatusService(
     IHostEnvironment environment)
 {
     // Canonical automation services, so the status always lists them even before their first tick.
-    private static readonly string[] KnownServices = ["control-plane", "stale-recovery"];
+    private static readonly string[] KnownServices = ["control-plane", "stale-recovery", "stuck-job-watchdog"];
 
     private static readonly TimeSpan RendererCacheTtl = TimeSpan.FromSeconds(60);
     private readonly SemaphoreSlim _rendererGate = new(1, 1);

@@ -90,6 +90,14 @@ public sealed class InMemoryJobStore : IJobStore
             .Take(limit)
             .ToList());
 
+    public Task<IReadOnlyList<ComparisonJob>> ListRunningFullyProcessedAsync(DateTimeOffset idleSince, int limit, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<ComparisonJob>>(_jobs.Values
+            .Where(j => j.Status == JobStatus.Running && j.TotalCount > 0 && j.ProcessedCount >= j.TotalCount
+                && (j.UpdatedAt ?? j.StartedAt ?? j.CreatedAt) < idleSince)
+            .OrderBy(j => j.UpdatedAt)
+            .Take(limit)
+            .ToList());
+
     public Task<ComparisonJob?> TryStartAsync(Guid id, string workerId, TimeSpan lease, CancellationToken ct = default)
     {
         lock (_gate)

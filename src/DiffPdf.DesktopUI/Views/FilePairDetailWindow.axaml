@@ -18,6 +18,8 @@
                      IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"/>
           <TextBlock Text="{Binding Status}" Foreground="{DynamicResource Info}" VerticalAlignment="Center"
                      IsVisible="{Binding Status, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+          <Button Content="Kopírovat ID" Classes="ghost" Command="{Binding CopyJobIdCommand}"
+                  ToolTip.Tip="{Binding JobId, StringFormat='ID úlohy: {0}'}"/>
           <Button Content="Uložit PDF" Classes="accent" Command="{Binding SaveCommand}" IsVisible="{Binding HasDiff}"/>
         </StackPanel>
         <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
@@ -37,6 +39,8 @@
         <TextBlock Text="Pro tuto dvojici není diff k zobrazení." Foreground="{DynamicResource InkDim}" HorizontalAlignment="Center"/>
         <TextBlock Text="{Binding PairError}" Foreground="{DynamicResource Bad}" TextWrapping="Wrap" TextAlignment="Center"
                    IsVisible="{Binding PairError, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+        <TextBlock Text="{Binding ContentErrorCount, StringFormat='⚠ {0} stránek s chybou v obsahu'}" Foreground="{DynamicResource Bad}"
+                   HorizontalAlignment="Center" IsVisible="{Binding HasContentErrors}"/>
       </StackPanel>
     </Panel>
   </DockPanel>

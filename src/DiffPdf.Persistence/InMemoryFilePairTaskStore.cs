@@ -35,11 +35,13 @@ public sealed class InMemoryFilePairTaskStore : IFilePairTaskStore
         }
     }
 
-    public Task CompleteAsync(Guid taskId, FilePairResult result, FilePairTaskStatus status, CancellationToken ct = default)
+    public Task<bool> CompleteAsync(Guid taskId, FilePairResult result, FilePairTaskStatus status, CancellationToken ct = default)
     {
         lock (_gate)
         {
-            if (_tasks.TryGetValue(taskId, out var t))
+            // Guard on Running so a duplicate/late completion is a no-op (returns false), mirroring the SQL stores.
+            if (_tasks.TryGetValue(taskId, out var t) && t.Status == FilePairTaskStatus.Running)
+            {
                 _tasks[taskId] = t with
                 {
                     Status = status,
@@ -49,8 +51,10 @@ public sealed class InMemoryFilePairTaskStore : IFilePairTaskStore
                     LockedUntil = null,
                     Version = t.Version + 1,
                 };
+                return Task.FromResult(true);
+            }
         }
-        return Task.CompletedTask;
+        return Task.FromResult(false);
     }
 
     public Task FailAsync(Guid taskId, string error, CancellationToken ct = default)
@@ -146,6 +150,24 @@ public sealed class InMemoryFilePairTaskStore : IFilePairTaskStore
         }
         return Task.FromResult<IReadOnlyList<(Guid, Guid)>>(recovered);
     }
+
+    public Task<IReadOnlyList<(Guid JobId, Guid TaskId)>> RequeueRunningTasksAsync(string? lockedBy, CancellationToken ct = default)
+    {
+        var recovered = new List<(Guid, Guid)>();
+        lock (_gate)
+        {
+            foreach (var t in _tasks.Values.Where(t => t.Status == FilePairTaskStatus.Running && (lockedBy is null || t.LockedBy == lockedBy)).ToList())
+            {
+                _tasks[t.Id] = t with { Status = FilePairTaskStatus.Queued, LockedBy = null, LockedUntil = null, Version = t.Version + 1 };
+                recovered.Add((t.JobId, t.Id));
+            }
+        }
+        return Task.FromResult<IReadOnlyList<(Guid, Guid)>>(recovered);
+    }
+
+    // No cross-store view of job status/progress (same rationale as SkipPendingForTerminalJobsAsync). No-op.
+    public Task<IReadOnlyList<(Guid JobId, Guid TaskId)>> ListStaleQueuedAsync(DateTimeOffset idleSince, int limit, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<(Guid JobId, Guid TaskId)>>([]);
 
     public Task<IReadOnlyList<FilePairTask>> ListByJobAsync(Guid jobId, CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<FilePairTask>>(

@@ -14,7 +14,14 @@ public static class WorkerServiceCollectionExtensions
     /// </summary>
     public static IServiceCollection AddDiffPdfWorker(this IServiceCollection services)
     {
-        services.AddOptions<WorkerOptions>();
+        services.AddOptions<WorkerOptions>()
+            .Validate(o => o.JobLockMinutes > 0, "Worker:JobLockMinutes must be > 0.")
+            .Validate(o => o.FilePairComparisonTimeoutMinutes > 0, "Worker:FilePairComparisonTimeoutMinutes must be > 0.")
+            .Validate(o => o.MaxFilePairAttempts >= 1, "Worker:MaxFilePairAttempts must be >= 1.")
+            .Validate(o => o.StaleRecoveryIntervalSeconds > 0, "Worker:StaleRecoveryIntervalSeconds must be > 0.")
+            .Validate(o => o.FilePairLease > o.FilePairComparisonTimeout,
+                "Worker: the per-pair lease must exceed the comparison timeout (the stale-lease sweeper would otherwise reclaim a running pair).")
+            .ValidateOnStart();
         services.AddOptions<StorageOptions>();
 
         services.AddSingleton<IWorkerInstanceIdProvider, WorkerInstanceIdProvider>();

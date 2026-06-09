@@ -72,10 +72,34 @@ public sealed class ComparisonEngine(
         foreach (var pair in pairs)
         {
             ct.ThrowIfCancellationRequested();
-            var (comparison, spread) = await ComparePairAsync(
-                pair, oldPath, newPath, oldByNum, newByNum, oldGeom, newGeom, options, artifactDirectory is not null, ct);
-            pageComparisons.Add(comparison);
-            if (spread is not null) spreads.Add(spread);
+            try
+            {
+                var (comparison, spread) = await ComparePairAsync(
+                    pair, oldPath, newPath, oldByNum, newByNum, oldGeom, newGeom, options, artifactDirectory is not null, ct);
+                pageComparisons.Add(comparison);
+                if (spread is not null) spreads.Add(spread);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                // Host shutdown / per-pair timeout — abort so the worker can retry or record the whole pair.
+                throw;
+            }
+            catch (Exception ex)
+            {
+                // One page failed to render/extract/compare (corrupt page, undecodable render). Flag THAT page and
+                // keep comparing the rest, instead of failing the whole file. The page shows as a processing error
+                // and is recorded as a content error so it surfaces in the report and the client.
+                int page = pair.NewPageNumber ?? pair.OldPageNumber ?? 0;
+                logger.LogWarning(ex, "Page {Page} of {New} failed to compare; flagging as a processing error and continuing.", page, newPath);
+                pageComparisons.Add(new PageComparison
+                {
+                    OldPageNumber = pair.OldPageNumber,
+                    NewPageNumber = pair.NewPageNumber,
+                    Changes = PageChangeType.ProcessingError,
+                    DifferenceScore = 1.0,
+                });
+                contentErrors.Add(new ContentError(ContentErrorSide.Engine, page, "processing", Truncate(ex.Message)));
+            }
         }
 
         string? highlightedPath = null;
@@ -179,6 +203,11 @@ public sealed class ComparisonEngine(
         int newNum = pair.NewPageNumber!.Value;
         oldByNum.TryGetValue(oldNum, out var oldPage);
         newByNum.TryGetValue(newNum, out var newPage);
+
+        // A page whose text could not be extracted can't be text-diffed — surface it as a processing error (the
+        // engine loop catches this and flags the page) rather than silently diffing empty-vs-content text.
+        if (doText && (oldPage?.ExtractionFailed == true || newPage?.ExtractionFailed == true))
+            throw new InvalidOperationException($"Text extraction failed for page {newNum}.");
 
         var changes = PageChangeType.None;
         double score = 0;
@@ -284,10 +313,25 @@ public sealed class ComparisonEngine(
     {
         Directory.CreateDirectory(artifactDirectory);
         string outPath = Path.Combine(artifactDirectory, Path.GetFileNameWithoutExtension(newPath) + ".diff.pdf");
+        // Write to a temp sibling and atomically move it into place, so a failed or cancelled write never leaves a
+        // half-written .diff.pdf that could be mistaken for a valid diff.
+        string tmpPath = outPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
         var writer = highlightedPdfWriterFactory.Get(options.HighlightStyle);
-        await writer.WriteAsync(outPath, spreads, options.HighlightLayout, ct);
-        return outPath;
+        try
+        {
+            await writer.WriteAsync(tmpPath, spreads, options.HighlightLayout, ct);
+            File.Move(tmpPath, outPath, overwrite: true);
+            return outPath;
+        }
+        catch
+        {
+            try { if (File.Exists(tmpPath)) File.Delete(tmpPath); } catch { /* best-effort temp cleanup */ }
+            throw;
+        }
     }
+
+    private static string Truncate(string s, int max = 300) =>
+        string.IsNullOrEmpty(s) ? "" : s.Length <= max ? s : s[..max] + "…";
 
     private static string FormatError(DocumentInfo oldInfo, DocumentInfo newInfo)
     {

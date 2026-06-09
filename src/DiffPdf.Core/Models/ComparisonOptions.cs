@@ -117,6 +117,12 @@ public sealed record ComparisonOptions
     public bool AlignPages { get; init; } = true;
 
     /// <summary>
+    /// Above this page count (in either document) page alignment falls back to cheap index pairing instead of the
+    /// O(n*m) Needleman–Wunsch matrix, which would risk OOM on pathologically large documents. 0 disables the cap.
+    /// </summary>
+    public int MaxAlignmentPages { get; init; } = 2000;
+
+    /// <summary>
     /// Minimum word-overlap similarity (0-1) for two pages to align as "the same
     /// page that changed" rather than a separate add+remove. Kept low so a
     /// heavily edited page at the same position is still reported as TextChanged;

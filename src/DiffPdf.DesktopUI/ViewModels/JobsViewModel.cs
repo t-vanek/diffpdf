@@ -301,12 +301,17 @@ public partial class JobsViewModel : PageViewModel
         Summary.Add(new("Jen ve staré", r.OnlyInOld) { Tone = StatTone.Warning });
         Summary.Add(new("Jen v nové", r.OnlyInNew) { Tone = StatTone.Warning });
         Summary.Add(new("Chyby", r.Errors) { Tone = StatTone.Failed });
+        Summary.Add(new("Chyby v obsahu", r.FilesWithContentErrors) { Tone = StatTone.Warning });
     }
 
     [RelayCommand] private Task PauseAsync() => ActAsync(c => c.PauseJobAsync(SelectedJob!.Id));
     [RelayCommand] private Task ResumeAsync() => ActAsync(c => c.ResumeJobAsync(SelectedJob!.Id));
     [RelayCommand] private Task CancelAsync() => ActAsync(c => c.CancelJobAsync(SelectedJob!.Id));
     [RelayCommand] private Task RetryAsync() => ActAsync(c => c.RetryJobAsync(SelectedJob!.Id));
+
+    [RelayCommand]
+    private Task CopyJobIdAsync() =>
+        SelectedSummary is { } s ? _dialogs.CopyToClipboardAsync(s.Id.ToString(), "ID úlohy zkopírováno.") : Task.CompletedTask;
 
     private Task ActAsync(Func<DiffPdfClient, Task<JobSummary>> action) => RunAsync(async () =>
     {

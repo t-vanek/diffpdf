@@ -46,4 +46,33 @@ public class PageAlignerTests
         Assert.Null(pairs[2].OldPageNumber);
         Assert.Equal(3, pairs[2].NewPageNumber);
     }
+
+    [Fact]
+    public void Alignment_FallsBackToIndexPairing_AboveTheCap()
+    {
+        var aligner = new PageAligner(new TextComparer());
+        var oldPages = new[] { P(1, "a1", "a2"), P(2, "b1", "b2"), P(3, "c1", "c2") };
+        var newPages = new[] { P(1, "a1", "a2"), P(2, "z1", "z2"), P(3, "b1", "b2"), P(4, "c1", "c2") };
+
+        // Cap below the doc size → skip the O(n*m) NW matrix (OOM guard) and pair strictly by index, exactly like
+        // AlignPages=false — so the inserted page is NOT detected (old 2 pairs with new 2, not the NW match new 3).
+        var pairs = aligner.Align(oldPages, newPages, new ComparisonOptions { MaxAlignmentPages = 2, PageMatchThreshold = 0.5 });
+
+        Assert.Equal(4, pairs.Count);
+        Assert.Contains(pairs, p => p.OldPageNumber == 2 && p.NewPageNumber == 2);
+        Assert.DoesNotContain(pairs, p => p.OldPageNumber == 2 && p.NewPageNumber == 3);
+        Assert.Null(pairs[3].OldPageNumber); // page 4 only in new
+    }
+
+    [Fact]
+    public void Alignment_RunsNormally_BelowTheCap()
+    {
+        var aligner = new PageAligner(new TextComparer());
+        var oldPages = new[] { P(1, "a1", "a2"), P(2, "b1", "b2") };
+        var newPages = new[] { P(1, "a1", "a2"), P(2, "z1", "z2"), P(3, "b1", "b2") };
+
+        // Default cap (2000) >> doc size → NW alignment still detects the inserted page (old 2 → new 3).
+        var pairs = aligner.Align(oldPages, newPages, new ComparisonOptions { PageMatchThreshold = 0.5 });
+        Assert.Contains(pairs, p => p.OldPageNumber == 2 && p.NewPageNumber == 3);
+    }
 }

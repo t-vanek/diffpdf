@@ -32,6 +32,8 @@ public enum PageChangeType
     BecameBlank = 1 << 5,
     /// <summary>Page was blank in old but has content in new.</summary>
     WasBlank = 1 << 6,
+    /// <summary>The page could not be rendered/extracted/compared (a per-page failure was contained, not fatal).</summary>
+    ProcessingError = 1 << 7,
 }
 
 /// <summary>Outcome of comparing one aligned page pair (either side may be absent).</summary>
@@ -58,9 +60,13 @@ public sealed record PageComparison
     public int DisplayPageNumber => NewPageNumber ?? OldPageNumber ?? 0;
 }
 
-public enum ContentErrorSide { Old, New }
+public enum ContentErrorSide { Old, New, Engine }
 
-/// <summary>An error message detected inside the rendered text of a document (e.g. "subreport error").</summary>
+/// <summary>
+/// Something wrong on a page: either a pattern detected inside the document text (e.g. "subreport error",
+/// <see cref="ContentErrorSide.Old"/>/<see cref="ContentErrorSide.New"/>), or a per-page processing failure the
+/// engine contained (<see cref="ContentErrorSide.Engine"/>; <c>Pattern</c> = "render"/"extract"/"processing").
+/// </summary>
 public sealed record ContentError(
     ContentErrorSide Side,
     int PageNumber,

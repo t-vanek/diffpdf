@@ -106,6 +106,12 @@
                 </DataTemplate>
               </ContentControl.ContentTemplate>
             </ContentControl>
+            <!-- Correlation id (job id) — visible + copyable for support / log lookups. -->
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <TextBlock Text="{Binding SelectedSummary.Id, StringFormat='ID úlohy: {0}'}" Foreground="{DynamicResource InkFaint}"
+                         FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="320"/>
+              <Button Content="Kopírovat" Classes="ghost" FontSize="11" Padding="6,1" Command="{Binding CopyJobIdCommand}"/>
+            </StackPanel>
           </StackPanel>
 
           <!-- Živý průběh -->

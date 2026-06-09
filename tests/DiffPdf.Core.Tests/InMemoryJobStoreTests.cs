@@ -61,6 +61,57 @@ public class InMemoryJobStoreTests
     }
 
     [Fact]
+    public async Task ListRunningFullyProcessed_FindsRunningJobWhereAllPairsDone()
+    {
+        var store = new InMemoryJobStore();
+        var job = await store.CreateAsync(NewJob());
+        await store.TryStartAsync(job.Id, "w", TimeSpan.FromMinutes(5));
+        await store.SetTotalAsync(job.Id, 2);
+        await store.IncrementProcessedAsync(job.Id);
+        await store.IncrementProcessedAsync(job.Id); // processed == total == 2, but still Running (finalize lost)
+
+        Assert.Empty(await store.ListRunningFullyProcessedAsync(DateTimeOffset.UtcNow.AddMinutes(-10), 10)); // just updated → not idle yet
+        var pending = await store.ListRunningFullyProcessedAsync(DateTimeOffset.UtcNow.AddMinutes(10), 10);   // force-stale cutoff
+        Assert.Single(pending);
+        Assert.Equal(job.Id, pending[0].Id);
+    }
+
+    [Fact]
+    public async Task ListRunningFullyProcessed_IgnoresStillProcessingJobs()
+    {
+        var store = new InMemoryJobStore();
+        var job = await store.CreateAsync(NewJob());
+        await store.TryStartAsync(job.Id, "w", TimeSpan.FromMinutes(5));
+        await store.SetTotalAsync(job.Id, 2);
+        await store.IncrementProcessedAsync(job.Id); // 1 of 2 — not done
+
+        Assert.Empty(await store.ListRunningFullyProcessedAsync(DateTimeOffset.UtcNow.AddMinutes(10), 10));
+    }
+
+    [Fact]
+    public async Task ListRunningFullyProcessed_IgnoresUnindexedJobs()
+    {
+        var store = new InMemoryJobStore();
+        var job = await store.CreateAsync(NewJob());
+        await store.TryStartAsync(job.Id, "w", TimeSpan.FromMinutes(5)); // TotalCount 0; 0 >= 0 must NOT match (excluded by TotalCount > 0)
+
+        Assert.Empty(await store.ListRunningFullyProcessedAsync(DateTimeOffset.UtcNow.AddMinutes(10), 10));
+    }
+
+    [Fact]
+    public async Task ListRunningFullyProcessed_IgnoresTerminalJobs()
+    {
+        var store = new InMemoryJobStore();
+        var job = await store.CreateAsync(NewJob());
+        await store.TryStartAsync(job.Id, "w", TimeSpan.FromMinutes(5));
+        await store.SetTotalAsync(job.Id, 1);
+        await store.IncrementProcessedAsync(job.Id);
+        await store.CompleteAsync(job.Id, Report(), (await store.GetAsync(job.Id))!.Version); // Completed, not Running
+
+        Assert.Empty(await store.ListRunningFullyProcessedAsync(DateTimeOffset.UtcNow.AddMinutes(10), 10));
+    }
+
+    [Fact]
     public async Task Complete_RequiresMatchingVersion()
     {
         var store = new InMemoryJobStore();

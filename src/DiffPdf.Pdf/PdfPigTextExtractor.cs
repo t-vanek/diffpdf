@@ -43,11 +43,21 @@ public sealed class PdfPigTextExtractor : IPdfTextExtractor
             ct.ThrowIfCancellationRequested();
             if (!range.Contains(page.Number)) continue;
 
-            var words = page.GetWords()
-                .Select(w => new PositionedWord(
-                    w.Text,
-                    new RectangleD(w.BoundingBox.Left, w.BoundingBox.Bottom, w.BoundingBox.Width, w.BoundingBox.Height)))
-                .ToList();
+            List<PositionedWord> words;
+            bool extractionFailed = false;
+            try
+            {
+                words = page.GetWords()
+                    .Select(w => new PositionedWord(
+                        w.Text,
+                        new RectangleD(w.BoundingBox.Left, w.BoundingBox.Bottom, w.BoundingBox.Width, w.BoundingBox.Height)))
+                    .ToList();
+            }
+            catch (Exception) // one bad page (e.g. a corrupt embedded font) must not abort the whole document
+            {
+                words = [];
+                extractionFailed = true;
+            }
 
             pages.Add(new PageText
             {
@@ -56,6 +66,7 @@ public sealed class PdfPigTextExtractor : IPdfTextExtractor
                 Height = page.Height,
                 Rotation = page.Rotation.Value,
                 Words = words,
+                ExtractionFailed = extractionFailed,
             });
         }
 
