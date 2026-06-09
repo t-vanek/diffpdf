@@ -7,17 +7,18 @@
              x:Name="Root">
 
   <UserControl.KeyBindings>
-    <KeyBinding Gesture="F5" Command="{Binding RefreshCommand}"/>
+    <KeyBinding Gesture="F5" Command="{Binding ReloadCommand}"/>
   </UserControl.KeyBindings>
 
   <DockPanel>
     <TextBlock DockPanel.Dock="Top" Text="Úlohy" Classes="pageTitle" Margin="2,0,0,10"/>
 
+    <!-- Filtry · stav. Obnovení je implicitní: znovu-klik na položku navigace, kliknutí do řádku úlohy, F5, nebo
+         periodicky na pozadí (vedle živého průběhu). -->
     <WrapPanel DockPanel.Dock="Top" ItemSpacing="8" LineSpacing="8" Margin="0,0,0,10">
       <ComboBox Width="140" ItemsSource="{Binding BranchOptions}" SelectedItem="{Binding FilterBranch}"/>
       <ComboBox Width="150" ItemsSource="{Binding InstanceOptions}" SelectedItem="{Binding FilterInstance}"/>
       <ComboBox Width="120" ItemsSource="{Binding StatusFilters}" SelectedItem="{Binding FilterStatus}"/>
-      <Button Content="Obnovit" Classes="ghost" Command="{Binding RefreshCommand}" ToolTip.Tip="Obnovit (F5)"/>
       <TextBlock Text="{Binding Info}" Foreground="{DynamicResource Info}" VerticalAlignment="Center"/>
       <TextBlock Text="{Binding Error}" Foreground="{DynamicResource Bad}" VerticalAlignment="Center"/>
       <ProgressBar IsIndeterminate="True" Width="100" Height="4" VerticalAlignment="Center" IsVisible="{Binding IsBusy}"/>
@@ -29,7 +30,7 @@
         <Button DockPanel.Dock="Bottom" Content="Načíst další úlohy" Classes="ghost" HorizontalAlignment="Center" Margin="0,6,0,0"
                 IsVisible="{Binding MoreJobsAvailable}" Command="{Binding LoadMoreJobsCommand}"/>
         <Panel>
-      <DataGrid x:Name="JobsGrid" x:CompileBindings="False" ItemsSource="{Binding Jobs}"
+      <DataGrid x:Name="JobsGrid" x:CompileBindings="False" Tapped="OnJobRowTapped" ItemsSource="{Binding Jobs}"
                 SelectedItem="{Binding SelectedJob}" IsReadOnly="True" AutoGenerateColumns="False" CanUserResizeColumns="True">
         <DataGrid.Columns>
           <DataGridTemplateColumn Header="Stav" Width="140">

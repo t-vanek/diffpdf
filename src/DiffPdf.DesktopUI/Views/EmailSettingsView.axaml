@@ -1,0 +1,72 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:DiffPdf.DesktopUI.ViewModels"
+             x:Class="DiffPdf.DesktopUI.Views.EmailSettingsView"
+             x:DataType="vm:EmailSettingsViewModel">
+
+  <ScrollViewer>
+    <StackPanel Spacing="14" Margin="4" MaxWidth="560" HorizontalAlignment="Left">
+      <TextBlock Text="E-mail (SMTP)" FontSize="18" FontWeight="Bold"/>
+      <TextBlock Text="Server a odesílací účet pro e-mailové notifikace. Příjemce a události se nastavují v sekci Notifikace."
+                 Foreground="{DynamicResource InkDim}" TextWrapping="Wrap"/>
+
+      <Border Classes="cardStatic" Padding="14">
+        <StackPanel Spacing="10">
+          <StackPanel Spacing="4">
+            <TextBlock Text="SMTP server" Classes="caption"/>
+            <TextBox Text="{Binding Host}" PlaceholderText="smtp.firma.cz"/>
+          </StackPanel>
+
+          <WrapPanel>
+            <StackPanel Width="160" Margin="0,0,12,8" Spacing="4">
+              <TextBlock Text="Port" Classes="caption"/>
+              <NumericUpDown Value="{Binding Port}" Minimum="1" Maximum="65535" Increment="1" FormatString="0"/>
+            </StackPanel>
+            <CheckBox Content="Použít SSL/TLS" IsChecked="{Binding UseSsl}" VerticalAlignment="Bottom" Margin="0,0,0,12"
+                      ToolTip.Tip="Implicitní SSL na portu 465, jinak STARTTLS. Vypnuto = nešifrovaně."/>
+          </WrapPanel>
+
+          <StackPanel Spacing="4">
+            <TextBlock Text="Uživatel (volitelné)" Classes="caption"/>
+            <TextBox Text="{Binding Username}" PlaceholderText="přihlašovací jméno"/>
+          </StackPanel>
+
+          <StackPanel Spacing="4">
+            <TextBlock Text="Heslo" Classes="caption"/>
+            <TextBox Text="{Binding Password}" PasswordChar="•" PlaceholderText="{Binding PasswordPlaceholder}"/>
+          </StackPanel>
+
+          <StackPanel Spacing="4">
+            <TextBlock Text="Odesílatel (From)" Classes="caption"/>
+            <TextBox Text="{Binding FromAddress}" PlaceholderText="diffpdf@firma.cz"/>
+          </StackPanel>
+
+          <StackPanel Spacing="4">
+            <TextBlock Text="Jméno odesílatele (volitelné)" Classes="caption"/>
+            <TextBox Text="{Binding FromName}" PlaceholderText="DiffPDF"/>
+          </StackPanel>
+
+          <Button Content="Uložit nastavení" Classes="accent" Command="{Binding SaveCommand}" HorizontalAlignment="Left"/>
+        </StackPanel>
+      </Border>
+
+      <Border Classes="cardStatic" Padding="14">
+        <StackPanel Spacing="8">
+          <TextBlock Text="Test odeslání" FontWeight="SemiBold"/>
+          <TextBlock Text="Pošle testovací e-mail s uloženým nastavením (ulož nejdřív případné změny)."
+                     Foreground="{DynamicResource InkDim}" TextWrapping="Wrap"/>
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+            <TextBox Grid.Column="0" Text="{Binding TestTo}" PlaceholderText="adresa pro test…"/>
+            <Button Grid.Column="1" Content="Poslat testovací e-mail" Classes="ghost" Command="{Binding SendTestCommand}"/>
+          </Grid>
+        </StackPanel>
+      </Border>
+
+      <TextBlock Text="{Binding Info}" Foreground="{DynamicResource Info}" TextWrapping="Wrap"
+                 IsVisible="{Binding Info, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+      <TextBlock Text="{Binding Error}" Foreground="{DynamicResource Bad}" TextWrapping="Wrap"
+                 IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+      <ProgressBar IsIndeterminate="True" Width="120" Height="4" HorizontalAlignment="Left" IsVisible="{Binding IsBusy}"/>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

@@ -2,24 +2,24 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:DiffPdf.DesktopUI.ViewModels"
              x:Class="DiffPdf.DesktopUI.Views.SubscriptionsView"
-             x:DataType="vm:SubscriptionsViewModel">
+             x:DataType="vm:SubscriptionsViewModel"
+             x:Name="Root">
 
   <UserControl.KeyBindings>
-    <KeyBinding Gesture="F5" Command="{Binding RefreshCommand}"/>
+    <KeyBinding Gesture="F5" Command="{Binding ReloadCommand}"/>
   </UserControl.KeyBindings>
 
   <DockPanel>
     <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="2,0,0,10">
       <TextBlock Text="Notifikace" Classes="pageTitle"/>
-      <TextBlock Text="{Binding Subscriptions.Count, StringFormat='({0})'}" Foreground="{DynamicResource InkFaint}" VerticalAlignment="Center"
-                 IsVisible="{Binding !HasNoSubscriptions}"/>
+      <TextBlock Text="{Binding Rules.Count, StringFormat='({0})'}" Foreground="{DynamicResource InkFaint}" VerticalAlignment="Center"
+                 IsVisible="{Binding !HasNoRules}"/>
     </StackPanel>
 
+    <!-- E-mailová pravidla. SMTP server se nastavuje v Konfiguraci → E-mail. Obnovení je implicitní:
+         znovu-klik na položku „Notifikace" v navigaci, nebo F5. -->
     <WrapPanel DockPanel.Dock="Top" ItemSpacing="8" LineSpacing="8" Margin="0,0,0,10">
-      <Button Content="Nová" Classes="accent" Command="{Binding NewCommand}"/>
-      <Button Content="Obnovit" Classes="ghost" Command="{Binding RefreshCommand}" ToolTip.Tip="Obnovit (F5)"/>
-      <Button Content="Upravit" Classes="ghost" Command="{Binding EditSelectedCommand}"
-              IsEnabled="{Binding Selected, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+      <Button Content="Nové pravidlo" Classes="accent" Command="{Binding NewCommand}"/>
       <Button Content="Smazat" Classes="destructive" Command="{Binding DeleteCommand}"
               IsEnabled="{Binding Selected, Converter={x:Static ObjectConverters.IsNotNull}}"/>
       <TextBlock Text="{Binding Info}" Foreground="{DynamicResource Info}" VerticalAlignment="Center"/>
@@ -28,51 +28,143 @@
     </WrapPanel>
 
     <Grid ColumnDefinitions="3*,2*">
-      <DataGrid Grid.Column="0" Margin="0,0,12,0" x:CompileBindings="False" ItemsSource="{Binding Subscriptions}"
+      <!-- Seznam pravidel -->
+      <DataGrid Grid.Column="0" Margin="0,0,12,0" x:CompileBindings="False" ItemsSource="{Binding Rules}"
                 SelectedItem="{Binding Selected}" IsReadOnly="True" AutoGenerateColumns="False" CanUserResizeColumns="True">
         <DataGrid.Columns>
-          <DataGridTextColumn Header="Kanál" Binding="{Binding Channel}" Width="90"/>
-          <DataGridTextColumn Header="Cíl" Binding="{Binding Target}" Width="*"/>
-          <DataGridTextColumn Header="Větev" Binding="{Binding BranchKey}" Width="100"/>
-          <DataGridTextColumn Header="Instance" Binding="{Binding InstanceKey}" Width="120"/>
-          <DataGridTemplateColumn Header="Povoleno" Width="100" SortMemberPath="Enabled">
+          <DataGridTextColumn Header="Název" Binding="{Binding DisplayName}" Width="140"/>
+          <DataGridTextColumn Header="Příjemci" Binding="{Binding RecipientsSummary}" Width="*"/>
+          <DataGridTextColumn Header="Rozsah" Binding="{Binding ScopeSummary}" Width="*"/>
+          <DataGridTextColumn Header="Události" Binding="{Binding EventsSummary}" Width="90"/>
+          <DataGridTemplateColumn Header="Aktivní" Width="100" SortMemberPath="Enabled">
             <DataGridTemplateColumn.CellTemplate>
               <DataTemplate>
                 <Panel VerticalAlignment="Center" HorizontalAlignment="Left">
-                  <Border Classes="badge good" IsVisible="{Binding Enabled}">
-                    <TextBlock Text="Povoleno"/>
-                  </Border>
-                  <Border Classes="badge" IsVisible="{Binding !Enabled}">
-                    <TextBlock Text="Zakázáno"/>
-                  </Border>
+                  <Border Classes="badge good" IsVisible="{Binding Enabled}"><TextBlock Text="Aktivní"/></Border>
+                  <Border Classes="badge" IsVisible="{Binding !Enabled}"><TextBlock Text="Vypnuto"/></Border>
                 </Panel>
               </DataTemplate>
             </DataGridTemplateColumn.CellTemplate>
           </DataGridTemplateColumn>
-          <DataGridTextColumn Header="Verze" Binding="{Binding Version}" Width="60"/>
         </DataGrid.Columns>
       </DataGrid>
 
-      <TextBlock Grid.Column="0" Margin="0,0,12,0" Text="Zatím žádné odběry. Vytvoř první tlačítkem Nová."
-                 Foreground="{DynamicResource InkFaint}" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding HasNoSubscriptions}"/>
+      <TextBlock Grid.Column="0" Margin="0,0,12,0" Text="Zatím žádná pravidla. Vytvoř první tlačítkem „Nové pravidlo“."
+                 Foreground="{DynamicResource InkFaint}" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding HasNoRules}"/>
 
+      <!-- Editor pravidla -->
       <ScrollViewer Grid.Column="1">
-        <StackPanel Spacing="6">
-          <TextBlock Text="Odběr notifikací" Classes="headline"/>
-          <TextBlock Text="Kanál"/>
-          <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Channels}" SelectedItem="{Binding Channel}"/>
-          <TextBox Text="{Binding Target}" PlaceholderText="Cíl (URL nebo e-mail)"/>
-          <TextBlock Text="Události"/>
-          <CheckBox Content="Dokončeno" IsChecked="{Binding EventCompleted}"/>
-          <CheckBox Content="Dokončeno s chybami" IsChecked="{Binding EventCompletedWithErrors}"
-                    ToolTip.Tip="Úloha doběhla, ale některé páry se nepodařilo porovnat (chyby)."/>
-          <CheckBox Content="Selhání" IsChecked="{Binding EventFailed}"/>
-          <CheckBox Content="Zaseknutá úloha" IsChecked="{Binding EventJobStalled}"
-                    ToolTip.Tip="Běžící úloha přestala dělat pokrok (watchdog ji označil za zaseknutou)."/>
-          <TextBox Text="{Binding BranchKey}" PlaceholderText="Klíč větve (volitelné)"/>
-          <TextBox Text="{Binding InstanceKey}" PlaceholderText="Klíč instance (volitelné)"/>
-          <CheckBox Content="Povoleno" IsChecked="{Binding Enabled}"/>
-          <Button Content="Uložit odběr" Classes="accent" Command="{Binding SaveCommand}" HorizontalAlignment="Left"/>
+        <StackPanel Spacing="10">
+          <TextBlock Text="{Binding EditorHeading}" Classes="headline"/>
+
+          <StackPanel Spacing="4">
+            <TextBlock Text="Název (volitelný)" Classes="caption"/>
+            <TextBox Text="{Binding Name}" PlaceholderText="např. QA tým — selhání alfa"/>
+          </StackPanel>
+
+          <!-- Příjemci -->
+          <StackPanel Spacing="6">
+            <TextBlock Text="Příjemci (e-maily)" FontWeight="SemiBold"/>
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+              <TextBox Grid.Column="0" Text="{Binding NewRecipient}" PlaceholderText="adresa@firma.cz">
+                <TextBox.KeyBindings>
+                  <KeyBinding Gesture="Enter" Command="{Binding AddRecipientCommand}"/>
+                </TextBox.KeyBindings>
+              </TextBox>
+              <Button Grid.Column="1" Content="Přidat" Classes="ghost" Command="{Binding AddRecipientCommand}"/>
+            </Grid>
+            <ItemsControl ItemsSource="{Binding Recipients}" x:CompileBindings="False">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Border Classes="badge" Margin="0,0,6,6" Padding="9,3">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <TextBlock Text="{Binding}" VerticalAlignment="Center"/>
+                      <Button Content="✕" Classes="ghost" FontSize="10" Padding="4,0" VerticalAlignment="Center"
+                              Command="{Binding #Root.DataContext.RemoveRecipientCommand}" CommandParameter="{Binding}"
+                              ToolTip.Tip="Odebrat příjemce"/>
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <TextBlock Text="Pravidlo musí mít aspoň jednoho příjemce." Classes="caption"/>
+          </StackPanel>
+
+          <!-- Rozsah: větve + instance — rozbalovátko s víc výběrem (zaškrtávátka v popupu; prázdné = vše). -->
+          <StackPanel Spacing="4">
+            <TextBlock Text="Větve" FontWeight="SemiBold"/>
+            <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" ToolTip.Tip="Vyber větve (prázdné = všechny)">
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" Text="{Binding BranchScopeSummary}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="1" Text="▾" Margin="8,0,0,0" VerticalAlignment="Center" Foreground="{DynamicResource InkDim}"/>
+              </Grid>
+              <Button.Flyout>
+                <Flyout Placement="Bottom">
+                  <ScrollViewer MaxHeight="240">
+                    <ItemsControl ItemsSource="{Binding BranchChoices}" MinWidth="220">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:CheckableKey">
+                          <CheckBox Content="{Binding Key}" IsChecked="{Binding IsChecked}" Margin="2"/>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </ScrollViewer>
+                </Flyout>
+              </Button.Flyout>
+            </Button>
+          </StackPanel>
+
+          <StackPanel Spacing="4">
+            <TextBlock Text="Instance" FontWeight="SemiBold"/>
+            <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" ToolTip.Tip="Vyber instance (prázdné = všechny)">
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" Text="{Binding InstanceScopeSummary}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="1" Text="▾" Margin="8,0,0,0" VerticalAlignment="Center" Foreground="{DynamicResource InkDim}"/>
+              </Grid>
+              <Button.Flyout>
+                <Flyout Placement="Bottom">
+                  <ScrollViewer MaxHeight="240">
+                    <ItemsControl ItemsSource="{Binding InstanceChoices}" MinWidth="220">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:CheckableKey">
+                          <CheckBox Content="{Binding Key}" IsChecked="{Binding IsChecked}" Margin="2"/>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </ScrollViewer>
+                </Flyout>
+              </Button.Flyout>
+            </Button>
+          </StackPanel>
+
+          <!-- Události -->
+          <StackPanel Spacing="6">
+            <TextBlock Text="Události — úlohy" FontWeight="SemiBold"/>
+            <CheckBox Content="Dokončeno" IsChecked="{Binding EvtCompleted}"/>
+            <CheckBox Content="Dokončeno s chybami" IsChecked="{Binding EvtCompletedWithErrors}"
+                      ToolTip.Tip="Úloha doběhla, ale některé páry se nepodařilo porovnat."/>
+            <CheckBox Content="Selhání" IsChecked="{Binding EvtFailed}"/>
+            <CheckBox Content="Zaseknutá úloha" IsChecked="{Binding EvtJobStalled}"
+                      ToolTip.Tip="Běžící úloha přestala dělat pokrok (watchdog)."/>
+          </StackPanel>
+
+          <StackPanel Spacing="6">
+            <TextBlock Text="Události — server a kontroly" FontWeight="SemiBold"/>
+            <CheckBox Content="Zdraví serveru zhoršeno" IsChecked="{Binding EvtHealthDegraded}"
+                      ToolTip.Tip="Kritická závislost (databáze, renderer, úložiště) je degradovaná."/>
+            <CheckBox Content="Připravenost selhala" IsChecked="{Binding EvtReadinessFailed}"
+                      ToolTip.Tip="Vstupy instance nejsou připravené k porovnání."/>
+            <CheckBox Content="Odchylka struktury" IsChecked="{Binding EvtStructureDrift}"
+                      ToolTip.Tip="Složková struktura se rozchází s konfigurací."/>
+            <CheckBox Content="Kontrola obnovena" IsChecked="{Binding EvtCheckRecovered}"
+                      ToolTip.Tip="Dříve selhávající kontrola opět prošla."/>
+          </StackPanel>
+
+          <CheckBox Content="Pravidlo aktivní" IsChecked="{Binding Enabled}"/>
+          <Button Content="Uložit pravidlo" Classes="accent" Command="{Binding SaveCommand}" HorizontalAlignment="Left"/>
         </StackPanel>
       </ScrollViewer>
     </Grid>

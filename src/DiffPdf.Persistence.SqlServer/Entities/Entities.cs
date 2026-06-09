@@ -78,13 +78,28 @@ public sealed class JobEntity
 public sealed class SubscriptionEntity
 {
     public Guid Id { get; set; }
-    public string Channel { get; set; } = string.Empty;
-    public string Target { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string RecipientsJson { get; set; } = "[]";
     public string EventsJson { get; set; } = string.Empty;
-    public string? BranchKey { get; set; }
-    public string? InstanceKey { get; set; }
+    public string BranchKeysJson { get; set; } = "[]";
+    public string InstanceKeysJson { get; set; } = "[]";
     public bool Enabled { get; set; } = true;
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? UpdatedAt { get; set; }
+    public long Version { get; set; } = 1;
+}
+
+/// <summary>Single-row SMTP transport + sender settings for outbound e-mail notifications.</summary>
+public sealed class EmailSettingsEntity
+{
+    public Guid Id { get; set; }
+    public string Host { get; set; } = string.Empty;
+    public int Port { get; set; } = 587;
+    public bool UseSsl { get; set; } = true;
+    public string? Username { get; set; }
+    public string? Password { get; set; }
+    public string FromAddress { get; set; } = "diffpdf@localhost";
+    public string? FromName { get; set; }
     public DateTimeOffset? UpdatedAt { get; set; }
     public long Version { get; set; } = 1;
 }

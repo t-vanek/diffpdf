@@ -34,30 +34,63 @@ public enum NotificationEvent
 }
 
 /// <summary>
-/// A subscription that routes finished-batch notifications to a delivery target. Managed
-/// at runtime through the API and persisted in the store — not bound from configuration.
+/// An e-mail notification rule, managed at runtime through the API and persisted in the store (not bound from
+/// configuration). A finished-batch or control-check notification is delivered to every address in
+/// <see cref="Recipients"/> when the rule is enabled, its <see cref="Events"/> include the event, and its scope
+/// (<see cref="BranchKeys"/> / <see cref="InstanceKeys"/>) matches.
 /// </summary>
 public sealed record NotificationSubscription
 {
     public required Guid Id { get; init; }
 
-    /// <summary>Delivery channel: <c>webhook</c> (Slack/Teams/generic JSON POST) or <c>smtp</c> (e-mail).</summary>
-    public required string Channel { get; init; }
+    /// <summary>Optional human label for the rule (shown in the UI list); not used for matching.</summary>
+    public string Name { get; init; } = string.Empty;
 
-    /// <summary>The webhook URL or the recipient e-mail address, depending on <see cref="Channel"/>.</summary>
-    public required string Target { get; init; }
+    /// <summary>Recipient e-mail addresses. Must be non-empty.</summary>
+    public required IReadOnlyList<string> Recipients { get; init; }
 
-    /// <summary>Events this subscription cares about. Empty = none.</summary>
+    /// <summary>Events this rule fires on. Empty = none.</summary>
     public required IReadOnlyList<NotificationEvent> Events { get; init; }
 
-    /// <summary>Optional branch filter (case-insensitive); null/empty = any branch.</summary>
-    public string? BranchKey { get; init; }
+    /// <summary>Branch-key filter (case-insensitive); empty = any branch.</summary>
+    public IReadOnlyList<string> BranchKeys { get; init; } = [];
 
-    /// <summary>Optional instance filter (case-insensitive); null/empty = any instance.</summary>
-    public string? InstanceKey { get; init; }
+    /// <summary>Instance-key filter (case-insensitive); empty = any instance.</summary>
+    public IReadOnlyList<string> InstanceKeys { get; init; } = [];
 
     public bool Enabled { get; init; } = true;
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? UpdatedAt { get; init; }
     public long Version { get; init; } = 1;
+}
+
+/// <summary>
+/// SMTP transport + sender account for outbound e-mail notifications. Managed at runtime through the API and
+/// persisted as a single row — replaces the appsettings-only <c>Notifications:Smtp</c> (still honored as a
+/// fallback until settings are saved). The <see cref="Password"/> is stored server-side and never returned to
+/// clients (the API surfaces only whether one is set).
+/// </summary>
+public sealed record EmailSettings
+{
+    public string Host { get; init; } = string.Empty;
+    public int Port { get; init; } = 587;
+
+    /// <summary>When true MailKit picks the right transport security for the port (implicit SSL on 465, STARTTLS
+    /// otherwise); false connects in plain text (a local/relay SMTP without TLS).</summary>
+    public bool UseSsl { get; init; } = true;
+
+    public string? Username { get; init; }
+    public string? Password { get; init; }
+
+    /// <summary>Envelope/From address mails are sent from.</summary>
+    public string FromAddress { get; init; } = "diffpdf@localhost";
+
+    /// <summary>Optional display name shown alongside <see cref="FromAddress"/>.</summary>
+    public string? FromName { get; init; }
+
+    public DateTimeOffset? UpdatedAt { get; init; }
+    public long Version { get; init; } = 1;
+
+    /// <summary>True when an SMTP host is configured — the transport is usable.</summary>
+    public bool IsConfigured => !string.IsNullOrWhiteSpace(Host);
 }

@@ -4,57 +4,59 @@ using Microsoft.Extensions.Logging;
 
 namespace DiffPdf.Notifications;
 
-/// <summary>Fans a notification (batch outcome or control-check result) out to every matching subscription.</summary>
+/// <summary>Fans a notification (batch outcome or control-check result) out to every matching e-mail rule.</summary>
 public interface INotificationDispatcher
 {
     Task DispatchAsync(INotification notification, CancellationToken ct = default);
 }
 
 /// <summary>
-/// Best-effort dispatcher: reads the enabled subscriptions from the store, matches each
-/// against the notification (event + optional branch/instance filter) and sends via the
-/// channel's <see cref="INotifier"/>. A failure on one subscription is logged and never
-/// blocks the others. Registered Scoped so its scoped <see cref="ISubscriptionStore"/>
-/// resolves in the same per-message DI scope as the Wolverine handler that invokes it.
+/// Best-effort dispatcher: reads the enabled rules, keeps those whose <see cref="NotificationSubscription.Events"/>
+/// include the event and whose branch/instance filters match (empty filter = any), then e-mails each rule's
+/// recipients via <see cref="IEmailSender"/>. A failure on one rule is logged and never blocks the others.
+/// Registered Scoped so its scoped <see cref="ISubscriptionStore"/> resolves in the same per-message DI scope as
+/// the Wolverine handler that invokes it.
 /// </summary>
 public sealed class NotificationDispatcher(
-    IEnumerable<INotifier> notifiers,
     ISubscriptionStore subscriptions,
+    EmailSettingsResolver settingsResolver,
+    IEmailSender sender,
     ILogger<NotificationDispatcher> logger) : INotificationDispatcher
 {
     public async Task DispatchAsync(INotification notification, CancellationToken ct = default)
     {
-        var subs = await subscriptions.ListEnabledAsync(ct);
+        var rules = (await subscriptions.ListEnabledAsync(ct)).Where(r => Matches(r, notification)).ToList();
+        if (rules.Count == 0)
+            return;
 
-        foreach (var subscription in subs)
+        var settings = await settingsResolver.ResolveAsync(ct);
+        if (settings is not { IsConfigured: true })
         {
-            if (!subscription.Events.Contains(notification.Event))
-                continue;
-            if (!string.IsNullOrWhiteSpace(subscription.BranchKey)
-                && !string.Equals(subscription.BranchKey, notification.BranchKey, StringComparison.OrdinalIgnoreCase))
-                continue;
-            if (!string.IsNullOrWhiteSpace(subscription.InstanceKey)
-                && !string.Equals(subscription.InstanceKey, notification.InstanceKey, StringComparison.OrdinalIgnoreCase))
-                continue;
+            logger.LogWarning(
+                "E-mail is not configured (Konfigurace → E-mail, or Notifications:Smtp); skipping {Count} matching rule(s) for {Event}.",
+                rules.Count, notification.Event);
+            return;
+        }
 
-            var notifier = notifiers.FirstOrDefault(n =>
-                string.Equals(n.Channel, subscription.Channel, StringComparison.OrdinalIgnoreCase));
-            if (notifier is null)
-            {
-                logger.LogWarning("No notifier for channel '{Channel}'; skipping subscription to {Target}.",
-                    subscription.Channel, subscription.Target);
-                continue;
-            }
-
+        foreach (var rule in rules)
+        {
             try
             {
-                await notifier.SendAsync(subscription, notification, ct);
+                await sender.SendAsync(settings, rule.Recipients, notification.Title, notification.Summary, ct);
             }
             catch (Exception ex)
             {
-                logger.LogWarning(ex, "Notification via {Channel} to {Target} failed for event {Event}.",
-                    subscription.Channel, subscription.Target, notification.Event);
+                logger.LogWarning(ex, "E-mail notification failed for event {Event} (rule '{Rule}', recipients: {Recipients}).",
+                    notification.Event, rule.Name, string.Join(", ", rule.Recipients));
             }
         }
     }
+
+    /// <summary>A rule matches when it lists the event and its branch/instance filters allow it (empty = any).</summary>
+    private static bool Matches(NotificationSubscription rule, INotification n) =>
+        rule.Events.Contains(n.Event)
+        && (rule.BranchKeys.Count == 0
+            || rule.BranchKeys.Any(b => string.Equals(b, n.BranchKey, StringComparison.OrdinalIgnoreCase)))
+        && (rule.InstanceKeys.Count == 0
+            || rule.InstanceKeys.Any(i => string.Equals(i, n.InstanceKey, StringComparison.OrdinalIgnoreCase)));
 }

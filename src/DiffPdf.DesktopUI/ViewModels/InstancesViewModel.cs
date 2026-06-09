@@ -12,7 +12,8 @@ namespace DiffPdf.DesktopUI.ViewModels;
 /// Instance pod větví: seznam + vytvoření / úprava (modální formulář) + smazání (jednotlivě i hromadně) +
 /// detail (připravenost / struktura, jen pro čtení) a statistiky. U každého řádku ⚙ konfigurace a tlačítka
 /// fronty (Spustit / Přidat do fronty / Pozastavit / Zastavit / Obnovit) řízená živým stavem per-branch fronty.
-/// Seznam se navíc periodicky obnovuje na pozadí (vedle ručního tlačítka Obnovit).
+/// Seznam se obnovuje živými událostmi fronty/scope a na vyžádání (znovu-kliknutí na položku v navigaci, kliknutí
+/// do řádku, F5).
 /// </summary>
 public partial class InstancesViewModel : PageViewModel
 {
@@ -255,8 +256,8 @@ public partial class InstancesViewModel : PageViewModel
 
     partial void OnSelectedBranchChanged(Branch? value) => _ = RunAsync(LoadInstancesAsync);
 
-    [RelayCommand]
-    private Task RefreshAsync() => RunAsync(async () =>
+    /// <summary>Reloads the branch picker + the current branch's instances on demand (nav re-click / row click / F5).</summary>
+    public override Task ReloadAsync() => RunAsync(async () =>
     {
         var keep = SelectedBranch?.Key;
         await LoadBranchesAsync();

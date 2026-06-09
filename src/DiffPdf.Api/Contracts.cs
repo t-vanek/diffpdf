@@ -241,40 +241,40 @@ public sealed record JobSummary
     };
 }
 
-// ---------------- Automation: notification subscriptions ----------------
+// ---------------- Automation: e-mail notification rules ----------------
 
-/// <summary>Create a notification subscription routing finished-batch events to a webhook or e-mail.</summary>
+/// <summary>Create an e-mail notification rule (recipients + events + optional branch/instance scope; empty = any).</summary>
 public sealed record CreateSubscriptionRequest
 {
-    public required string Channel { get; init; }
-    public required string Target { get; init; }
+    public string Name { get; init; } = "";
+    public required IReadOnlyList<string> Recipients { get; init; }
     public required IReadOnlyList<NotificationEvent> Events { get; init; }
-    public string? BranchKey { get; init; }
-    public string? InstanceKey { get; init; }
+    public IReadOnlyList<string> BranchKeys { get; init; } = [];
+    public IReadOnlyList<string> InstanceKeys { get; init; } = [];
     public bool Enabled { get; init; } = true;
 }
 
-/// <summary>Update a subscription. <see cref="Version"/> guards against concurrent edits (409 on mismatch).</summary>
+/// <summary>Update a rule. <see cref="Version"/> guards against concurrent edits (409 on mismatch).</summary>
 public sealed record UpdateSubscriptionRequest
 {
-    public required string Channel { get; init; }
-    public required string Target { get; init; }
+    public string Name { get; init; } = "";
+    public required IReadOnlyList<string> Recipients { get; init; }
     public required IReadOnlyList<NotificationEvent> Events { get; init; }
-    public string? BranchKey { get; init; }
-    public string? InstanceKey { get; init; }
+    public IReadOnlyList<string> BranchKeys { get; init; } = [];
+    public IReadOnlyList<string> InstanceKeys { get; init; } = [];
     public bool Enabled { get; init; } = true;
     public required long Version { get; init; }
 }
 
-/// <summary>A subscription as returned by the API.</summary>
+/// <summary>An e-mail notification rule as returned by the API.</summary>
 public sealed record SubscriptionResponse
 {
     public required Guid Id { get; init; }
-    public required string Channel { get; init; }
-    public required string Target { get; init; }
+    public string Name { get; init; } = "";
+    public required IReadOnlyList<string> Recipients { get; init; }
     public required IReadOnlyList<NotificationEvent> Events { get; init; }
-    public string? BranchKey { get; init; }
-    public string? InstanceKey { get; init; }
+    public IReadOnlyList<string> BranchKeys { get; init; } = [];
+    public IReadOnlyList<string> InstanceKeys { get; init; } = [];
     public bool Enabled { get; init; }
     public DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset? UpdatedAt { get; init; }
@@ -283,16 +283,73 @@ public sealed record SubscriptionResponse
     public static SubscriptionResponse From(NotificationSubscription s) => new()
     {
         Id = s.Id,
-        Channel = s.Channel,
-        Target = s.Target,
+        Name = s.Name,
+        Recipients = s.Recipients,
         Events = s.Events,
-        BranchKey = s.BranchKey,
-        InstanceKey = s.InstanceKey,
+        BranchKeys = s.BranchKeys,
+        InstanceKeys = s.InstanceKeys,
         Enabled = s.Enabled,
         CreatedAt = s.CreatedAt,
         UpdatedAt = s.UpdatedAt,
         Version = s.Version,
     };
+}
+
+// ---------------- E-mail (SMTP) settings ----------------
+
+/// <summary>SMTP settings as returned by the API. The password is never returned — only whether one is set.</summary>
+public sealed record EmailSettingsResponse
+{
+    public string Host { get; init; } = "";
+    public int Port { get; init; }
+    public bool UseSsl { get; init; }
+    public string? Username { get; init; }
+    public bool HasPassword { get; init; }
+    public string FromAddress { get; init; } = "";
+    public string? FromName { get; init; }
+    public DateTimeOffset? UpdatedAt { get; init; }
+    public long Version { get; init; }
+
+    public static EmailSettingsResponse From(EmailSettings s) => new()
+    {
+        Host = s.Host,
+        Port = s.Port,
+        UseSsl = s.UseSsl,
+        Username = s.Username,
+        HasPassword = !string.IsNullOrEmpty(s.Password),
+        FromAddress = s.FromAddress,
+        FromName = s.FromName,
+        UpdatedAt = s.UpdatedAt,
+        Version = s.Version,
+    };
+
+    /// <summary>Sane defaults when nothing is saved yet, so the editor opens with usable fields (Version 0).</summary>
+    public static EmailSettingsResponse Empty() => new()
+    {
+        Port = 587,
+        UseSsl = true,
+        Version = 0,
+    };
+}
+
+/// <summary>Save SMTP settings. A blank/omitted <see cref="Password"/> keeps the stored one. <see cref="Version"/>
+/// guards concurrent edits (pass 0 for the first save).</summary>
+public sealed record UpdateEmailSettingsRequest
+{
+    public required string Host { get; init; }
+    public int Port { get; init; } = 587;
+    public bool UseSsl { get; init; } = true;
+    public string? Username { get; init; }
+    public string? Password { get; init; }
+    public required string FromAddress { get; init; }
+    public string? FromName { get; init; }
+    public long Version { get; init; }
+}
+
+/// <summary>Send a one-off test e-mail to verify the saved SMTP settings.</summary>
+public sealed record SendTestEmailRequest
+{
+    public required string To { get; init; }
 }
 
 // ---------------- Automation: on-demand triggers ----------------

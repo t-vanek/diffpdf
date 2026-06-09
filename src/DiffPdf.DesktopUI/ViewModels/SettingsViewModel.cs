@@ -4,9 +4,9 @@ using DiffPdf.DesktopUI.Services;
 namespace DiffPdf.DesktopUI.ViewModels;
 
 /// <summary>
-/// Globální nastavení aplikace — kořen dědičnosti pro spouštěče i porovnávače. Hostuje sdílený editor
-/// <see cref="ScopeSettingsViewModel"/> na úrovni Global (bez voliče zdroje); větve a instance dědí z této
-/// konfigurace, pokud si nezvolí vlastní. Nahrazuje původní samostatnou stránku „Spouštěče".
+/// Globální nastavení aplikace ve dvou záložkách: „Spouštěče a porovnávače" (kořen dědičnosti — sdílený editor
+/// <see cref="ScopeSettingsViewModel"/> na úrovni Global; větve a instance dědí, pokud si nezvolí vlastní) a
+/// „E-mail (SMTP)" (<see cref="EmailSettingsViewModel"/> — server a odesílací účet pro notifikace).
 /// </summary>
 public sealed class SettingsViewModel : PageViewModel
 {
@@ -15,9 +15,17 @@ public sealed class SettingsViewModel : PageViewModel
     public override int NavOrder => 100;
 
     public ScopeSettingsViewModel Editor { get; }
+    public EmailSettingsViewModel Email { get; }
 
-    public SettingsViewModel(ServerSession session) =>
+    public SettingsViewModel(ServerSession session)
+    {
         Editor = new ScopeSettingsViewModel(session, ConfigScopeLevel.Global, branchKey: null, instanceKey: null, isModal: false);
+        Email = new EmailSettingsViewModel(session);
+    }
 
-    public override Task ActivateAsync() => Editor.LoadAsync();
+    public override async Task ActivateAsync()
+    {
+        await Editor.LoadAsync();
+        await Email.LoadAsync();
+    }
 }

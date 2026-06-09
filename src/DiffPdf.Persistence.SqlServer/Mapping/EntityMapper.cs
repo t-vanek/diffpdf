@@ -24,8 +24,14 @@ public sealed partial class EntityMapper
     [MapperIgnoreSource(nameof(FilePairTaskEntity.ResultStatus))] // denormalized verdict (list filter only); domain derives it from Result
     public partial FilePairTask ToDomain(FilePairTaskEntity entity);
 
+    [MapProperty(nameof(SubscriptionEntity.RecipientsJson), nameof(NotificationSubscription.Recipients))]
     [MapProperty(nameof(SubscriptionEntity.EventsJson), nameof(NotificationSubscription.Events))]
+    [MapProperty(nameof(SubscriptionEntity.BranchKeysJson), nameof(NotificationSubscription.BranchKeys))]
+    [MapProperty(nameof(SubscriptionEntity.InstanceKeysJson), nameof(NotificationSubscription.InstanceKeys))]
     public partial NotificationSubscription ToDomain(SubscriptionEntity entity);
+
+    [MapperIgnoreSource(nameof(EmailSettingsEntity.Id))] // single-row settings; the domain model has no Id
+    public partial EmailSettings ToDomain(EmailSettingsEntity entity);
 
     [MapProperty(nameof(ControlCheckEntity.ParametersJson), nameof(ControlCheck.Parameters))]
     [MapProperty(nameof(ControlCheckEntity.EventsJson), nameof(ControlCheck.Events))]
@@ -61,6 +67,9 @@ public sealed partial class EntityMapper
 
     private static IReadOnlyList<NotificationEvent> MapEvents(string json) =>
         DiffPdfJson.Deserialize<IReadOnlyList<NotificationEvent>>(json);
+
+    private static IReadOnlyList<string> MapStringList(string json) =>
+        string.IsNullOrEmpty(json) ? [] : DiffPdfJson.Deserialize<IReadOnlyList<string>>(json);
 
     private static IReadOnlyDictionary<string, string> MapParameters(string json) =>
         string.IsNullOrEmpty(json) ? new Dictionary<string, string>() : DiffPdfJson.Deserialize<IReadOnlyDictionary<string, string>>(json);

@@ -2,123 +2,161 @@ using DiffPdf.Core.Models;
 using DiffPdf.Notifications;
 using DiffPdf.Persistence;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 
 namespace DiffPdf.Core.Tests;
 
 public class NotificationDispatcherTests
 {
-    private sealed class RecordingNotifier(string channel, bool throwOnSend = false) : INotifier
+    private sealed class RecordingSender : IEmailSender
     {
-        public string Channel { get; } = channel;
-        public List<INotification> Sent { get; } = [];
+        public List<(IReadOnlyList<string> Recipients, string Subject)> Sent { get; } = [];
+        public Func<IReadOnlyList<string>, bool>? ThrowFor { get; init; }
 
-        public Task SendAsync(NotificationSubscription subscription, INotification notification, CancellationToken ct)
+        public Task SendAsync(EmailSettings settings, IEnumerable<string> recipients, string subject, string body, CancellationToken ct = default)
         {
-            if (throwOnSend)
-                throw new InvalidOperationException("boom");
-            Sent.Add(notification);
+            var list = recipients.ToList();
+            if (ThrowFor is not null && ThrowFor(list)) throw new InvalidOperationException("boom");
+            Sent.Add((list, subject));
             return Task.CompletedTask;
         }
     }
 
-    private static BatchNotification Notification(
-        NotificationEvent ev = NotificationEvent.GateViolated,
-        string branch = "Alfa", string instance = "Lama") =>
-        new(ev, Guid.NewGuid(), branch, instance, 10, 7, 3, 0, 0,
-            Passed: ev == NotificationEvent.Completed, GateViolations: ["differing files"], DateTimeOffset.UtcNow);
+    private sealed class FakeEmailSettingsStore(EmailSettings? settings) : IEmailSettingsStore
+    {
+        public Task<EmailSettings?> GetAsync(CancellationToken ct = default) => Task.FromResult(settings);
+        public Task<EmailSettings> SaveAsync(EmailSettings s, long v, CancellationToken ct = default) => Task.FromResult(s);
+    }
 
-    private static NotificationSubscription Sub(
-        string channel, string target, NotificationEvent[] events,
-        string? branch = null, string? instance = null, bool enabled = true) =>
+    private static readonly EmailSettings Configured = new() { Host = "smtp.test", FromAddress = "diffpdf@test" };
+
+    private static BatchNotification Notification(
+        NotificationEvent ev = NotificationEvent.Completed, string branch = "alfa", string instance = "lama") =>
+        new(ev, Guid.NewGuid(), branch, instance, 10, 7, 3, 0, 0,
+            Passed: true, GateViolations: [], DateTimeOffset.UtcNow);
+
+    private static NotificationSubscription Rule(
+        IReadOnlyList<string> recipients, NotificationEvent[] events,
+        IReadOnlyList<string>? branches = null, IReadOnlyList<string>? instances = null, bool enabled = true) =>
         new()
         {
             Id = Guid.NewGuid(),
-            Channel = channel,
-            Target = target,
+            Recipients = recipients,
             Events = events,
-            BranchKey = branch,
-            InstanceKey = instance,
+            BranchKeys = branches ?? [],
+            InstanceKeys = instances ?? [],
             Enabled = enabled,
         };
 
     private static async Task<NotificationDispatcher> DispatcherAsync(
-        IEnumerable<NotificationSubscription> subscriptions, params INotifier[] notifiers)
+        IEnumerable<NotificationSubscription> rules, IEmailSender sender, EmailSettings? settings = null)
     {
         var store = new InMemorySubscriptionStore();
-        foreach (var s in subscriptions)
-            await store.CreateAsync(s);
-        return new NotificationDispatcher(notifiers, store, NullLogger<NotificationDispatcher>.Instance);
+        foreach (var r in rules) await store.CreateAsync(r);
+        var resolver = new EmailSettingsResolver(new FakeEmailSettingsStore(settings ?? Configured), Options.Create(new NotificationOptions()));
+        return new NotificationDispatcher(store, resolver, sender, NullLogger<NotificationDispatcher>.Instance);
     }
 
     [Fact]
-    public async Task DisabledSubscription_DispatchesNothing()
+    public async Task DisabledRule_DispatchesNothing()
     {
-        var webhook = new RecordingNotifier("webhook");
-        var sub = Sub("webhook", "http://x", [NotificationEvent.GateViolated], enabled: false);
+        var sender = new RecordingSender();
+        var rule = Rule(["qa@x"], [NotificationEvent.Completed], enabled: false);
 
-        await (await DispatcherAsync([sub], webhook)).DispatchAsync(Notification());
+        await (await DispatcherAsync([rule], sender)).DispatchAsync(Notification());
 
-        Assert.Empty(webhook.Sent);
+        Assert.Empty(sender.Sent);
     }
 
     [Fact]
-    public async Task NoSubscriptions_DispatchesNothing()
+    public async Task NoRules_DispatchesNothing()
     {
-        var webhook = new RecordingNotifier("webhook");
-
-        await (await DispatcherAsync([], webhook)).DispatchAsync(Notification());
-
-        Assert.Empty(webhook.Sent);
+        var sender = new RecordingSender();
+        await (await DispatcherAsync([], sender)).DispatchAsync(Notification());
+        Assert.Empty(sender.Sent);
     }
 
     [Fact]
     public async Task FiltersByEvent()
     {
-        var webhook = new RecordingNotifier("webhook");
-        var sub = Sub("webhook", "http://x", [NotificationEvent.Completed]);
+        var sender = new RecordingSender();
+        var rule = Rule(["qa@x"], [NotificationEvent.Completed]);
 
-        await (await DispatcherAsync([sub], webhook)).DispatchAsync(Notification(NotificationEvent.GateViolated));
+        await (await DispatcherAsync([rule], sender)).DispatchAsync(Notification(NotificationEvent.Failed));
 
-        Assert.Empty(webhook.Sent);
+        Assert.Empty(sender.Sent);
     }
 
     [Fact]
-    public async Task FiltersByBranchAndInstance()
+    public async Task FiltersByBranch()
     {
-        var webhook = new RecordingNotifier("webhook");
-        var sub = Sub("webhook", "http://x", [NotificationEvent.GateViolated], branch: "Beta");
+        var sender = new RecordingSender();
+        var rule = Rule(["qa@x"], [NotificationEvent.Completed], branches: ["beta"]);
 
-        await (await DispatcherAsync([sub], webhook)).DispatchAsync(Notification(branch: "Alfa"));
+        await (await DispatcherAsync([rule], sender)).DispatchAsync(Notification(branch: "alfa"));
 
-        Assert.Empty(webhook.Sent);
+        Assert.Empty(sender.Sent);
     }
 
     [Fact]
-    public async Task RoutesToMatchingChannel_CaseInsensitive()
+    public async Task FiltersByInstance()
     {
-        var webhook = new RecordingNotifier("webhook");
-        var smtp = new RecordingNotifier("smtp");
-        var sub = Sub("WEBHOOK", "http://x", [NotificationEvent.GateViolated]);
+        var sender = new RecordingSender();
+        var rule = Rule(["qa@x"], [NotificationEvent.Completed], instances: ["other"]);
 
-        await (await DispatcherAsync([sub], webhook, smtp)).DispatchAsync(Notification());
+        await (await DispatcherAsync([rule], sender)).DispatchAsync(Notification(instance: "lama"));
 
-        Assert.Single(webhook.Sent);
-        Assert.Empty(smtp.Sent);
+        Assert.Empty(sender.Sent);
     }
 
     [Fact]
-    public async Task OneFailingSubscription_DoesNotBlockOthers()
+    public async Task MatchingRule_SendsToAllRecipients()
     {
-        var failing = new RecordingNotifier("webhook", throwOnSend: true);
-        var smtp = new RecordingNotifier("smtp");
-        var subs = new[]
+        var sender = new RecordingSender();
+        var rule = Rule(["qa@x", "dev@x"], [NotificationEvent.Completed], branches: ["alfa"], instances: ["lama"]);
+
+        await (await DispatcherAsync([rule], sender)).DispatchAsync(Notification(branch: "alfa", instance: "lama"));
+
+        Assert.Single(sender.Sent);
+        Assert.Equal(["qa@x", "dev@x"], sender.Sent[0].Recipients);
+    }
+
+    [Fact]
+    public async Task EmptyScope_MatchesAnyBranchAndInstance()
+    {
+        var sender = new RecordingSender();
+        var rule = Rule(["qa@x"], [NotificationEvent.Completed]); // no branch/instance filter
+
+        await (await DispatcherAsync([rule], sender)).DispatchAsync(Notification(branch: "whatever", instance: "any"));
+
+        Assert.Single(sender.Sent);
+    }
+
+    [Fact]
+    public async Task NotConfigured_DispatchesNothing()
+    {
+        var sender = new RecordingSender();
+        var rule = Rule(["qa@x"], [NotificationEvent.Completed]);
+
+        // No stored settings and an empty NotificationOptions => resolver returns not-configured.
+        await (await DispatcherAsync([rule], sender, settings: new EmailSettings())).DispatchAsync(Notification());
+
+        Assert.Empty(sender.Sent);
+    }
+
+    [Fact]
+    public async Task OneFailingRule_DoesNotBlockOthers()
+    {
+        var sender = new RecordingSender { ThrowFor = r => r.Contains("boom@x") };
+        var rules = new[]
         {
-            Sub("webhook", "http://x", [NotificationEvent.GateViolated]),
-            Sub("smtp", "qa@x", [NotificationEvent.GateViolated]),
+            Rule(["boom@x"], [NotificationEvent.Completed]),
+            Rule(["ok@x"], [NotificationEvent.Completed]),
         };
 
-        await (await DispatcherAsync(subs, failing, smtp)).DispatchAsync(Notification());
+        await (await DispatcherAsync(rules, sender)).DispatchAsync(Notification());
 
-        Assert.Single(smtp.Sent); // smtp still delivered despite webhook throwing
+        Assert.Single(sender.Sent); // the failing rule is logged; the other still delivers
+        Assert.Equal(["ok@x"], sender.Sent[0].Recipients);
     }
 }

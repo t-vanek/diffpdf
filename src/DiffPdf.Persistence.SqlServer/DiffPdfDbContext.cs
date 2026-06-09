@@ -16,6 +16,7 @@ public sealed class DiffPdfDbContext(DbContextOptions<DiffPdfDbContext> options)
     public DbSet<TriggerRunEntity> TriggerRuns => Set<TriggerRunEntity>();
     public DbSet<AuditLogEntity> AuditLog => Set<AuditLogEntity>();
     public DbSet<ScopeConfigurationEntity> ScopeConfigurations => Set<ScopeConfigurationEntity>();
+    public DbSet<EmailSettingsEntity> EmailSettings => Set<EmailSettingsEntity>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -111,16 +112,32 @@ public sealed class DiffPdfDbContext(DbContextOptions<DiffPdfDbContext> options)
             e.ToTable("notification_subscriptions");
             e.HasKey(x => x.Id);
             e.Property(x => x.Id).HasColumnName("id");
-            e.Property(x => x.Channel).HasColumnName("channel").HasMaxLength(256);
-            e.Property(x => x.Target).HasColumnName("target");
+            e.Property(x => x.Name).HasColumnName("name");
+            e.Property(x => x.RecipientsJson).HasColumnName("recipients_json");
             e.Property(x => x.EventsJson).HasColumnName("events_json");
-            e.Property(x => x.BranchKey).HasColumnName("branch_key").HasMaxLength(256);
-            e.Property(x => x.InstanceKey).HasColumnName("instance_key").HasMaxLength(256);
+            e.Property(x => x.BranchKeysJson).HasColumnName("branch_keys_json");
+            e.Property(x => x.InstanceKeysJson).HasColumnName("instance_keys_json");
             e.Property(x => x.Enabled).HasColumnName("enabled");
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
             e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
             e.Property(x => x.Version).HasColumnName("version");
             e.HasIndex(x => x.Enabled);
+        });
+
+        b.Entity<EmailSettingsEntity>(e =>
+        {
+            e.ToTable("email_settings");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.Host).HasColumnName("host");
+            e.Property(x => x.Port).HasColumnName("port");
+            e.Property(x => x.UseSsl).HasColumnName("use_ssl");
+            e.Property(x => x.Username).HasColumnName("username");
+            e.Property(x => x.Password).HasColumnName("password");
+            e.Property(x => x.FromAddress).HasColumnName("from_address");
+            e.Property(x => x.FromName).HasColumnName("from_name");
+            e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
+            e.Property(x => x.Version).HasColumnName("version");
         });
 
         b.Entity<ControlCheckEntity>(e =>

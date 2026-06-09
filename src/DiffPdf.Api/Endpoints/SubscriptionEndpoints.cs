@@ -18,7 +18,7 @@ public static class SubscriptionEndpoints
             Run(async () =>
             {
                 var created = await subs.CreateAsync(
-                    new SubscriptionInput(request.Channel, request.Target, request.Events, request.BranchKey, request.InstanceKey, request.Enabled), ct);
+                    new SubscriptionInput(request.Name, request.Recipients, request.Events, request.BranchKeys, request.InstanceKeys, request.Enabled), ct);
                 return Results.Created($"/api/v1/subscriptions/{created.Id}", SubscriptionResponse.From(created));
             }))
             .WithSummary("Create a notification subscription")
@@ -36,7 +36,7 @@ public static class SubscriptionEndpoints
             Run(async () =>
             {
                 var saved = await subs.UpdateAsync(
-                    id, new SubscriptionInput(request.Channel, request.Target, request.Events, request.BranchKey, request.InstanceKey, request.Enabled), request.Version, ct);
+                    id, new SubscriptionInput(request.Name, request.Recipients, request.Events, request.BranchKeys, request.InstanceKeys, request.Enabled), request.Version, ct);
                 return saved is null ? Results.NotFound() : Results.Ok(SubscriptionResponse.From(saved));
             }))
             .WithSummary("Update a subscription (optimistic concurrency via Version)")

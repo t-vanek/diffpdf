@@ -11,8 +11,8 @@ namespace DiffPdf.DesktopUI.ViewModels;
 /// <summary>
 /// Větve: seznam + vytvoření / úprava (modální formulář) + smazání (jednotlivě i hromadně) + detail se
 /// statistikami, a u každého řádku ⚙ konfigurace a tlačítka fronty (Spustit / Přidat do fronty / Pozastavit /
-/// Zastavit / Obnovit) řízená živým stavem fronty. Seznam se navíc periodicky obnovuje na pozadí (vedle
-/// ručního tlačítka Obnovit).
+/// Zastavit / Obnovit) řízená živým stavem fronty. Seznam se obnovuje periodicky na pozadí, živými událostmi
+/// fronty/scope, a na vyžádání (znovu-kliknutí na položku v navigaci, kliknutí do řádku, F5).
 /// </summary>
 public partial class BranchesViewModel : PageViewModel
 {
@@ -206,35 +206,8 @@ public partial class BranchesViewModel : PageViewModel
                 row.Apply(state);
     }
 
-    [RelayCommand]
-    private Task RefreshAsync() => RunAsync(LoadAsync);
-
-    /// <summary>Dry-run scope sync: report what the on-disk &lt;root&gt;/&lt;branch&gt;/&lt;instance&gt; tree would change (no writes).</summary>
-    [RelayCommand]
-    private Task PreviewSyncAsync() => RunAsync(async () =>
-        Info = SummarizeSync(await _session.Require().SyncScopeAsync(apply: false)));
-
-    /// <summary>Apply scope sync: register discovered branches/instances + create the missing skeleton, then reload the list.</summary>
-    [RelayCommand]
-    private Task ApplySyncAsync() => RunAsync(async () =>
-    {
-        if (!await _dialogs.ConfirmAsync("Synchronizovat větve a instance",
-                "Zaregistruje nalezené složky (větve a instance) do databáze a vytvoří chybějící old/new/reports na disku. Pokračovat?"))
-            return;
-        Info = SummarizeSync(await _session.Require().SyncScopeAsync(apply: true));
-        await LoadAsync(); // nově zaregistrované větve/instance se objeví v seznamu
-    });
-
-    private static string SummarizeSync(ScopeSyncReport r)
-    {
-        if (!r.Reachable)
-            return $"Kořen nedostupný: {r.Error}";
-        int branches = r.Branches.Count(b => b.State == BranchSyncState.Registered);
-        int instances = r.Branches.Sum(b => b.Instances.Count(i => i.State == InstanceSyncState.Registered));
-        string verb = r.Applied ? "zaregistrováno" : "k registraci";
-        return $"{r.Root}: {branches} větv(í), {instances} instancí {verb}; "
-             + $"{r.MissingFolders.Count} chybějících složek, {r.OutOfRoot.Count} mimo kořen.";
-    }
+    /// <summary>Reloads the branch list on demand (nav re-click / row click / F5). Scope sync now lives in Automatizace.</summary>
+    public override Task ReloadAsync() => RunAsync(LoadAsync);
 
     partial void OnSelectedRowChanged(BranchRowViewModel? value)
     {

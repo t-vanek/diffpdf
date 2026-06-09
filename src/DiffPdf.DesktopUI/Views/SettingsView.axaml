@@ -5,5 +5,12 @@
              x:Class="DiffPdf.DesktopUI.Views.SettingsView"
              x:DataType="vm:SettingsViewModel">
 
-  <views:ScopeSettingsView DataContext="{Binding Editor}"/>
+  <TabControl>
+    <TabItem Header="Spouštěče a porovnávače">
+      <views:ScopeSettingsView DataContext="{Binding Editor}"/>
+    </TabItem>
+    <TabItem Header="E-mail (SMTP)">
+      <views:EmailSettingsView DataContext="{Binding Email}"/>
+    </TabItem>
+  </TabControl>
 </UserControl>

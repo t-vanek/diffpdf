@@ -111,11 +111,14 @@ public class DiffPdfClientIntegrationTests(InMemoryApiFactory factory)
 
         var created = await diff.CreateSubscriptionAsync(new CreateSubscriptionRequest
         {
-            Channel = "webhook",
-            Target = "https://hooks.example/test",
-            Events = [NotificationEvent.GateViolated, NotificationEvent.Completed],
+            Name = "QA",
+            Recipients = ["qa@example.test", "dev@example.test"],
+            Events = [NotificationEvent.Completed, NotificationEvent.Failed],
+            BranchKeys = ["alfa"],
         });
-        Assert.Equal("webhook", created.Channel);
+        Assert.Equal("QA", created.Name);
+        Assert.Equal(2, created.Recipients.Count);
+        Assert.Contains("alfa", created.BranchKeys);
         Assert.Equal(1, created.Version);
 
         var got = await diff.GetSubscriptionAsync(created.Id);
@@ -124,18 +127,19 @@ public class DiffPdfClientIntegrationTests(InMemoryApiFactory factory)
 
         var updated = await diff.UpdateSubscriptionAsync(created.Id, new UpdateSubscriptionRequest
         {
-            Channel = "webhook",
-            Target = "https://hooks.example/changed",
-            Events = [NotificationEvent.GateViolated],
+            Name = "QA changed",
+            Recipients = ["qa@example.test"],
+            Events = [NotificationEvent.Completed],
             Enabled = false,
             Version = created.Version,
         });
-        Assert.Equal("https://hooks.example/changed", updated.Target);
+        Assert.Single(updated.Recipients);
+        Assert.False(updated.Enabled);
         Assert.Equal(2, updated.Version);
 
-        // bad channel -> 400
+        // invalid recipient -> 400
         var bad = await Assert.ThrowsAsync<DiffPdfApiException>(() => diff.CreateSubscriptionAsync(
-            new CreateSubscriptionRequest { Channel = "carrier-pigeon", Target = "x", Events = [NotificationEvent.Completed] }));
+            new CreateSubscriptionRequest { Recipients = ["not-an-email"], Events = [NotificationEvent.Completed] }));
         Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
 
         await diff.DeleteSubscriptionAsync(created.Id);

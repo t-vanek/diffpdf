@@ -38,16 +38,19 @@ public sealed class SqlServerSubscriptionStore(DiffPdfDbContext db, EntityMapper
     public async Task<NotificationSubscription> UpdateAsync(NotificationSubscription subscription, long expectedVersion, CancellationToken ct = default)
     {
         var now = DateTimeOffset.UtcNow;
+        string recipientsJson = DiffPdfJson.Serialize(subscription.Recipients);
         string eventsJson = DiffPdfJson.Serialize(subscription.Events);
+        string branchKeysJson = DiffPdfJson.Serialize(subscription.BranchKeys);
+        string instanceKeysJson = DiffPdfJson.Serialize(subscription.InstanceKeys);
 
         int rows = await db.Subscriptions
             .Where(x => x.Id == subscription.Id && x.Version == expectedVersion)
             .ExecuteUpdateAsync(s => s
-                .SetProperty(x => x.Channel, subscription.Channel)
-                .SetProperty(x => x.Target, subscription.Target)
+                .SetProperty(x => x.Name, subscription.Name)
+                .SetProperty(x => x.RecipientsJson, recipientsJson)
                 .SetProperty(x => x.EventsJson, eventsJson)
-                .SetProperty(x => x.BranchKey, subscription.BranchKey)
-                .SetProperty(x => x.InstanceKey, subscription.InstanceKey)
+                .SetProperty(x => x.BranchKeysJson, branchKeysJson)
+                .SetProperty(x => x.InstanceKeysJson, instanceKeysJson)
                 .SetProperty(x => x.Enabled, subscription.Enabled)
                 .SetProperty(x => x.UpdatedAt, now)
                 .SetProperty(x => x.Version, x => x.Version + 1), ct);
@@ -66,11 +69,11 @@ public sealed class SqlServerSubscriptionStore(DiffPdfDbContext db, EntityMapper
     internal static SubscriptionEntity ToEntity(NotificationSubscription s) => new()
     {
         Id = s.Id,
-        Channel = s.Channel,
-        Target = s.Target,
+        Name = s.Name,
+        RecipientsJson = DiffPdfJson.Serialize(s.Recipients),
         EventsJson = DiffPdfJson.Serialize(s.Events),
-        BranchKey = s.BranchKey,
-        InstanceKey = s.InstanceKey,
+        BranchKeysJson = DiffPdfJson.Serialize(s.BranchKeys),
+        InstanceKeysJson = DiffPdfJson.Serialize(s.InstanceKeys),
         Enabled = s.Enabled,
         CreatedAt = s.CreatedAt,
         Version = 1,

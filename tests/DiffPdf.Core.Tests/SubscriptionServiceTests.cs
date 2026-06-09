@@ -4,7 +4,7 @@ using DiffPdf.Persistence;
 
 namespace DiffPdf.Core.Tests;
 
-/// <summary>Unit coverage for the subscription validation + CRUD logic moved out of the /subscriptions endpoints into SubscriptionService.</summary>
+/// <summary>Unit coverage for the e-mail notification-rule validation + CRUD logic in SubscriptionService.</summary>
 public class SubscriptionServiceTests
 {
     private static (SubscriptionService Svc, InMemorySubscriptionStore Store) Build()
@@ -14,21 +14,25 @@ public class SubscriptionServiceTests
     }
 
     private static SubscriptionInput Input(
-        string channel = "webhook", string target = "https://example.test/hook", IReadOnlyList<NotificationEvent>? events = null)
-        => new(channel, target, events ?? [NotificationEvent.Completed], null, null, true);
+        IReadOnlyList<string>? recipients = null,
+        IReadOnlyList<NotificationEvent>? events = null,
+        IReadOnlyList<string>? branches = null,
+        IReadOnlyList<string>? instances = null)
+        => new("rule", recipients ?? ["qa@example.test"], events ?? [NotificationEvent.Completed],
+               branches ?? [], instances ?? [], true);
 
     [Fact]
-    public async Task Create_InvalidChannel_Throws()
+    public async Task Create_NoRecipients_Throws()
     {
         var (svc, _) = Build();
-        await Assert.ThrowsAsync<SubscriptionValidationException>(() => svc.CreateAsync(Input(channel: "carrier-pigeon")));
+        await Assert.ThrowsAsync<SubscriptionValidationException>(() => svc.CreateAsync(Input(recipients: [])));
     }
 
     [Fact]
-    public async Task Create_EmptyTarget_Throws()
+    public async Task Create_InvalidRecipient_Throws()
     {
         var (svc, _) = Build();
-        await Assert.ThrowsAsync<SubscriptionValidationException>(() => svc.CreateAsync(Input(target: "  ")));
+        await Assert.ThrowsAsync<SubscriptionValidationException>(() => svc.CreateAsync(Input(recipients: ["not-an-email"])));
     }
 
     [Fact]
@@ -39,11 +43,11 @@ public class SubscriptionServiceTests
     }
 
     [Fact]
-    public async Task Create_Valid_Persists_AndLowercasesChannel()
+    public async Task Create_Valid_Persists_AndDedupesRecipients()
     {
         var (svc, store) = Build();
-        var created = await svc.CreateAsync(Input(channel: "WebHook"));
-        Assert.Equal("webhook", created.Channel);
+        var created = await svc.CreateAsync(Input(recipients: ["QA@Example.test", "qa@example.test", "dev@example.test"]));
+        Assert.Equal(2, created.Recipients.Count); // case-insensitive de-dupe keeps the first spelling
         Assert.NotNull(await store.GetAsync(created.Id));
     }
 

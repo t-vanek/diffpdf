@@ -151,6 +151,7 @@ else
     builder.Services.AddSingleton<IBranchStore, InMemoryBranchStore>();
     builder.Services.AddSingleton<IInstanceStore, InMemoryInstanceStore>();
     builder.Services.AddSingleton<ISubscriptionStore, InMemorySubscriptionStore>();
+    builder.Services.AddSingleton<IEmailSettingsStore, InMemoryEmailSettingsStore>();
     builder.Services.AddSingleton<IControlCheckStore, InMemoryControlCheckStore>();
     builder.Services.AddSingleton<IControlCheckRunStore, InMemoryControlCheckRunStore>();
     builder.Services.AddSingleton<ITriggerStore, InMemoryTriggerStore>();
@@ -257,6 +258,7 @@ api.MapComparisonEndpoints();
 api.MapScopeEndpoints();
 api.MapScopeSyncEndpoints();
 api.MapSubscriptionEndpoints();
+api.MapEmailSettingsEndpoints();
 api.MapJobEndpoints();
 api.MapDiscoveryEndpoints();
 api.MapTriggerEndpoints();
