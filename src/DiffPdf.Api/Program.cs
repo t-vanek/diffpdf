@@ -22,7 +22,6 @@ using DiffPdf.Pdf.DependencyInjection;
 using DiffPdf.Persistence;
 using DiffPdf.Persistence.Postgres.DependencyInjection;
 using DiffPdf.Persistence.SqlServer.DependencyInjection;
-using DiffPdf.Tisk;
 using DiffPdf.Worker.DependencyInjection;
 using OpenTelemetry;
 using OpenTelemetry.Metrics;
@@ -121,9 +120,6 @@ builder.Services.AddRateLimiter(options =>
 builder.Services.Configure<StorageOptions>(builder.Configuration.GetSection("Storage"));
 builder.Services.Configure<PdfWorkLimiterOptions>(builder.Configuration.GetSection("Pdf"));
 builder.Services.Configure<NetworkOptions>(builder.Configuration.GetSection(NetworkOptions.SectionName));
-// Print-and-compare (D3Soft Tisk SOA): per-scope print sources. Empty when not configured → the
-// "Vytisknout a porovnat" action is simply unavailable (the resolver reports no configured scopes).
-builder.Services.Configure<TiskOptions>(builder.Configuration.GetSection(TiskOptions.SectionName));
 
 // SignalR realtime progress. Registering the publisher before AddDiffPdfWorker
 // means the worker's no-op fallback is not used.
@@ -217,9 +213,6 @@ builder.Services.AddScoped<IBatchLauncher, BatchLauncher>();
 builder.Services.AddScoped<IFilePairRequeueDispatcher, FilePairRequeueDispatcher>();
 // Application layer: scope/job/check/subscription/trigger/config orchestration (drives the endpoints).
 builder.Services.AddDiffPdfApplication();
-// The proprietary print-SOA implementation (the only place the D3Soft packages are wired in). The
-// scope→connection resolver + operation store come from AddDiffPdfApplication; this binds the driver.
-builder.Services.AddSingleton<IPrintBatchService, TiskPrintBatchService>();
 builder.Services.AddDiffPdfBranchQueue();
 builder.Services.AddDiffPdfScopeSync(builder.Configuration);
 
@@ -281,7 +274,6 @@ api.MapSubscriptionEndpoints();
 api.MapJobEndpoints();
 api.MapDiscoveryEndpoints();
 api.MapTriggerEndpoints();
-api.MapPrintEndpoints();
 api.MapStatusEndpoints();
 api.MapControlCheckEndpoints();
 api.MapScopeConfigurationEndpoints();

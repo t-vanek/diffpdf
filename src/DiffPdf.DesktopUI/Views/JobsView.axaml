@@ -18,12 +18,6 @@
       <ComboBox Width="150" ItemsSource="{Binding InstanceOptions}" SelectedItem="{Binding FilterInstance}"/>
       <ComboBox Width="120" ItemsSource="{Binding StatusFilters}" SelectedItem="{Binding FilterStatus}"/>
       <Button Content="Obnovit" Classes="ghost" Command="{Binding RefreshCommand}" ToolTip.Tip="Obnovit (F5)"/>
-      <!-- Vytisknout a porovnat: jen pro instanci s nakonfigurovaným tiskovým zdrojem (SOA). -->
-      <Button Content="🖨 Vytisknout a porovnat" Classes="accent"
-              Command="{Binding PrintAndCompareCommand}"
-              IsVisible="{Binding CanPrintAndCompare}"
-              ToolTip.Tip="Vytiskne novou vzorovou dávku a porovná ji s předchozí dávkou"/>
-      <TextBlock Text="{Binding PrintStatus}" Foreground="{DynamicResource Info}" FontWeight="SemiBold" VerticalAlignment="Center"/>
       <TextBlock Text="{Binding Info}" Foreground="{DynamicResource Info}" VerticalAlignment="Center"/>
       <TextBlock Text="{Binding Error}" Foreground="{DynamicResource Bad}" VerticalAlignment="Center"/>
       <ProgressBar IsIndeterminate="True" Width="100" Height="4" VerticalAlignment="Center" IsVisible="{Binding IsBusy}"/>

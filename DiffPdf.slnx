@@ -15,7 +15,6 @@
     <Project Path="src/DiffPdf.Persistence.Postgres/DiffPdf.Persistence.Postgres.csproj" />
     <Project Path="src/DiffPdf.Persistence.SqlServer/DiffPdf.Persistence.SqlServer.csproj" />
     <Project Path="src/DiffPdf.Persistence/DiffPdf.Persistence.csproj" />
-    <Project Path="src/DiffPdf.Tisk/DiffPdf.Tisk.csproj" />
     <Project Path="src/DiffPdf.Worker/DiffPdf.Worker.csproj" />
   </Folder>
   <Folder Name="/tests/">

@@ -11,8 +11,6 @@
     <ProjectReference Include="..\DiffPdf.Notifications\DiffPdf.Notifications.csproj" />
     <ProjectReference Include="..\DiffPdf.Persistence.Postgres\DiffPdf.Persistence.Postgres.csproj" />
     <ProjectReference Include="..\DiffPdf.Persistence.SqlServer\DiffPdf.Persistence.SqlServer.csproj" />
-    <!-- Proprietary D3Soft Tisk print-SOA integration (pulls the private feed; see repo-root nuget.config). -->
-    <ProjectReference Include="..\DiffPdf.Tisk\DiffPdf.Tisk.csproj" />
   </ItemGroup>
 
   <ItemGroup>
