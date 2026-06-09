@@ -11,13 +11,18 @@ namespace DiffPdf.DesktopUI.ViewModels;
 /// Úlohy: realtime list of comparison jobs (status chip + progress + outcome verdict) and a unified detail that
 /// auto-loads on selection — summary chips, CI-gate verdict and ONE file-pair list (results + diff PDF when
 /// finished, task progress while running) with a "jen odlišné" filter. Lifecycle actions are state-aware.
+/// The list refreshes via live progress events, a periodic background tick, and on demand (nav re-click, row
+/// click, F5); on-demand reloads touch only the list so the open detail never flickers.
 /// </summary>
 public partial class JobsViewModel : PageViewModel
 {
+    private const int AutoRefreshSeconds = 10;
+
     private readonly ServerSession _session;
     private readonly JobProgressHubClient _hub;
     private readonly DialogService _dialogs;
     private bool _subscribed;
+    private bool _autoRefreshStarted;
     private Guid? _pendingJobId;
 
     // Serializes list reloads (manual / realtime / filter) so they never race the shared Jobs collection.
@@ -149,6 +154,10 @@ public partial class JobsViewModel : PageViewModel
         // Join the scope group so any job finishing anywhere refreshes the list live.
         try { await _hub.JoinScopeAsync(); } catch { /* realtime is best-effort */ }
 
+        // Periodic background refresh: catches jobs whose live progress event was missed (e.g. a dropped hub
+        // connection) so the list never goes stale. Guarded + retried like the manual reload; never toggles busy.
+        StartAutoRefresh();
+
         await LoadBranchOptionsAsync();
         await LoadJobsAsync();
 
@@ -217,13 +226,10 @@ public partial class JobsViewModel : PageViewModel
         HasNoJobs = Jobs.Count == 0;
     }
 
-    [RelayCommand]
-    private Task RefreshAsync() => RunAsync(async () =>
-    {
-        await LoadJobsAsync();
-        // Also pull the open job's latest file states (newly-completed pairs → openable diffs) without re-selecting.
-        if (SelectedJob is { } sel) await LoadDetailAsync(sel.Id);
-    });
+    /// <summary>Reloads the job list on demand (nav re-click / row click / F5). Refetches all loaded pages (not just
+    /// page 1) so a refresh never truncates what the user already scrolled in; the open job's detail is left to the
+    /// selection handler + live progress (so a refresh never flickers/scroll-resets the open file list).</summary>
+    public override Task ReloadAsync() => RunAsync(() => ReplaceJobsAsync(Math.Max(JobsPageSize, Jobs.Count)));
 
     partial void OnFilterStatusChanged(JobStatus? value) => _ = RunAsync(LoadJobsAsync);
 
@@ -278,6 +284,25 @@ public partial class JobsViewModel : PageViewModel
         // user already scrolled in; Reconcile updates in place + inserts new jobs at the top.
         try { await ReplaceJobsAsync(Math.Max(JobsPageSize, Jobs.Count)); }
         catch { /* best-effort realtime refresh */ }
+    }
+
+    private void StartAutoRefresh()
+    {
+        if (_autoRefreshStarted) return;
+        _autoRefreshStarted = true;
+        _ = AutoRefreshLoopAsync();
+    }
+
+    private async Task AutoRefreshLoopAsync()
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(AutoRefreshSeconds));
+        while (await timer.WaitForNextTickAsync())
+        {
+            // Quiet background tick: skip while disconnected, never toggle the busy indicator or surface errors —
+            // a failed tick is simply retried next interval. Reloads only the list (keeps the open detail stable).
+            if (!_session.IsConnected) continue;
+            await ReloadQuietlyAsync();
+        }
     }
 
     private void OnProgress(JobProgress p)

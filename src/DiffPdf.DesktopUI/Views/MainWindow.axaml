@@ -13,10 +13,11 @@
 
   <Panel>
     <!-- Mica backdrop tint: a semi-transparent dark layer over the Win11 Mica material — keeps the app's dark
-         identity and text contrast while the material subtly shows through (most in the system title bar, which
-         has no tint over it). Code-behind makes it fully opaque when the OS grants no transparency (e.g. Windows 10)
-         so the window never goes see-through to the desktop. -->
-    <Border x:Name="MicaTint" Background="{DynamicResource Bg}" Opacity="0.88" Margin="0,48,0,0"/>
+         identity and text contrast while the material subtly shows through. Covers the whole window incl. the title
+         bar, so the title bar matches the body and the desktop/windows behind don't bleed through its top edge.
+         Code-behind makes it fully opaque when the OS grants no transparency (e.g. Windows 10) so the window never
+         goes see-through to the desktop. -->
+    <Border x:Name="MicaTint" Background="{DynamicResource Bg}" Opacity="0.88"/>
 
     <!-- Disconnected: frost the whole area below the title bar (nav menu + content) so the reconnect dialog stands
          out as a modal. Margin top 48 keeps the title bar crisp. -->
@@ -34,19 +35,28 @@
     <Border DockPanel.Dock="Top" Height="48" Background="Transparent"
             BorderBrush="{DynamicResource Line}" BorderThickness="0,0,0,1"
             PointerPressed="OnTitleBarPressed" DoubleTapped="OnTitleBarDoubleTapped">
-      <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto">
+      <!-- All title-bar content lives in this grid so it can be dimmed as one unit when the window is inactive
+           (see MainWindow.UpdateActiveDim) — the bottom border line stays crisp on the parent Border. -->
+      <Grid x:Name="TitleBarContent" ColumnDefinitions="Auto,*,Auto,Auto,Auto">
+        <Grid.Transitions>
+          <Transitions><DoubleTransition Property="Opacity" Duration="0:0:0.15"/></Transitions>
+        </Grid.Transitions>
         <TextBlock Grid.Column="0" Text="DiffPDF Remote Manager" FontWeight="SemiBold" FontSize="14"
                    Foreground="{DynamicResource Ink}" VerticalAlignment="Center" Margin="16,0,0,0"/>
 
         <!-- Column 1 (*) is the flexible, draggable gap. -->
 
-        <!-- Live connection status -->
-        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="7" VerticalAlignment="Center" Margin="0,0,10,0">
-          <Ellipse Width="9" Height="9" Fill="{DynamicResource Good}" VerticalAlignment="Center" Classes="pulse" IsVisible="{Binding IsConnected}"/>
-          <Ellipse Width="9" Height="9" Fill="{DynamicResource InkFaint}" VerticalAlignment="Center" IsVisible="{Binding !IsConnected}"/>
-          <TextBlock Text="{Binding ConnectionStatus}" Foreground="{DynamicResource InkDim}" VerticalAlignment="Center"
-                     TextTrimming="CharacterEllipsis" MaxWidth="360" ToolTip.Tip="{Binding ConnectionStatus}"/>
-        </StackPanel>
+        <!-- Live connection status — a subtle pill chip (live dot + status text) that reads as a status badge. -->
+        <Border Grid.Column="2" VerticalAlignment="Center" Margin="0,0,10,0" Padding="9,3"
+                Background="{DynamicResource SurfaceAlt}" BorderBrush="{DynamicResource Line}" BorderThickness="1"
+                CornerRadius="{DynamicResource RadPill}">
+          <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+            <Ellipse Width="8" Height="8" Fill="{DynamicResource Good}" VerticalAlignment="Center" Classes="pulse" IsVisible="{Binding IsConnected}"/>
+            <Ellipse Width="8" Height="8" Fill="{DynamicResource InkFaint}" VerticalAlignment="Center" IsVisible="{Binding !IsConnected}"/>
+            <TextBlock Text="{Binding ConnectionStatus}" Foreground="{DynamicResource InkDim}" VerticalAlignment="Center"
+                       FontSize="12" TextTrimming="CharacterEllipsis" MaxWidth="340" ToolTip.Tip="{Binding ConnectionStatus}"/>
+          </StackPanel>
+        </Border>
 
         <!-- Connection gear: configure / connect / remember -->
         <Button Grid.Column="3" Classes="titleIcon" VerticalAlignment="Center" Padding="8,5" Margin="0,0,8,0" ToolTip.Tip="Připojení k serveru">
@@ -86,7 +96,14 @@
             <Rectangle Width="11" Height="1" VerticalAlignment="Center" Fill="{Binding $parent[Button].Foreground}"/>
           </Button>
           <Button Classes="captionBtn" Click="OnMaximizeRestore" ToolTip.Tip="Maximalizovat / obnovit">
-            <Rectangle Width="10" Height="10" Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1"/>
+            <Panel>
+              <!-- Maximize: single square (window is in its normal state). -->
+              <Rectangle x:Name="MaxGlyph" Width="10" Height="10" Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1"/>
+              <!-- Restore: two overlapping squares (window is maximized). Toggled in code-behind on WindowState
+                   changes (button, double-tap, OS snap, Win+Up) so the glyph always matches the actual state. -->
+              <Path x:Name="RestoreGlyph" IsVisible="False" Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1"
+                    Data="M0,3 H7 V10 H0 Z M3,3 V0 H10 V7 H7"/>
+            </Panel>
           </Button>
           <Button Classes="captionBtn close" Click="OnClose" ToolTip.Tip="Zavřít">
             <Path Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.2" Data="M0,0 L10,10 M0,10 L10,0"/>
@@ -95,8 +112,9 @@
       </Grid>
     </Border>
 
-    <!-- Nav rail -->
-    <ListBox DockPanel.Dock="Left" Width="216" Padding="8,10"
+    <!-- Nav rail. Switching pages activates (loads) the target; re-clicking the already-active item reloads it
+         (see MainWindow.OnNavTapped) — that's the "refresh by clicking the nav item" affordance. -->
+    <ListBox x:Name="NavList" DockPanel.Dock="Left" Width="216" Padding="8,10"
              Background="Transparent" BorderBrush="{DynamicResource Line}" BorderThickness="0,0,1,0"
              ItemsSource="{Binding Pages}"
              SelectedItem="{Binding SelectedPage}"

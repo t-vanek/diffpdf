@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using DiffPdf.Client;
 using DiffPdf.DesktopUI.Services;
 
@@ -56,7 +57,7 @@ public abstract partial class ViewModelBase : ObservableObject
 }
 
 /// <summary>A navigable section page shown in the left nav rail.</summary>
-public abstract class PageViewModel : ViewModelBase
+public abstract partial class PageViewModel : ViewModelBase
 {
     /// <summary>Label in the nav rail.</summary>
     public abstract string Title { get; }
@@ -72,4 +73,14 @@ public abstract class PageViewModel : ViewModelBase
 
     /// <summary>Called when navigating away — release per-page realtime subscriptions / background work.</summary>
     public virtual Task DeactivateAsync() => Task.CompletedTask;
+
+    /// <summary>On-demand reload of this page's data. Replaces the old explicit "Obnovit" toolbar button — it is
+    /// invoked by re-clicking the already-active nav item, clicking a list row, and F5 (and, on Úlohy, a periodic
+    /// timer). Default is a no-op; data pages override it.</summary>
+    public virtual Task ReloadAsync() => Task.CompletedTask;
+
+    /// <summary>F5 hook for <see cref="ReloadAsync"/>. The generated command lives on this non-virtual wrapper so
+    /// subclasses can simply override the virtual <see cref="ReloadAsync"/> without redefining the command.</summary>
+    [RelayCommand]
+    private Task Reload() => ReloadAsync();
 }

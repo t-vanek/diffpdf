@@ -58,4 +58,13 @@ public partial class JobsView : UserControl
         if (DataContext is JobsViewModel vm && sender is DataGrid { SelectedItem: FilePairLine line })
             vm.OpenFileDetailCommand.Execute(line);
     }
+
+    // Clicking into a job row reloads the list (the explicit "Obnovit" button is gone). Reconcile keeps the
+    // selection; the open detail is left to the selection handler + live progress (no flicker). Ignore taps that
+    // miss a row (header / scrollbar / empty area) so only a real row click triggers a refresh.
+    private void OnJobRowTapped(object? sender, TappedEventArgs e)
+    {
+        if ((e.Source as Control)?.FindAncestorOfType<DataGridRow>(includeSelf: true) is null) return;
+        _ = (DataContext as PageViewModel)?.ReloadAsync();
+    }
 }
