@@ -30,6 +30,9 @@ public partial class JobsViewModel : PageViewModel
     private CancellationTokenSource? _searchDebounce;
     private bool _loadingMoreFiles; // guards against the scroll handler firing a duplicate file page-load
 
+    // Scopes ("branchKey/instanceKey") that have a configured print source — gates "Vytisknout a porovnat".
+    private readonly HashSet<string> _printScopes = new(StringComparer.OrdinalIgnoreCase);
+
     public override string Title => "Úlohy";
     public override string Icon => "☰";
     public override int NavOrder => 3; // přímo pod Instance (úlohy patří k instancím)
@@ -49,8 +52,16 @@ public partial class JobsViewModel : PageViewModel
     /// <summary>Selected job's report counts, as coloured chips.</summary>
     public ObservableCollection<StatLine> Summary { get; } = [];
 
-    [ObservableProperty] private string _filterBranch = AllFilter;
-    [ObservableProperty] private string _filterInstance = AllFilter;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanPrintAndCompare))]
+    [NotifyCanExecuteChangedFor(nameof(PrintAndCompareCommand))]
+    private string _filterBranch = AllFilter;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanPrintAndCompare))]
+    [NotifyCanExecuteChangedFor(nameof(PrintAndCompareCommand))]
+    private string _filterInstance = AllFilter;
+
     [ObservableProperty] private JobStatus? _filterStatus;
 
     [ObservableProperty]
@@ -63,7 +74,10 @@ public partial class JobsViewModel : PageViewModel
     [ObservableProperty] private string? _liveStatus;
     [ObservableProperty] private JobResult? _result;
     [ObservableProperty] private string? _info;
-    [ObservableProperty] private bool _showOnlyDiffering;
+
+    /// <summary>Live status line of an in-flight "Vytisknout a porovnat" (tisk → stahování → porovnání); null when idle.</summary>
+    [ObservableProperty] private string? _printStatus;
+    [ObservableProperty] private bool _showOnlyDiffering = true; // default: show only differing pairs (the usual interest)
     [ObservableProperty] private string _fileSearch = "";
     [ObservableProperty] private string _fileCountLabel = "";
     [ObservableProperty]
@@ -88,6 +102,11 @@ public partial class JobsViewModel : PageViewModel
     public bool CanResume => SelectedSummary?.Status == JobStatus.Paused;
     public bool CanCancel => SelectedSummary?.Status is JobStatus.Draft or JobStatus.Queued or JobStatus.Running or JobStatus.Paused;
     public bool CanRetry => SelectedSummary?.Status is JobStatus.Completed or JobStatus.Failed or JobStatus.Cancelled;
+
+    /// <summary>"Vytisknout a porovnat" is available when a specific instance is selected and it has a print source.</summary>
+    public bool CanPrintAndCompare =>
+        FilterBranch != AllFilter && FilterInstance != AllFilter &&
+        _printScopes.Contains($"{FilterBranch}/{FilterInstance}");
 
     public JobsViewModel(ServerSession session, JobProgressHubClient hub, DialogService dialogs)
     {
@@ -151,6 +170,7 @@ public partial class JobsViewModel : PageViewModel
         try { await _hub.JoinScopeAsync(); } catch { /* realtime is best-effort */ }
 
         await LoadBranchOptionsAsync();
+        await LoadPrintSourcesAsync();
         await LoadJobsAsync();
 
         if (_pendingJobId is { } id)
@@ -449,6 +469,84 @@ public partial class JobsViewModel : PageViewModel
     [RelayCommand]
     private Task CopyJobIdAsync() =>
         SelectedSummary is { } s ? _dialogs.CopyToClipboardAsync(s.Id.ToString(), "ID úlohy zkopírováno.") : Task.CompletedTask;
+
+    // ── Vytisknout a porovnat (D3Soft Tisk SOA) ──────────────────────────────
+
+    // Loads the set of scopes with a configured print source (optional feature; ignored when unavailable).
+    private async Task LoadPrintSourcesAsync()
+    {
+        try
+        {
+            var sources = await _session.Require().GetPrintSourcesAsync();
+            _printScopes.Clear();
+            foreach (var s in sources.Scopes) _printScopes.Add(s);
+        }
+        catch { /* the print feature is optional — leave the action hidden when it isn't configured/available */ }
+        OnPropertyChanged(nameof(CanPrintAndCompare));
+        PrintAndCompareCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>
+    /// Prints a fresh sample batch for the selected instance and compares it to the previous batch. The POST
+    /// only enqueues a durable orchestration; we then follow the operation off the busy path (so the UI isn't
+    /// blocked for minutes) and select the resulting comparison job when it launches.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanPrintAndCompare))]
+    private Task PrintAndCompareAsync() => RunAsync(async () =>
+    {
+        var branch = FilterBranch;
+        var instance = FilterInstance;
+        var op = await _session.Require().StartPrintAndCompareAsync(branch, instance);
+        _dialogs.ShowToast($"Tisk a porovnání spuštěno pro {branch}/{instance}.", ToastKind.Info);
+        PrintStatus = "Tisknu vzory…";
+        _ = PollPrintOperationAsync(op.OperationId, branch, instance);
+    });
+
+    // Detached follower: polls the operation status (off the busy path), surfaces phase + result, and selects
+    // the launched comparison job. Resumes on the UI thread after each await (Avalonia sync context), so the
+    // bound PrintStatus + toasts are touched safely.
+    private async Task PollPrintOperationAsync(Guid operationId, string branch, string instance)
+    {
+        var client = _session.Require();
+        for (var i = 0; i < 600; i++) // ~20 min ceiling at a 2s cadence
+        {
+            await Task.Delay(TimeSpan.FromSeconds(2));
+            PrintOperationResponse? op;
+            try { op = await client.GetPrintOperationAsync(operationId); }
+            catch { continue; } // transient — keep following
+            if (op is null) continue;
+
+            PrintStatus = PhaseLabel(op.Phase);
+            switch (op.Phase)
+            {
+                case "Completed":
+                    PrintStatus = null;
+                    _dialogs.ShowToast($"Porovnání spuštěno pro {branch}/{instance}.", ToastKind.Success);
+                    await LoadJobsAsync();
+                    if (op.JobId is { } jobId && Jobs.FirstOrDefault(j => j.Id == jobId) is { } row)
+                        SelectedJob = row;
+                    return;
+                case "NoPreviousBatch":
+                    PrintStatus = null;
+                    _dialogs.ShowToast(op.Error ?? "Nenašla se předchozí dávka k porovnání.", ToastKind.Info);
+                    return;
+                case "Failed":
+                    PrintStatus = null;
+                    _dialogs.ShowToast($"Tisk a porovnání selhalo: {op.Error}", ToastKind.Error);
+                    return;
+            }
+        }
+        PrintStatus = null; // stopped following after the ceiling; the comparison (if any) still shows in the list
+    }
+
+    private static string? PhaseLabel(string phase) => phase switch
+    {
+        "Printing" => "Tisknu vzory…",
+        "FindingPrevious" => "Hledám předchozí dávku…",
+        "Fetching" => "Stahuji dávky…",
+        "Launching" => "Spouštím porovnání…",
+        _ => null,
+    };
 
     private Task ActAsync(Func<DiffPdfClient, Task<JobSummary>> action) => RunAsync(async () =>
     {
