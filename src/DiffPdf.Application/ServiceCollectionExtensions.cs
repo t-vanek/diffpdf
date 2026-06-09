@@ -1,6 +1,7 @@
 using DiffPdf.Application.Abstractions;
 using DiffPdf.Application.Configuration;
 using DiffPdf.Application.ControlChecks;
+using DiffPdf.Application.Email;
 using DiffPdf.Application.Jobs;
 using DiffPdf.Application.Queue;
 using DiffPdf.Application.Runs;
@@ -37,6 +38,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ITriggerProvisioner, TriggerProvisioner>();
         services.AddScoped<IControlCheckService, ControlCheckService>();
         services.AddScoped<ISubscriptionService, SubscriptionService>();
+        services.AddScoped<IEmailSettingsService, EmailSettingsService>();
 
         // Per-scope configuration + schedules
         services.AddScoped<IScopeConfigurationService, ScopeConfigurationService>();

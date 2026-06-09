@@ -9,9 +9,9 @@ public class InMemorySubscriptionStoreTests
     private static NotificationSubscription Sub(bool enabled = true) => new()
     {
         Id = Guid.NewGuid(),
-        Channel = "webhook",
-        Target = "http://x",
-        Events = [NotificationEvent.GateViolated],
+        Name = "rule",
+        Recipients = ["qa@x"],
+        Events = [NotificationEvent.Completed],
         Enabled = enabled,
     };
 
@@ -42,11 +42,11 @@ public class InMemorySubscriptionStoreTests
         var store = new InMemorySubscriptionStore();
         var created = await store.CreateAsync(Sub());
 
-        var updated = await store.UpdateAsync(created with { Target = "http://y" }, created.Version);
+        var updated = await store.UpdateAsync(created with { Name = "y" }, created.Version);
         Assert.Equal(2, updated.Version);
 
         await Assert.ThrowsAsync<ConcurrencyConflictException>(
-            () => store.UpdateAsync(created with { Target = "http://z" }, created.Version)); // stale
+            () => store.UpdateAsync(created with { Name = "z" }, created.Version)); // stale
     }
 
     [Fact]

@@ -383,6 +383,20 @@ public sealed class DiffPdfClient(HttpClient http)
         using var resp = await SendRawAsync(HttpMethod.Delete, $"/api/v1/subscriptions/{id}", null, ct);
     }
 
+    // ---------------- E-mail (SMTP) settings ----------------
+
+    public Task<EmailSettingsResponse> GetEmailSettingsAsync(CancellationToken ct = default) =>
+        JsonAsync<EmailSettingsResponse>(HttpMethod.Get, "/api/v1/settings/email", null, ct);
+
+    public Task<EmailSettingsResponse> UpdateEmailSettingsAsync(UpdateEmailSettingsRequest request, CancellationToken ct = default) =>
+        JsonAsync<EmailSettingsResponse>(HttpMethod.Put, "/api/v1/settings/email", request, ct);
+
+    /// <summary>Sends a test e-mail using the saved SMTP settings; throws <see cref="DiffPdfApiException"/> on failure.</summary>
+    public async Task SendTestEmailAsync(SendTestEmailRequest request, CancellationToken ct = default)
+    {
+        using var resp = await SendRawAsync(HttpMethod.Post, "/api/v1/settings/email/test", request, ct);
+    }
+
     // ---------------- Discovery / single comparison / health ----------------
 
     public Task<NetworkConfigSummary> ListSharesAsync(CancellationToken ct = default) =>

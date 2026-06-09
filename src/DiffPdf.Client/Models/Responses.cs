@@ -457,17 +457,31 @@ public sealed record CheckRunResponse
     public string? Detail { get; init; }
 }
 
-/// <summary>A notification subscription as returned by the API.</summary>
+/// <summary>An e-mail notification rule as returned by the API.</summary>
 public sealed record SubscriptionResponse
 {
     public Guid Id { get; init; }
-    public string Channel { get; init; } = "";
-    public string Target { get; init; } = "";
+    public string Name { get; init; } = "";
+    public IReadOnlyList<string> Recipients { get; init; } = [];
     public IReadOnlyList<NotificationEvent> Events { get; init; } = [];
-    public string? BranchKey { get; init; }
-    public string? InstanceKey { get; init; }
+    public IReadOnlyList<string> BranchKeys { get; init; } = [];
+    public IReadOnlyList<string> InstanceKeys { get; init; } = [];
     public bool Enabled { get; init; }
     public DateTimeOffset CreatedAt { get; init; }
+    public DateTimeOffset? UpdatedAt { get; init; }
+    public long Version { get; init; }
+}
+
+/// <summary>SMTP settings as returned by the API. The password is never returned — only whether one is set.</summary>
+public sealed record EmailSettingsResponse
+{
+    public string Host { get; init; } = "";
+    public int Port { get; init; } = 587;
+    public bool UseSsl { get; init; } = true;
+    public string? Username { get; init; }
+    public bool HasPassword { get; init; }
+    public string FromAddress { get; init; } = "";
+    public string? FromName { get; init; }
     public DateTimeOffset? UpdatedAt { get; init; }
     public long Version { get; init; }
 }

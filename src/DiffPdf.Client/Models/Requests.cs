@@ -101,25 +101,45 @@ public sealed record UpdateCheckRequest
     public bool Enabled { get; init; } = true;
 }
 
-/// <summary>Create a notification subscription routing finished-batch events to a webhook or e-mail.</summary>
+/// <summary>Create an e-mail notification rule (recipients + events + optional branch/instance scope; empty = any).</summary>
 public sealed record CreateSubscriptionRequest
 {
-    public required string Channel { get; init; }
-    public required string Target { get; init; }
+    public string Name { get; init; } = "";
+    public required IReadOnlyList<string> Recipients { get; init; }
     public required IReadOnlyList<NotificationEvent> Events { get; init; }
-    public string? BranchKey { get; init; }
-    public string? InstanceKey { get; init; }
+    public IReadOnlyList<string> BranchKeys { get; init; } = [];
+    public IReadOnlyList<string> InstanceKeys { get; init; } = [];
     public bool Enabled { get; init; } = true;
 }
 
-/// <summary>Update a subscription. <see cref="Version"/> guards against concurrent edits (409 on mismatch).</summary>
+/// <summary>Update an e-mail notification rule. <see cref="Version"/> guards against concurrent edits (409 on mismatch).</summary>
 public sealed record UpdateSubscriptionRequest
 {
-    public required string Channel { get; init; }
-    public required string Target { get; init; }
+    public string Name { get; init; } = "";
+    public required IReadOnlyList<string> Recipients { get; init; }
     public required IReadOnlyList<NotificationEvent> Events { get; init; }
-    public string? BranchKey { get; init; }
-    public string? InstanceKey { get; init; }
+    public IReadOnlyList<string> BranchKeys { get; init; } = [];
+    public IReadOnlyList<string> InstanceKeys { get; init; } = [];
     public bool Enabled { get; init; } = true;
     public required long Version { get; init; }
+}
+
+/// <summary>Save the SMTP settings. A blank/omitted <see cref="Password"/> keeps the stored one. <see cref="Version"/>
+/// guards concurrent edits (pass 0 for the first save).</summary>
+public sealed record UpdateEmailSettingsRequest
+{
+    public required string Host { get; init; }
+    public int Port { get; init; } = 587;
+    public bool UseSsl { get; init; } = true;
+    public string? Username { get; init; }
+    public string? Password { get; init; }
+    public required string FromAddress { get; init; }
+    public string? FromName { get; init; }
+    public long Version { get; init; }
+}
+
+/// <summary>Send a one-off test e-mail to verify the saved SMTP settings.</summary>
+public sealed record SendTestEmailRequest
+{
+    public required string To { get; init; }
 }
