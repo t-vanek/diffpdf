@@ -20,7 +20,6 @@ public sealed class InMemoryApiFactory : WebApplicationFactory<Program>
         // Last-wins override: force the dev fallback no matter what earlier sources set.
         builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
         {
-            ["ConnectionStrings:Postgres"] = "",
             ["ConnectionStrings:SqlServer"] = "",
             ["ScopeSync:RootPath"] = "",
             ["ScopeSync:Enabled"] = "false",

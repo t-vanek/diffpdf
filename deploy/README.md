@@ -40,7 +40,7 @@ applies EF Core migrations, then begins serving — so a not-yet-ready database 
 | `-Name` | `DiffPdfApi` | Service name. |
 | `-StartupType` | `delayed-auto` | `delayed-auto`, `auto`, or `manual`. |
 | `-DependsOn` | `MSSQLSERVER` | DB service to start first. Named instance: `MSSQL$INSTANCE`. `''` to skip. |
-| `-ConnectionString` / `-Provider` | — | Optional; stored as the service-scoped env var `ConnectionStrings__SqlServer` (or `__Postgres`). |
+| `-ConnectionString` | — | Optional; stored as the service-scoped env var `ConnectionStrings__SqlServer`. |
 | `-ServiceAccount` / `-ServicePassword` | LocalSystem | Optional logon account. |
 | `-NoStart` | (off) | Install without starting. |
 

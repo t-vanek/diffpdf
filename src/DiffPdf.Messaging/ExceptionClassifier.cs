@@ -19,10 +19,9 @@ public static class ExceptionClassifier
             if (e is TimeoutException or IOException or SocketException)
                 return true;
 
-            // Avoid hard references to Npgsql / RabbitMQ.Client: match by type name.
+            // Avoid a hard reference to RabbitMQ.Client: match by type name.
             string name = e.GetType().FullName ?? string.Empty;
-            if (name.Contains("Npgsql", StringComparison.Ordinal)
-                || name.Contains("RabbitMQ", StringComparison.Ordinal)
+            if (name.Contains("RabbitMQ", StringComparison.Ordinal)
                 || name.Contains("BrokerUnreachable", StringComparison.Ordinal))
                 return true;
 

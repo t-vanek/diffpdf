@@ -7,7 +7,7 @@ produktu, funkce a nastavení jsou v [../README.md](../README.md).
 
 Čistá vrstvená (hexagonální) architektura: doménová rozhraní žijí v `DiffPdf.Core`,
 konkrétní implementace v perifériích (PDF knihovny, perzistence, messaging). Solution
-[`DiffPdf.slnx`](../DiffPdf.slnx) má 10 projektů:
+[`DiffPdf.slnx`](../DiffPdf.slnx) má 9 projektů:
 
 | Projekt | Role |
 |---|---|
@@ -17,11 +17,11 @@ konkrétní implementace v perifériích (PDF knihovny, perzistence, messaging).
 | **`DiffPdf.Messaging`** | Wolverine handlery durable pipeline + cron plánovač (`ScheduledBatchService`, `BatchLauncher`). |
 | **`DiffPdf.Notifications`** | Outbound notifikace — webhook + SMTP, `NotificationDispatcher`. |
 | **`DiffPdf.Persistence`** | Rozhraní stores (`IJobStore`, `IScheduleStore`, `ISubscriptionStore`, …) + in-memory implementace. |
-| **`DiffPdf.Persistence.Postgres` / `.SqlServer`** | EF Core implementace stores, DbContext, idempotentní migrátor. |
+| **`DiffPdf.Persistence.SqlServer`** | EF Core implementace stores, DbContext, idempotentní migrátor. |
 | **`DiffPdf.Worker`** | Worker DI, storage provisioning, work limiter. |
 | **`DiffPdf.Client`** | Typovaný .NET SDK (self-contained, balitelný jako NuGet). |
 
-Pokud je nastavený `ConnectionStrings:Postgres` (nebo `:SqlServer`), použije se plný stack
+Pokud je nastavený `ConnectionStrings:SqlServer`, použije se plný stack
 (relační zdroj pravdy + **DB-backed durable local queues**, žádný broker); jinak API spadne
 zpět na in-memory úložiště a in-process Wolverine transport (jednoinstanční dev režim — používá
 ho i testovací `WebApplicationFactory`).
@@ -66,7 +66,7 @@ Durable local queue (perzistentní v DB)  ──►  [handler]
    │   CompareFilePair × N → porovná jednu dvojici, zapíše výsledek, ++processed
    │   FinalizeBatch       → zagreguje výsledky do reportu, job → Completed
    ▼
-PostgreSQL (stav) + storage (artefakty)
+SQL Server (stav) + storage (artefakty)
    ▼
 SignalR (živý progress)  +  REST polling (zdroj pravdy)  +  notifikace (webhook/SMTP)
 ```
@@ -102,13 +102,12 @@ Principy:
 Tabulky `branches`, `instances`, `jobs`, `file_pair_tasks`, `comparison_schedules`,
 `notification_subscriptions`, `automation_leader` (lease vedoucí repliky), `schedule_runs`
 (historie běhů) a `folder_watches` (jeden watch na instanci) se vytvoří **idempotentně při
-startu** pro oba providery
-(raw SQL `create table if not exists` / `if object_id(...) is null`; sloupec
+startu** (raw SQL `if object_id(...) is null`; sloupec
 `jobs.artifacts_pruned_at` se přidá idempotentním `ALTER`); Wolverine si spravuje vlastní
 inbox/outbox + frontové tabulky v téže databázi. Stejné připojení používá i OpenIddict (auth).
 
-Komplexní pole se ukládají jako JSON sloupce (`jsonb` v Postgresu, `nvarchar(max)` v SQL
-Serveru): `jobs.request_json`/`report_json`, `comparison_schedules.options_json`/`gate_json`,
+Komplexní pole se ukládají jako JSON sloupce (`nvarchar(max)`):
+`jobs.request_json`/`report_json`, `comparison_schedules.options_json`/`gate_json`,
 `notification_subscriptions.events_json`. Mapování entit na doménové modely zajišťuje
 **Mapperly** (scalar sloupce) + ruční konvertory přes `DiffPdfJson` (JSON sloupce).
 
@@ -299,8 +298,7 @@ Mechanismus připojení:
 - **Windows** připojí sdílení přes `WNetAddConnection2` (jako `net use`, bez mapování
   disku) a po doběhnutí odpojí.
 - **Linux** namountuje sdílení přes CIFS do dočasného bodu a poté odmountuje. Vyžaduje
-  `cifs-utils` (v Docker image už je) a oprávnění k mountu (kontejner s `--privileged`
-  nebo `--cap-add SYS_ADMIN`). Protože se do `reports/` zapisuje, nech `MountReadOnly: false`.
+  `cifs-utils` a oprávnění k mountu. Protože se do `reports/` zapisuje, nech `MountReadOnly: false`.
 - Cesty **bez** credentialů (lokální, mapované disky, předmountovaná sdílení nebo UNC pod
   service účtem) se použijí tak, jak jsou. Credentialy nikdy nekončí v logu ani reportu.
 - **Durable pipeline** pracuje se stabilními cestami napříč workery — preferuj
@@ -358,8 +356,8 @@ GUI nad SDK — **[../src/DiffPdf.DesktopUI](../src/DiffPdf.DesktopUI)**. Multip
   při zapnutém auth), `JoinJob`/`JoinBranch`, event `jobProgress` → marshalováno na UI vlákno.
 - **`NavigationService`** — skok mezi stránkami (trigger / run-now → otevři Job).
 - **`PageViewModel`** (base) má `Title`/`NavOrder`/`ActivateAsync` (lazy load při výběru); každá
-  sekce je registrovaná v `PageRegistration` a objeví se v nav railu. Sdílené editory
-  `ComparisonOptionsEditor` + `BatchGateEditor` (reuse v Schedules i Single compare).
+  sekce je registrovaná v `PageRegistration` a objeví se v nav railu. Sdílený editor
+  `ComparisonOptionsEditor` (reuse v konfiguraci scope i Single compare).
 
 **Sekce:** Dashboard (status/readiness/health), Branches, Instances (+ structure/readiness),
 Schedules (CRUD + run-now + historie), Watches, Subscriptions, Triggers/Run, Single compare,
@@ -548,13 +546,12 @@ plánovač (`ScheduleReconciler`) a notifikační dispatcher. Integrační testy
 `WebApplicationFactory<Program>` (in-memory store + in-process Wolverine, bez DB /
 Ghostscriptu) a ověřují SDK ↔ API end-to-end vč. „create schedule → run-now → Completed →
 report". Unit + WebApplicationFactory **neověří relační DDL** — to odzkoušej jednou ručně
-přes `docker compose up` (Postgres/SqlServer; žádný broker).
+proti reálné SQL Server instanci (např. LocalDB; žádný broker).
 
 ### CI (GitHub Actions)
 
 - **`.github/workflows/ci.yml`** — na každý push/PR: `restore` → `build` → `test`.
 - **`.github/workflows/package.yml`** — na push do `main` a tag `v*`:
-  - `dotnet pack` SDK → `.nupkg` jako artefakt (verze z tagu `vX.Y.Z`, jinak `0.0.0-ci.<run>`),
-  - `docker build` API image → uloží jako artefakt (`docker save | gzip`).
+  - `dotnet pack` SDK → `.nupkg` jako artefakt (verze z tagu `vX.Y.Z`, jinak `0.0.0-ci.<run>`).
 
-  Bez publikace do NuGet feedu / registry — žádné secrets.
+  Bez publikace do NuGet feedu — žádné secrets.

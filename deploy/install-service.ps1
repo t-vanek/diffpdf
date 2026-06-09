@@ -38,8 +38,6 @@ param(
 
     # Optional connection string, stored as a service-scoped environment variable.
     [string] $ConnectionString,
-    [ValidateSet('SqlServer', 'Postgres')]
-    [string] $Provider = 'SqlServer',
 
     # Optional logon account for the service (default: LocalSystem).
     [string] $ServiceAccount,
@@ -111,9 +109,9 @@ if (-not [string]::IsNullOrWhiteSpace($ServiceAccount)) {
 if (-not [string]::IsNullOrWhiteSpace($ConnectionString)) {
     # Service-scoped env var (visible only to this service), picked up on next start.
     $serviceKey = "HKLM:\SYSTEM\CurrentControlSet\Services\$Name"
-    $envEntry = "ConnectionStrings__$Provider=$ConnectionString"
+    $envEntry = "ConnectionStrings__SqlServer=$ConnectionString"
     New-ItemProperty -Path $serviceKey -Name 'Environment' -PropertyType MultiString -Value @($envEntry) -Force | Out-Null
-    Write-Host "Set service-scoped environment variable 'ConnectionStrings__$Provider'." -ForegroundColor Green
+    Write-Host "Set service-scoped environment variable 'ConnectionStrings__SqlServer'." -ForegroundColor Green
 }
 
 if ($NoStart) {

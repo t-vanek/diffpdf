@@ -2,38 +2,26 @@ using DiffPdf.Messaging.Handlers;
 using Wolverine;
 using Wolverine.EntityFrameworkCore;
 using Wolverine.ErrorHandling;
-using Wolverine.Postgresql;
 using Wolverine.SqlServer;
 
 namespace DiffPdf.Messaging;
-
-/// <summary>Relational database backing Wolverine's durable inbox/outbox + local queues.</summary>
-public enum DiffPdfDatabase
-{
-    Postgres,
-    SqlServer,
-}
 
 public static class DiffPdfWolverineConfiguration
 {
     /// <summary>
     /// Wires Wolverine for diffpdf <b>without any external broker</b>: commands flow through
-    /// DB-backed <b>durable local queues</b> (PostgreSQL or SQL Server), with a transactional
-    /// inbox/outbox and retry. Messages are persisted, so they survive a restart and are
-    /// processed in-process by Wolverine's durable agents — no RabbitMQ required.
+    /// DB-backed <b>durable local queues</b> (SQL Server), with a transactional inbox/outbox
+    /// and retry. Messages are persisted, so they survive a restart and are processed
+    /// in-process by Wolverine's durable agents — no RabbitMQ required.
     /// </summary>
     public static void ConfigureDiffPdfMessaging(
         this WolverineOptions opts,
-        string databaseConnectionString,
-        DiffPdfDatabase database = DiffPdfDatabase.Postgres)
+        string databaseConnectionString)
     {
         opts.UseRuntimeCompilation();
         opts.Discovery.IncludeAssembly(typeof(RunBatchComparisonHandler).Assembly);
 
-        if (database == DiffPdfDatabase.SqlServer)
-            opts.PersistMessagesWithSqlServer(databaseConnectionString);
-        else
-            opts.PersistMessagesWithPostgresql(databaseConnectionString);
+        opts.PersistMessagesWithSqlServer(databaseConnectionString);
         opts.UseEntityFrameworkCoreTransactions();
 
         // Transient failures (IO / network blips) are retried with cooldown, then dead-lettered.
