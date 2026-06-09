@@ -533,4 +533,85 @@ public class SqlServerPersistenceTests(LocalDbFixture db)
         await using (var verify2 = db.NewContext())
             Assert.Equal(firstStamp, (await new SqlServerJobStore(verify2, _mapper).GetAsync(jobId))!.RecoveredAt);
     }
+
+    [LocalDbFact]
+    public async Task ListByJobPaged_OnlyDiffering_UsesResultStatusColumn_OnRealDb()
+    {
+        Guid jobId;
+        await using (var ctx = db.NewContext())
+        {
+            var (branch, instance) = await SeedScopeAsync(ctx);
+            var jobs = new SqlServerJobStore(ctx, _mapper);
+            var tasks = new SqlServerFilePairTaskStore(ctx, _mapper);
+            var job = await jobs.CreateAsync(new ComparisonJob
+            {
+                Id = Guid.NewGuid(), BranchId = branch.Id, InstanceId = instance.Id, Status = JobStatus.Running,
+                Request = new BatchComparisonRequest { Scope = new JobScope(branch.Key, instance.Key) },
+            });
+            jobId = job.Id;
+            await CompletePairAsync(tasks, jobId, "same.pdf", FilePairStatus.Identical);
+            await CompletePairAsync(tasks, jobId, "diff.pdf", FilePairStatus.Differs);
+        }
+
+        await using var verify = db.NewContext();
+        var store = new SqlServerFilePairTaskStore(verify, _mapper);
+        Assert.Equal(2, (await store.ListByJobPagedAsync(jobId, 50, 0, null, onlyDiffering: false)).Total);
+        var (diffOnly, diffTotal) = await store.ListByJobPagedAsync(jobId, 50, 0, null, onlyDiffering: true);
+        Assert.Equal(1, diffTotal);
+        Assert.Equal("diff.pdf", Assert.Single(diffOnly).RelativePath); // Identical excluded via the ResultStatus column
+    }
+
+    [LocalDbFact]
+    public async Task BackfillResultStatus_PopulatesFromResultJson_OnRealDb()
+    {
+        Guid jobId, taskId;
+        await using (var ctx = db.NewContext())
+        {
+            var (branch, instance) = await SeedScopeAsync(ctx);
+            var jobs = new SqlServerJobStore(ctx, _mapper);
+            var tasks = new SqlServerFilePairTaskStore(ctx, _mapper);
+            var job = await jobs.CreateAsync(new ComparisonJob
+            {
+                Id = Guid.NewGuid(), BranchId = branch.Id, InstanceId = instance.Id, Status = JobStatus.Running,
+                Request = new BatchComparisonRequest { Scope = new JobScope(branch.Key, instance.Key) },
+            });
+            jobId = job.Id;
+            taskId = await CompletePairAsync(tasks, jobId, "diff.pdf", FilePairStatus.Differs);
+        }
+
+        // Simulate a pre-migration row: clear the denormalized column but keep ResultJson.
+        await using (var raw = db.NewContext())
+            await raw.Database.ExecuteSqlRawAsync("UPDATE file_pair_tasks SET ResultStatus = NULL WHERE Id = {0}", taskId);
+
+        // "Only differing" misses it until the backfill repopulates ResultStatus.
+        await using (var before = db.NewContext())
+            Assert.Equal(0, (await new SqlServerFilePairTaskStore(before, _mapper).ListByJobPagedAsync(jobId, 50, 0, null, true)).Total);
+
+        await using (var bf = db.NewContext())
+            Assert.True(await new SqlServerFilePairTaskStore(bf, _mapper).BackfillResultStatusAsync(100) >= 1);
+
+        await using var after = db.NewContext();
+        var (items, total) = await new SqlServerFilePairTaskStore(after, _mapper).ListByJobPagedAsync(jobId, 50, 0, null, true);
+        Assert.Equal(1, total);
+        Assert.Equal("diff.pdf", Assert.Single(items).RelativePath);
+    }
+
+    private async Task<(Branch Branch, ComparisonInstance Instance)> SeedScopeAsync(DiffPdfDbContext ctx)
+    {
+        var branches = new SqlServerBranchStore(ctx, _mapper);
+        var instances = new SqlServerInstanceStore(ctx, _mapper);
+        string bKey = "b_" + Guid.NewGuid().ToString("N")[..8];
+        var branch = await branches.CreateAsync(bKey, bKey);
+        var instance = await instances.CreateAsync(branch.Id, "i1", "I1", @"C:\x\1", null);
+        return (branch, instance);
+    }
+
+    private static async Task<Guid> CompletePairAsync(SqlServerFilePairTaskStore tasks, Guid jobId, string name, FilePairStatus verdict)
+    {
+        var t = new FilePairTask { Id = Guid.NewGuid(), JobId = jobId, RelativePath = name, Status = FilePairTaskStatus.Queued };
+        await tasks.CreateManyAsync([t]);
+        await tasks.TryClaimAsync(t.Id, "w", TimeSpan.FromMinutes(5));
+        await tasks.CompleteAsync(t.Id, new FilePairResult { RelativePath = name, Status = verdict }, FilePairTaskStatus.Completed);
+        return t.Id;
+    }
 }

@@ -129,6 +129,20 @@ public sealed class DiffPdfClient(HttpClient http)
         return JsonAsync<IReadOnlyList<JobSummary>>(HttpMethod.Get, url, null, ct);
     }
 
+    /// <summary>Like <see cref="ListJobsAsync"/> but also returns the total matching count (from the
+    /// <c>X-Total-Count</c> header) for the desktop's lazy "load more on scroll".</summary>
+    public async Task<(IReadOnlyList<JobSummary> Items, int Total)> ListJobsPagedAsync(
+        string? branchKey, string? instanceKey, JobStatus? status, int limit, int offset, CancellationToken ct = default)
+    {
+        var q = new List<string> { $"limit={limit}", $"offset={offset}" };
+        if (branchKey is not null) q.Add($"branchKey={Esc(branchKey)}");
+        if (instanceKey is not null) q.Add($"instanceKey={Esc(instanceKey)}");
+        if (status is { } st) q.Add($"status={st}");
+        using var resp = await SendRawAsync(HttpMethod.Get, "/api/v1/jobs?" + string.Join("&", q), null, ct);
+        var items = (await resp.Content.ReadFromJsonAsync<IReadOnlyList<JobSummary>>(Json, ct))!;
+        return (items, ReadTotalCount(resp, items.Count));
+    }
+
     public Task<JobSummary?> GetJobAsync(Guid id, CancellationToken ct = default) =>
         GetOrNullAsync<JobSummary>($"/api/v1/jobs/{id}", ct);
 
@@ -151,6 +165,20 @@ public sealed class DiffPdfClient(HttpClient http)
 
     public Task<IReadOnlyList<FilePairTaskSummary>> GetTasksAsync(Guid id, CancellationToken ct = default) =>
         JsonAsync<IReadOnlyList<FilePairTaskSummary>>(HttpMethod.Get, $"/api/v1/jobs/{id}/tasks", null, ct);
+
+    /// <summary>A page of a job's file-pair tasks for the lazy-loaded file list — returns the page plus the
+    /// filtered total (<c>X-Total-Count</c>). Optional name <paramref name="search"/> + <paramref name="onlyDiffering"/>
+    /// filter run server-side, so they cover unloaded pairs too.</summary>
+    public async Task<(IReadOnlyList<FilePairTaskSummary> Items, int Total)> GetTasksAsync(
+        Guid id, int limit, int offset, string? search = null, bool onlyDiffering = false, CancellationToken ct = default)
+    {
+        var url = $"/api/v1/jobs/{id}/tasks?limit={limit}&offset={offset}"
+                + (string.IsNullOrWhiteSpace(search) ? "" : $"&search={Esc(search)}")
+                + (onlyDiffering ? "&onlyDiffering=true" : "");
+        using var resp = await SendRawAsync(HttpMethod.Get, url, null, ct);
+        var items = (await resp.Content.ReadFromJsonAsync<IReadOnlyList<FilePairTaskSummary>>(Json, ct))!;
+        return (items, ReadTotalCount(resp, items.Count));
+    }
 
     /// <summary>CI-gate verdict. Returns the result for both pass (200) and fail (422) — only other statuses throw.</summary>
     public async Task<JobResult> GetResultAsync(Guid id, CancellationToken ct = default)
@@ -557,6 +585,14 @@ public sealed class DiffPdfClient(HttpClient http)
     {
         using var resp = await SendRawAsync(method, url, body, ct);
         return (await resp.Content.ReadFromJsonAsync<T>(Json, ct))!;
+    }
+
+    private static int ReadTotalCount(HttpResponseMessage resp, int fallback)
+    {
+        if (resp.Headers.TryGetValues("X-Total-Count", out var values))
+            foreach (var v in values)
+                if (int.TryParse(v, out var n)) return n;
+        return fallback;
     }
 
     private async Task<T?> GetOrNullAsync<T>(string url, CancellationToken ct) where T : class

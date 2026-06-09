@@ -37,6 +37,7 @@ public sealed class FilePairTaskEntity
     public int AttemptCount { get; set; }
     public string? Error { get; set; }
     public string? ResultJson { get; set; }
+    public string? ResultStatus { get; set; } // denormalized verdict (FilePairStatus) so "only differing" is filterable in SQL
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? StartedAt { get; set; }
     public DateTimeOffset? CompletedAt { get; set; }

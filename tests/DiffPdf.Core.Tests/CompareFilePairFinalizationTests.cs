@@ -65,6 +65,8 @@ public class CompareFilePairFinalizationTests
         public Task<IReadOnlyList<(Guid JobId, Guid TaskId)>> RequeueRunningTasksAsync(string? lockedBy, CancellationToken ct = default) => inner.RequeueRunningTasksAsync(lockedBy, ct);
         public Task<IReadOnlyList<(Guid JobId, Guid TaskId)>> ListStaleQueuedAsync(DateTimeOffset idleSince, int limit, CancellationToken ct = default) => inner.ListStaleQueuedAsync(idleSince, limit, ct);
         public Task<IReadOnlyList<FilePairTask>> ListByJobAsync(Guid jobId, CancellationToken ct = default) => inner.ListByJobAsync(jobId, ct);
+        public Task<(IReadOnlyList<FilePairTask> Items, int Total)> ListByJobPagedAsync(Guid jobId, int limit, int offset, string? search, bool onlyDiffering, CancellationToken ct = default) => inner.ListByJobPagedAsync(jobId, limit, offset, search, onlyDiffering, ct);
+        public Task<int> BackfillResultStatusAsync(int max, CancellationToken ct = default) => inner.BackfillResultStatusAsync(max, ct);
         public Task<int> CountActiveAsync(CancellationToken ct = default) => inner.CountActiveAsync(ct);
         public Task<IReadOnlyDictionary<FilePairTaskStatus, int>> CountByStatusForJobsAsync(IReadOnlyCollection<Guid> jobIds, CancellationToken ct = default) => inner.CountByStatusForJobsAsync(jobIds, ct);
         public Task<int> DeleteForJobsAsync(IReadOnlyCollection<Guid> jobIds, CancellationToken ct = default) => inner.DeleteForJobsAsync(jobIds, ct);

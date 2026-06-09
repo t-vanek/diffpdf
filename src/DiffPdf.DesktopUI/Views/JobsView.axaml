@@ -25,7 +25,7 @@
 
     <Grid ColumnDefinitions="3*,2*">
       <!-- Seznam úloh -->
-      <DataGrid Grid.Column="0" Margin="0,0,12,0" x:CompileBindings="False" ItemsSource="{Binding Jobs}"
+      <DataGrid x:Name="JobsGrid" Grid.Column="0" Margin="0,0,12,0" x:CompileBindings="False" ItemsSource="{Binding Jobs}"
                 SelectedItem="{Binding SelectedJob}" IsReadOnly="True" AutoGenerateColumns="False" CanUserResizeColumns="True">
         <DataGrid.Columns>
           <DataGridTemplateColumn Header="Stav" Width="140">
@@ -67,6 +67,9 @@
       <!-- Prázdný stav přes seznam úloh -->
       <TextBlock Grid.Column="0" Margin="0,0,12,0" Text="Žádné úlohy odpovídající filtru." Foreground="{DynamicResource InkFaint}"
                  HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding HasNoJobs}"/>
+      <!-- Lazy loading: doučte další stránku úloh (i scrollem na konec seznamu). -->
+      <Button Grid.Column="0" Content="Načíst další úlohy" Classes="ghost" VerticalAlignment="Bottom" HorizontalAlignment="Center"
+              Margin="0,0,12,8" IsVisible="{Binding MoreJobsAvailable}" Command="{Binding LoadMoreJobsCommand}"/>
 
       <DockPanel Grid.Column="1"
                  IsVisible="{Binding SelectedSummary, Converter={x:Static ObjectConverters.IsNotNull}}">
@@ -199,7 +202,7 @@
 
         <!-- Seznam souborů vyplní zbytek výšky panelu; dvojklik na řádek otevře okno s detailem dvojice. -->
         <Panel Margin="0,8,0,0">
-          <DataGrid x:CompileBindings="False" ItemsSource="{Binding FilesView}" IsReadOnly="True" MinHeight="160"
+          <DataGrid x:Name="FilesGrid" x:CompileBindings="False" ItemsSource="{Binding FilesView}" IsReadOnly="True" MinHeight="160"
                     AutoGenerateColumns="False" CanUserResizeColumns="True" DoubleTapped="OnFileDoubleTapped">
             <DataGrid.Columns>
               <DataGridTemplateColumn Header="Stav" Width="140">
@@ -223,6 +226,9 @@
             <ProgressBar IsIndeterminate="True" Width="130" Height="4" VerticalAlignment="Center"/>
             <TextBlock Text="Načítání souborů…" Foreground="{DynamicResource InkFaint}" VerticalAlignment="Center"/>
           </StackPanel>
+          <!-- Lazy loading: doučte další stránku souborů (i scrollem na konec seznamu). -->
+          <Button Content="Načíst další" Classes="ghost" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,8"
+                  IsVisible="{Binding MoreFilesAvailable}" Command="{Binding LoadMoreFilesCommand}"/>
         </Panel>
       </DockPanel>
     </Grid>

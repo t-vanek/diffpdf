@@ -4,6 +4,7 @@ using DiffPdf.Persistence.SqlServer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace DiffPdf.Persistence.SqlServer.Migrations
 {
     [DbContext(typeof(DiffPdfDbContext))]
-    partial class DiffPdfDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260609120854_AddTaskResultStatus")]
+    partial class AddTaskResultStatus
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -296,8 +299,7 @@ namespace DiffPdf.Persistence.SqlServer.Migrations
 
                     b.Property<string>("RelativePath")
                         .IsRequired()
-                        .HasMaxLength(400)
-                        .HasColumnType("nvarchar(400)")
+                        .HasColumnType("nvarchar(max)")
                         .HasColumnName("relative_path");
 
                     b.Property<string>("ResultJson")
@@ -305,8 +307,7 @@ namespace DiffPdf.Persistence.SqlServer.Migrations
                         .HasColumnName("result_json");
 
                     b.Property<string>("ResultStatus")
-                        .HasMaxLength(32)
-                        .HasColumnType("nvarchar(32)");
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTimeOffset?>("StartedAt")
                         .HasColumnType("datetimeoffset")
@@ -323,10 +324,6 @@ namespace DiffPdf.Persistence.SqlServer.Migrations
                         .HasColumnName("version");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("JobId", "RelativePath");
-
-                    b.HasIndex("JobId", "ResultStatus");
 
                     b.HasIndex("JobId", "Status");
 

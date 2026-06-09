@@ -161,6 +161,59 @@ public class FilePairTaskStoreTests
         await store.CreateManyAsync([Task(Guid.NewGuid())]); // Queued only
         Assert.Empty(await store.RequeueRunningTasksAsync(lockedBy: null));
     }
+
+    [Fact]
+    public async Task ListByJobPaged_PagesAndReportsTotal()
+    {
+        var store = new InMemoryFilePairTaskStore();
+        var jobId = Guid.NewGuid();
+        await store.CreateManyAsync(Enumerable.Range(0, 5).Select(i => new FilePairTask
+        {
+            Id = Guid.NewGuid(), JobId = jobId, RelativePath = $"f{i}.pdf", OldFilePath = "/o", NewFilePath = "/n",
+        }).ToList());
+
+        var (page1, total) = await store.ListByJobPagedAsync(jobId, limit: 2, offset: 0, search: null, onlyDiffering: false);
+        Assert.Equal(5, total);
+        Assert.Equal(["f0.pdf", "f1.pdf"], page1.Select(t => t.RelativePath)); // ordered by name, page window
+
+        var (page3, _) = await store.ListByJobPagedAsync(jobId, limit: 2, offset: 4, search: null, onlyDiffering: false);
+        Assert.Equal("f4.pdf", Assert.Single(page3).RelativePath);
+    }
+
+    [Fact]
+    public async Task ListByJobPaged_SearchMatchesByName_CaseInsensitive()
+    {
+        var store = new InMemoryFilePairTaskStore();
+        var jobId = Guid.NewGuid();
+        await store.CreateManyAsync(
+        [
+            new FilePairTask { Id = Guid.NewGuid(), JobId = jobId, RelativePath = "Smlouva_A.pdf", OldFilePath = "/o", NewFilePath = "/n" },
+            new FilePairTask { Id = Guid.NewGuid(), JobId = jobId, RelativePath = "Dodatek_B.pdf", OldFilePath = "/o", NewFilePath = "/n" },
+        ]);
+
+        var (items, total) = await store.ListByJobPagedAsync(jobId, 50, 0, search: "smlouva", onlyDiffering: false);
+        Assert.Equal(1, total);
+        Assert.Equal("Smlouva_A.pdf", Assert.Single(items).RelativePath);
+    }
+
+    [Fact]
+    public async Task ListByJobPaged_OnlyDiffering_KeepsDifferingVerdicts_ExcludesIdenticalAndPending()
+    {
+        var store = new InMemoryFilePairTaskStore();
+        var jobId = Guid.NewGuid();
+        var identical = new FilePairTask { Id = Guid.NewGuid(), JobId = jobId, RelativePath = "same.pdf", OldFilePath = "/o", NewFilePath = "/n" };
+        var differs = new FilePairTask { Id = Guid.NewGuid(), JobId = jobId, RelativePath = "diff.pdf", OldFilePath = "/o", NewFilePath = "/n" };
+        var pending = new FilePairTask { Id = Guid.NewGuid(), JobId = jobId, RelativePath = "wait.pdf", OldFilePath = "/o", NewFilePath = "/n" };
+        await store.CreateManyAsync([identical, differs, pending]);
+        await store.TryClaimAsync(identical.Id, "w", TimeSpan.FromMinutes(5));
+        await store.CompleteAsync(identical.Id, new FilePairResult { RelativePath = "same.pdf", Status = FilePairStatus.Identical }, FilePairTaskStatus.Completed);
+        await store.TryClaimAsync(differs.Id, "w", TimeSpan.FromMinutes(5));
+        await store.CompleteAsync(differs.Id, new FilePairResult { RelativePath = "diff.pdf", Status = FilePairStatus.Differs }, FilePairTaskStatus.Completed);
+
+        var (items, total) = await store.ListByJobPagedAsync(jobId, 50, 0, search: null, onlyDiffering: true);
+        Assert.Equal(1, total);
+        Assert.Equal("diff.pdf", Assert.Single(items).RelativePath); // identical + pending excluded
+    }
 }
 
 public class IncrementProcessedTests

@@ -281,12 +281,17 @@ namespace DiffPdf.Persistence.Postgres.Migrations
 
                     b.Property<string>("RelativePath")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasMaxLength(400)
+                        .HasColumnType("character varying(400)")
                         .HasColumnName("relative_path");
 
                     b.Property<string>("ResultJson")
                         .HasColumnType("jsonb")
                         .HasColumnName("result_json");
+
+                    b.Property<string>("ResultStatus")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
 
                     b.Property<DateTimeOffset?>("StartedAt")
                         .HasColumnType("timestamp with time zone")
@@ -302,6 +307,10 @@ namespace DiffPdf.Persistence.Postgres.Migrations
                         .HasColumnName("version");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("JobId", "RelativePath");
+
+                    b.HasIndex("JobId", "ResultStatus");
 
                     b.HasIndex("JobId", "Status");
 

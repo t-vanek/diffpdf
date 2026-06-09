@@ -29,9 +29,19 @@ public static class JobEndpoints
             await jobs.GetAsync(id, ct) is { } job ? Results.Ok(JobSummary.From(job)) : Results.NotFound())
             .WithSummary("Get job status + progress").Produces<JobSummary>().ProducesProblem(StatusCodes.Status404NotFound);
 
-        group.MapGet("/{id:guid}/tasks", async (Guid id, IJobService jobs, CancellationToken ct) =>
-            await jobs.ListTasksAsync(id, ct) is { } tasks ? Results.Ok(tasks.Select(FilePairTaskSummary.From)) : Results.NotFound())
-            .WithSummary("List the job's file-pair tasks").Produces<IEnumerable<FilePairTaskSummary>>().ProducesProblem(StatusCodes.Status404NotFound);
+        group.MapGet("/{id:guid}/tasks", async (
+            Guid id, int? limit, int? offset, string? search, bool? onlyDiffering,
+            IJobService jobs, HttpResponse response, CancellationToken ct) =>
+        {
+            var page = await jobs.ListTasksPagedAsync(
+                id, Math.Clamp(limit ?? 200, 1, 1000), Math.Max(0, offset ?? 0),
+                string.IsNullOrWhiteSpace(search) ? null : search.Trim(), onlyDiffering ?? false, ct);
+            if (page is not { } p) return Results.NotFound();
+            // Notification channel parity with the jobs list: the matching total rides the X-Total-Count header.
+            response.Headers["X-Total-Count"] = p.Total.ToString();
+            return Results.Ok(p.Items.Select(FilePairTaskSummary.From));
+        }).WithSummary("List the job's file-pair tasks (paged: limit<=1000 + offset; filter by search/onlyDiffering; total in X-Total-Count)")
+            .Produces<IEnumerable<FilePairTaskSummary>>().ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapGet("/{id:guid}/report", async (Guid id, IJobService jobs, CancellationToken ct) =>
         {
