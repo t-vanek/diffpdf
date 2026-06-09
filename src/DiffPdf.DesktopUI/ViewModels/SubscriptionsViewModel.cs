@@ -23,7 +23,6 @@ public partial class SubscriptionsViewModel : PageViewModel
     [ObservableProperty] private string _channel = "webhook";
     [ObservableProperty] private string _target = string.Empty;
     [ObservableProperty] private bool _eventCompleted = true;
-    [ObservableProperty] private bool _eventGateViolated = true;
     [ObservableProperty] private bool _eventCompletedWithErrors = true;
     [ObservableProperty] private bool _eventFailed;
     [ObservableProperty] private bool _eventJobStalled;
@@ -62,7 +61,7 @@ public partial class SubscriptionsViewModel : PageViewModel
         EditingVersion = null;
         Channel = "webhook";
         Target = string.Empty;
-        EventCompleted = EventGateViolated = EventCompletedWithErrors = true;
+        EventCompleted = EventCompletedWithErrors = true;
         EventFailed = EventJobStalled = false;
         BranchKey = InstanceKey = string.Empty;
         Enabled = true;
@@ -77,7 +76,6 @@ public partial class SubscriptionsViewModel : PageViewModel
         Channel = s.Channel;
         Target = s.Target;
         EventCompleted = s.Events.Contains(NotificationEvent.Completed);
-        EventGateViolated = s.Events.Contains(NotificationEvent.GateViolated);
         EventCompletedWithErrors = s.Events.Contains(NotificationEvent.CompletedWithErrors);
         EventFailed = s.Events.Contains(NotificationEvent.Failed);
         EventJobStalled = s.Events.Contains(NotificationEvent.JobStalled);
@@ -132,7 +130,6 @@ public partial class SubscriptionsViewModel : PageViewModel
     {
         var list = new List<NotificationEvent>();
         if (EventCompleted) list.Add(NotificationEvent.Completed);
-        if (EventGateViolated) list.Add(NotificationEvent.GateViolated);
         if (EventCompletedWithErrors) list.Add(NotificationEvent.CompletedWithErrors);
         if (EventFailed) list.Add(NotificationEvent.Failed);
         if (EventJobStalled) list.Add(NotificationEvent.JobStalled);

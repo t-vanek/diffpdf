@@ -61,7 +61,6 @@ public partial class JobsViewModel : PageViewModel
 
     [ObservableProperty] private double _liveProgress;
     [ObservableProperty] private string? _liveStatus;
-    [ObservableProperty] private JobResult? _result;
     [ObservableProperty] private string? _info;
     [ObservableProperty] private bool _showOnlyDiffering = true; // default: show only differing pairs (the usual interest)
     [ObservableProperty] private string _fileSearch = "";
@@ -327,7 +326,6 @@ public partial class JobsViewModel : PageViewModel
     {
         Files.Clear();
         Summary.Clear();
-        Result = null;
         _filesTotal = 0;
         RefreshFilesView();
         if (value is null) { LiveStatus = null; LiveProgress = 0; IsLoadingFiles = false; return; }
@@ -363,7 +361,6 @@ public partial class JobsViewModel : PageViewModel
                 {
                     var r = await client.GetResultAsync(id);
                     if (SelectedJob?.Id != id) return; // selection moved on while we awaited
-                    Result = r;
                     BuildSummary(r.Summary);
                 }
                 catch { /* result/summary best-effort */ }

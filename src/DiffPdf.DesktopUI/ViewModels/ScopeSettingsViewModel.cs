@@ -17,7 +17,7 @@ public partial class ScopeSettingsViewModel : ViewModelBase, IModalViewModel
     private readonly string? _branchKey;
     private readonly string? _instanceKey;
     private long _version;
-    private BatchGate? _triggerGate; // preserved across saves (no dedicated editor yet)
+    private BatchGate? _triggerGate; // not edited in the UI; round-tripped so saving config never wipes a server-set gate
 
     /// <summary>Raised when the (modal) dialog should close — after a successful save or on cancel.</summary>
     public event Action? CloseRequested;

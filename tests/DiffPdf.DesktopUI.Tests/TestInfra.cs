@@ -20,6 +20,7 @@ internal sealed class FakeApi : HttpMessageHandler
     public object? Branches { get; set; } // settable so a test can change the "server" state between reloads
     public object? BranchSummaries { get; set; } // GET /branches/summary
     public object? Jobs { get; set; } // GET /jobs
+    public IReadOnlyList<FilePairTaskSummary>? Tasks { get; set; } // GET /jobs/{id}/tasks (filtered + paged below)
     public Func<string, object?>? InstancesByBranch { get; init; }
     public object? Readiness { get; init; }
     public object? Stats { get; init; }
@@ -36,6 +37,12 @@ internal sealed class FakeApi : HttpMessageHandler
         var path = request.RequestUri!.AbsolutePath;
         if (GatedSuffix is not null && path.EndsWith(GatedSuffix, StringComparison.Ordinal))
             await _gate.Task.ConfigureAwait(false);
+
+        // GET /jobs/{id}/tasks — the server owns the file-list filter (name search + "only differing") and paging,
+        // returning the matching page plus the filtered total in X-Total-Count. Mirror that so a view-model test
+        // can assert the VM loads exactly what the server returns for the query it sent.
+        if (Tasks is not null && path.EndsWith("/tasks", StringComparison.Ordinal))
+            return PagedTasks(request.RequestUri!.Query);
 
         object? payload = path switch
         {
@@ -64,6 +71,41 @@ internal sealed class FakeApi : HttpMessageHandler
         var i = Array.IndexOf(parts, "branches");
         return i >= 0 && i + 1 < parts.Length ? Uri.UnescapeDataString(parts[i + 1]) : "";
     }
+
+    // Applies the same name-search + "only differing" filter and limit/offset paging the real /tasks endpoint
+    // does, then returns the page with the filtered total in X-Total-Count (what the client reads for the count).
+    private HttpResponseMessage PagedTasks(string query)
+    {
+        var q = ParseQuery(query);
+        IEnumerable<FilePairTaskSummary> match = Tasks!;
+        if (q.GetValueOrDefault("search") is { Length: > 0 } search)
+            match = match.Where(t => t.RelativePath.Contains(search, StringComparison.OrdinalIgnoreCase));
+        if (q.GetValueOrDefault("onlyDiffering") == "true")
+            match = match.Where(t => t.ResultStatus is "Differs" or "OnlyInOld" or "OnlyInNew" or "Error");
+
+        var all = match.ToList();
+        var page = all.Skip(QueryInt(q, "offset", 0)).Take(QueryInt(q, "limit", all.Count)).ToList();
+        var resp = new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(JsonSerializer.Serialize(page, Json), Encoding.UTF8, "application/json"),
+        };
+        resp.Headers.TryAddWithoutValidation("X-Total-Count", all.Count.ToString());
+        return resp;
+    }
+
+    private static int QueryInt(IReadOnlyDictionary<string, string> q, string key, int fallback) =>
+        q.TryGetValue(key, out var v) && int.TryParse(v, out var n) ? n : fallback;
+
+    private static Dictionary<string, string> ParseQuery(string query)
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var kv = pair.Split('=', 2);
+            result[Uri.UnescapeDataString(kv[0])] = kv.Length > 1 ? Uri.UnescapeDataString(kv[1]) : "";
+        }
+        return result;
+    }
 }
 
 /// <summary>Reflection helpers to drive a view-model's private members from tests without widening its API.</summary>
@@ -74,6 +116,9 @@ internal static class VmTest
 
     public static Task InvokeAsync(object target, string method) =>
         (Task)target.GetType().GetMethod(method, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(target, null)!;
+
+    public static Task InvokeAsync(object target, string method, params object?[] args) =>
+        (Task)target.GetType().GetMethod(method, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(target, args)!;
 
     public static void Invoke(object target, string method, params object?[] args) =>
         target.GetType().GetMethod(method, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(target, args);
