@@ -59,8 +59,18 @@ public partial class JobsViewModel : PageViewModel
     [ObservableProperty] private bool _showOnlyDiffering;
     [ObservableProperty] private string _fileSearch = "";
     [ObservableProperty] private string _fileCountLabel = "";
-    [ObservableProperty] private bool _hasNoMatchingFiles;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowNoFilesMessage))]
+    private bool _hasNoMatchingFiles;
     [ObservableProperty] private bool _hasNoJobs;
+
+    /// <summary>True while the selected job's file list is being fetched — drives the right-panel loading spinner.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowNoFilesMessage))]
+    private bool _isLoadingFiles;
+
+    /// <summary>The "no files match" empty-state shows only when not loading, so it never overlaps the spinner.</summary>
+    public bool ShowNoFilesMessage => HasNoMatchingFiles && !IsLoadingFiles;
 
     // State-aware lifecycle actions: only what the current status allows is enabled.
     public bool CanPause => SelectedSummary?.Status == JobStatus.Running;
@@ -150,7 +160,12 @@ public partial class JobsViewModel : PageViewModel
     }
 
     [RelayCommand]
-    private Task RefreshAsync() => RunAsync(LoadJobsAsync);
+    private Task RefreshAsync() => RunAsync(async () =>
+    {
+        await LoadJobsAsync();
+        // Also pull the open job's latest file states (newly-completed pairs → openable diffs) without re-selecting.
+        if (SelectedJob is { } sel) await LoadDetailAsync(sel.Id);
+    });
 
     partial void OnFilterStatusChanged(JobStatus? value) => _ = RunAsync(LoadJobsAsync);
 
@@ -214,16 +229,28 @@ public partial class JobsViewModel : PageViewModel
         {
             _ = ReloadQuietlyAsync(); // a job we don't have yet (started elsewhere) → fetch it into the list
         }
-        else if (terminal || selected)
+        else
         {
-            // Update the open job live, or any job that just finished. Skip per-tick churn for the rest: jobProgress
-            // is broadcast to every client, so re-applying every running tick of every job would be needless work.
-            row.Apply(row.Job with
+            // A job whose RecoveredAt just appeared was auto-recovered after an interruption — light its
+            // "Obnoveno" chip and toast once, for ANY job in the list (not only the selected/terminal one the
+            // per-tick update below is limited to). Runs first so the chip survives the status update that follows.
+            if (p.RecoveredAt is not null && !row.WasRecovered)
             {
-                Status = Enum.TryParse<JobStatus>(p.Status, out var st) ? st : row.Job.Status,
-                Progress = p.Progress, ProcessedCount = p.ProcessedCount, TotalCount = p.TotalCount,
-            });
-            if (terminal) _ = ReloadQuietlyAsync(); // refresh the verdict (counts come from the now-written report)
+                row.Apply(row.Job with { RecoveredAt = p.RecoveredAt });
+                _dialogs.ShowToast($"Obnoveno porovnání {row.Job.BranchKey}/{row.Job.InstanceKey} po přerušení.", ToastKind.Info);
+            }
+
+            if (terminal || selected)
+            {
+                // Update the open job live, or any job that just finished. Skip per-tick churn for the rest: jobProgress
+                // is broadcast to every client, so re-applying every running tick of every job would be needless work.
+                row.Apply(row.Job with
+                {
+                    Status = Enum.TryParse<JobStatus>(p.Status, out var st) ? st : row.Job.Status,
+                    Progress = p.Progress, ProcessedCount = p.ProcessedCount, TotalCount = p.TotalCount,
+                });
+                if (terminal) _ = ReloadQuietlyAsync(); // refresh the verdict (counts come from the now-written report)
+            }
         }
 
         if (!selected) return;
@@ -241,7 +268,7 @@ public partial class JobsViewModel : PageViewModel
         Summary.Clear();
         Result = null;
         RefreshFilesView();
-        if (value is null) { LiveStatus = null; LiveProgress = 0; return; }
+        if (value is null) { LiveStatus = null; LiveProgress = 0; IsLoadingFiles = false; return; }
 
         LiveProgress = value.Job.Progress;
         LiveStatus = value.StatusText;
@@ -261,35 +288,43 @@ public partial class JobsViewModel : PageViewModel
 
         Files.Clear();
         Summary.Clear();
-
-        // A completed job has the rich report (per-file results + diff PDFs). Only then do we ask for it —
-        // requesting a report/result for a running job would 404, so we avoid using exceptions as control flow.
-        if (finished)
+        IsLoadingFiles = true;
+        try
         {
-            try
+            // A completed job has the rich report (per-file results + diff PDFs). Only then do we ask for it —
+            // requesting a report/result for a running job would 404, so we avoid using exceptions as control flow.
+            if (finished)
             {
-                var report = await client.GetReportAsync(id);
-                if (SelectedJob?.Id != id) return; // selection moved on while we awaited
-                foreach (var f in report.Files) Files.Add(FilePairLine.FromResult(f));
-                BuildSummary(report);
+                try
+                {
+                    var report = await client.GetReportAsync(id);
+                    if (SelectedJob?.Id != id) return; // selection moved on while we awaited
+                    foreach (var f in report.Files) Files.Add(FilePairLine.FromResult(f));
+                    BuildSummary(report);
+                }
+                catch { /* report pruned by retention → fall back to task-level state below */ }
             }
-            catch { /* report pruned by retention → fall back to task-level state below */ }
-        }
 
-        if (Files.Count == 0) // running / failed / cancelled / pruned → show task progress
+            if (Files.Count == 0) // running / failed / cancelled / pruned → show task progress
+            {
+                try
+                {
+                    foreach (var t in await client.GetTasksAsync(id))
+                        if (SelectedJob?.Id == id) Files.Add(FilePairLine.FromTask(t));
+                }
+                catch { /* best-effort */ }
+            }
+            RefreshFilesView();
+
+            if (finished)
+                try { var r = await client.GetResultAsync(id); if (SelectedJob?.Id == id) Result = r; }
+                catch { /* CI result is best-effort */ }
+        }
+        finally
         {
-            try
-            {
-                foreach (var t in await client.GetTasksAsync(id))
-                    if (SelectedJob?.Id == id) Files.Add(FilePairLine.FromTask(t));
-            }
-            catch { /* best-effort */ }
+            // Guard against a stale load (selection moved on mid-fetch) clearing the spinner the new load just set.
+            if (SelectedJob?.Id == id) IsLoadingFiles = false;
         }
-        RefreshFilesView();
-
-        if (finished)
-            try { var r = await client.GetResultAsync(id); if (SelectedJob?.Id == id) Result = r; }
-            catch { /* CI result is best-effort */ }
     }
 
     private void BuildSummary(BatchComparisonReport r)

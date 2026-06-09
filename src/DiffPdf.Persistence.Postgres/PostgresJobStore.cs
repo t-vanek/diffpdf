@@ -51,7 +51,7 @@ public sealed class PostgresJobStore(DiffPdfDbContext db, EntityMapper mapper) :
             {
                 j.Id, BranchKey = br.Key, InstanceKey = inst.Key, j.Status,
                 j.ProcessedCount, j.TotalCount, j.CreatedAt, j.CompletedAt, j.Error,
-                j.DifferingCount, j.ErrorCount, j.GatePassed,
+                j.DifferingCount, j.ErrorCount, j.GatePassed, j.RecoveredAt,
             })
             .Skip(Math.Max(0, query.Offset))
             .Take(query.Limit)
@@ -64,6 +64,7 @@ public sealed class PostgresJobStore(DiffPdfDbContext db, EntityMapper mapper) :
             ProcessedCount = r.ProcessedCount, TotalCount = r.TotalCount,
             CreatedAt = r.CreatedAt, CompletedAt = r.CompletedAt, Error = r.Error,
             Differing = r.DifferingCount, Errors = r.ErrorCount, GatePassed = r.GatePassed,
+            RecoveredAt = r.RecoveredAt,
         }).ToList();
     }
 
@@ -327,6 +328,17 @@ public sealed class PostgresJobStore(DiffPdfDbContext db, EntityMapper mapper) :
     {
         await db.Jobs.Where(j => j.Id == id)
             .ExecuteUpdateAsync(s => s.SetProperty(j => j.ArtifactsPrunedAt, at), ct);
+    }
+
+    public async Task MarkRecoveredAsync(IReadOnlyCollection<Guid> jobIds, CancellationToken ct = default)
+    {
+        if (jobIds.Count == 0) return;
+        var now = DateTimeOffset.UtcNow;
+        // Write-once (RecoveredAt IS NULL): record the first auto-recovery, skip later ones. No Version/UpdatedAt
+        // bump — side-band metadata for the "Obnoveno" chip, must not disturb concurrency or the idle clock.
+        await db.Jobs
+            .Where(j => jobIds.Contains(j.Id) && j.RecoveredAt == null)
+            .ExecuteUpdateAsync(s => s.SetProperty(j => j.RecoveredAt, now), ct);
     }
 
     public async Task<IReadOnlyList<Guid>> ListPrunableRowsAsync(DateTimeOffset completedBefore, int limit, CancellationToken ct = default) =>

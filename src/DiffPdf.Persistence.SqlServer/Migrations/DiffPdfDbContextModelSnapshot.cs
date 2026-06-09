@@ -436,6 +436,9 @@ namespace DiffPdf.Persistence.SqlServer.Migrations
                         .HasColumnType("int")
                         .HasColumnName("processed_count");
 
+                    b.Property<DateTimeOffset?>("RecoveredAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<string>("ReportJson")
                         .HasColumnType("nvarchar(max)")
                         .HasColumnName("report_json");

@@ -491,4 +491,46 @@ public class SqlServerPersistenceTests(LocalDbFixture db)
             Assert.Contains((jobId, foreignId), released);
         }
     }
+
+    [LocalDbFact]
+    public async Task MarkRecovered_StampsRecoveredAt_WriteOnce_AndProjectsInSummary_OnRealDb()
+    {
+        Guid jobId; string branchKey;
+        await using (var ctx = db.NewContext())
+        {
+            var branches = new SqlServerBranchStore(ctx, _mapper);
+            var instances = new SqlServerInstanceStore(ctx, _mapper);
+            var jobs = new SqlServerJobStore(ctx, _mapper);
+
+            branchKey = "b_" + Guid.NewGuid().ToString("N")[..8];
+            var branch = await branches.CreateAsync(branchKey, branchKey);
+            var instance = await instances.CreateAsync(branch.Id, "i1", "I1", @"C:\x\1", null);
+            var job = await jobs.CreateAsync(new ComparisonJob
+            {
+                Id = Guid.NewGuid(), BranchId = branch.Id, InstanceId = instance.Id, Status = JobStatus.Running,
+                Request = new BatchComparisonRequest { Scope = new JobScope(branch.Key, instance.Key) },
+            });
+            jobId = job.Id;
+        }
+
+        DateTimeOffset? firstStamp;
+        await using (var mark = db.NewContext())
+            await new SqlServerJobStore(mark, _mapper).MarkRecoveredAsync([jobId]);
+        await using (var verify = db.NewContext())
+        {
+            var store = new SqlServerJobStore(verify, _mapper);
+            firstStamp = (await store.GetAsync(jobId))!.RecoveredAt;
+            Assert.NotNull(firstStamp); // stamped on the job
+
+            // The list projection carries RecoveredAt — drives the client's "Obnoveno" chip without opening the job.
+            var summary = (await store.ListSummariesAsync(new JobListQuery { BranchKey = branchKey })).Single(j => j.Id == jobId);
+            Assert.Equal(firstStamp, summary.RecoveredAt);
+        }
+
+        // Write-once (RecoveredAt IS NULL guard): a second recovery leaves the first stamp untouched.
+        await using (var again = db.NewContext())
+            await new SqlServerJobStore(again, _mapper).MarkRecoveredAsync([jobId]);
+        await using (var verify2 = db.NewContext())
+            Assert.Equal(firstStamp, (await new SqlServerJobStore(verify2, _mapper).GetAsync(jobId))!.RecoveredAt);
+    }
 }

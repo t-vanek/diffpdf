@@ -68,6 +68,7 @@ public sealed class JobEntity
     public string? LockedBy { get; set; }
     public DateTimeOffset? LockedUntil { get; set; }
     public DateTimeOffset? ArtifactsPrunedAt { get; set; }
+    public DateTimeOffset? RecoveredAt { get; set; }
     public Guid? TriggerId { get; set; }
     public string Source { get; set; } = "System";
     public int Priority { get; set; }

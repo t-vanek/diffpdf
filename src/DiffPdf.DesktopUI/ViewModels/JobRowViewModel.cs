@@ -13,7 +13,8 @@ public partial class JobRowViewModel(JobSummary job) : ObservableObject
 {
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StatusText), nameof(StatusIcon), nameof(StatusBrush), nameof(Progress),
-        nameof(InProgress), nameof(ProgressText), nameof(HasVerdict), nameof(VerdictText), nameof(VerdictBrush))]
+        nameof(InProgress), nameof(ProgressText), nameof(HasVerdict), nameof(VerdictText), nameof(VerdictBrush),
+        nameof(WasRecovered))]
     private JobSummary _job = job;
 
     public Guid Id => Job.Id;
@@ -64,6 +65,9 @@ public partial class JobRowViewModel(JobSummary job) : ObservableObject
         JobStatus.Cancelled => Palette.Skipped,
         _ => Palette.Muted,
     };
+
+    /// <summary>The job was auto-recovered after an interruption (crash / restart / stale worker) — shows an "Obnoveno" chip.</summary>
+    public bool WasRecovered => Job.RecoveredAt is not null;
 
     public void Apply(JobSummary updated) => Job = updated;
 }

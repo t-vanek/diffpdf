@@ -164,6 +164,11 @@ public sealed record FilePairTaskSummary
     public string? ResultStatus { get; init; }
     public string? Error { get; init; }
 
+    /// <summary>The full per-pair result once the task is Completed (verdict + similarity + the highlighted diff
+    /// PDF path) — null while pending/running. Lets the client open a finished pair's diff mid-run, before the
+    /// whole-job report exists.</summary>
+    public FilePairResult? Result { get; init; }
+
     public static FilePairTaskSummary From(FilePairTask t) => new()
     {
         Id = t.Id,
@@ -172,6 +177,7 @@ public sealed record FilePairTaskSummary
         AttemptCount = t.AttemptCount,
         ResultStatus = t.Result?.Status.ToString(),
         Error = t.Error,
+        Result = t.Result,
     };
 }
 
@@ -194,6 +200,9 @@ public sealed record JobSummary
     public int? Errors { get; init; }
     public bool? GatePassed { get; init; }
 
+    /// <summary>When the job was last auto-recovered (crash / restart / stale worker); null if never. Drives the "Obnoveno" chip.</summary>
+    public DateTimeOffset? RecoveredAt { get; init; }
+
     public static JobSummary From(ComparisonJob job) => new()
     {
         Id = job.Id,
@@ -209,6 +218,7 @@ public sealed record JobSummary
         Differing = job.Report?.Differing,
         Errors = job.Report?.Errors,
         GatePassed = job.Report?.Passed,
+        RecoveredAt = job.RecoveredAt,
     };
 
     /// <summary>From the lightweight list projection (verdict already denormalized; no report deserialized).</summary>
@@ -227,6 +237,7 @@ public sealed record JobSummary
         Differing = job.Differing,
         Errors = job.Errors,
         GatePassed = job.GatePassed,
+        RecoveredAt = job.RecoveredAt,
     };
 }
 

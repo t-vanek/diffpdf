@@ -1,3 +1,4 @@
+using DiffPdf.Core.Abstractions;
 using DiffPdf.Core.Models;
 using DiffPdf.Core.Storage;
 using DiffPdf.Persistence;
@@ -224,5 +225,47 @@ public class InMemoryJobStoreTests
         Assert.Equal(2, counts[JobStatus.Queued]);
         Assert.Equal(1, counts[JobStatus.Running]);
         Assert.False(counts.ContainsKey(JobStatus.Failed));
+    }
+
+    [Fact]
+    public async Task MarkRecovered_StampsRecoveredAt_WriteOnce_AndSurfacesInSummary()
+    {
+        var store = new InMemoryJobStore();
+        var job = await store.CreateAsync(NewJob());
+        Assert.Null((await store.GetAsync(job.Id))!.RecoveredAt); // not recovered initially
+
+        await store.MarkRecoveredAsync([job.Id]);
+        var firstStamp = (await store.GetAsync(job.Id))!.RecoveredAt;
+        Assert.NotNull(firstStamp);
+
+        // The list projection carries it → drives the client's "Obnoveno" chip.
+        var summary = Assert.Single(await store.ListSummariesAsync(new JobListQuery { BranchKey = "Alfa" }));
+        Assert.Equal(firstStamp, summary.RecoveredAt);
+
+        // Write-once: a later recovery leaves the first stamp.
+        await store.MarkRecoveredAsync([job.Id]);
+        Assert.Equal(firstStamp, (await store.GetAsync(job.Id))!.RecoveredAt);
+    }
+
+    [Fact]
+    public async Task MarkRecovered_IgnoresUnknownIds_AndEmpty()
+    {
+        var store = new InMemoryJobStore();
+        var job = await store.CreateAsync(NewJob());
+
+        await store.MarkRecoveredAsync([]);                 // no-op
+        await store.MarkRecoveredAsync([Guid.NewGuid()]);   // unknown id → no throw, no effect
+        Assert.Null((await store.GetAsync(job.Id))!.RecoveredAt);
+    }
+
+    [Fact]
+    public void JobProgressChanged_From_CarriesRecoveredAt()
+    {
+        var when = DateTimeOffset.UtcNow;
+        var job = NewJob() with { Status = JobStatus.Running, RecoveredAt = when };
+
+        var progress = JobProgressChanged.From(job);
+
+        Assert.Equal(when, progress.RecoveredAt); // flag rides the realtime push → chip + toast
     }
 }
