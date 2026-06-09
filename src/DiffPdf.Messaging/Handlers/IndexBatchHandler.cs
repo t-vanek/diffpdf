@@ -27,6 +27,8 @@ public sealed class IndexBatchHandler
         ILogger<IndexBatchHandler> logger,
         CancellationToken ct)
     {
+        using var logScope = logger.BeginScope(new Dictionary<string, object> { ["JobId"] = command.JobId });
+
         var job = await jobStore.GetAsync(command.JobId, ct);
         if (job is null || job.Status != JobStatus.Running)
         {

@@ -24,7 +24,9 @@ public partial class SubscriptionsViewModel : PageViewModel
     [ObservableProperty] private string _target = string.Empty;
     [ObservableProperty] private bool _eventCompleted = true;
     [ObservableProperty] private bool _eventGateViolated = true;
+    [ObservableProperty] private bool _eventCompletedWithErrors = true;
     [ObservableProperty] private bool _eventFailed;
+    [ObservableProperty] private bool _eventJobStalled;
     [ObservableProperty] private string _branchKey = string.Empty;
     [ObservableProperty] private string _instanceKey = string.Empty;
     [ObservableProperty] private bool _enabled = true;
@@ -60,8 +62,8 @@ public partial class SubscriptionsViewModel : PageViewModel
         EditingVersion = null;
         Channel = "webhook";
         Target = string.Empty;
-        EventCompleted = EventGateViolated = true;
-        EventFailed = false;
+        EventCompleted = EventGateViolated = EventCompletedWithErrors = true;
+        EventFailed = EventJobStalled = false;
         BranchKey = InstanceKey = string.Empty;
         Enabled = true;
         Info = null;
@@ -76,7 +78,9 @@ public partial class SubscriptionsViewModel : PageViewModel
         Target = s.Target;
         EventCompleted = s.Events.Contains(NotificationEvent.Completed);
         EventGateViolated = s.Events.Contains(NotificationEvent.GateViolated);
+        EventCompletedWithErrors = s.Events.Contains(NotificationEvent.CompletedWithErrors);
         EventFailed = s.Events.Contains(NotificationEvent.Failed);
+        EventJobStalled = s.Events.Contains(NotificationEvent.JobStalled);
         BranchKey = s.BranchKey ?? string.Empty;
         InstanceKey = s.InstanceKey ?? string.Empty;
         Enabled = s.Enabled;
@@ -129,7 +133,9 @@ public partial class SubscriptionsViewModel : PageViewModel
         var list = new List<NotificationEvent>();
         if (EventCompleted) list.Add(NotificationEvent.Completed);
         if (EventGateViolated) list.Add(NotificationEvent.GateViolated);
+        if (EventCompletedWithErrors) list.Add(NotificationEvent.CompletedWithErrors);
         if (EventFailed) list.Add(NotificationEvent.Failed);
+        if (EventJobStalled) list.Add(NotificationEvent.JobStalled);
         return list;
     }
 }

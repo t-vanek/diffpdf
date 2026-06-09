@@ -29,6 +29,7 @@ public sealed record BatchNotification(
     {
         NotificationEvent.Failed => $"diffpdf — batch FAILED: {BranchKey}/{InstanceKey}",
         NotificationEvent.GateViolated => $"diffpdf — gate VIOLATED: {BranchKey}/{InstanceKey}",
+        NotificationEvent.CompletedWithErrors => $"diffpdf — batch completed WITH ERRORS: {BranchKey}/{InstanceKey}",
         _ => $"diffpdf — batch passed: {BranchKey}/{InstanceKey}",
     };
 

@@ -22,6 +22,17 @@ public class CompareFilePairFinalizationTests
             Task.FromResult(new FileComparisonResult { OldPath = oldPath, NewPath = newPath }); // Compared, identical
     }
 
+    /// <summary>Records whether it ran and throws if it does — to prove a dead-lettered pair never reaches the engine.</summary>
+    private sealed class ThrowingEngine : IComparisonEngine
+    {
+        public bool Called { get; private set; }
+        public Task<FileComparisonResult> CompareAsync(string oldPath, string newPath, ComparisonOptions options, string? artifactDirectory = null, CancellationToken ct = default)
+        {
+            Called = true;
+            throw new InvalidOperationException("the engine must not run for a dead-lettered (poison) pair");
+        }
+    }
+
     private sealed class FakePaths : IJobStoragePathProvider
     {
         public string GetJobRoot(ComparisonJob job) => Path.GetTempPath();
@@ -35,9 +46,13 @@ public class CompareFilePairFinalizationTests
     {
         public CancellationToken? CompleteToken { get; private set; }
 
-        public Task CompleteAsync(Guid taskId, FilePairResult result, FilePairTaskStatus status, CancellationToken ct = default)
+        /// <summary>When set, CompleteAsync reports this without writing — simulates a duplicate that lost the race.</summary>
+        public bool? ForceCompleteWon { get; set; }
+
+        public Task<bool> CompleteAsync(Guid taskId, FilePairResult result, FilePairTaskStatus status, CancellationToken ct = default)
         {
             CompleteToken = ct;
+            if (ForceCompleteWon is { } won) return Task.FromResult(won);
             return inner.CompleteAsync(taskId, result, status, ct);
         }
 
@@ -47,6 +62,8 @@ public class CompareFilePairFinalizationTests
         public Task RequeueAsync(Guid taskId, CancellationToken ct = default) => inner.RequeueAsync(taskId, ct);
         public Task RequeueForRetryAsync(Guid taskId, CancellationToken ct = default) => inner.RequeueForRetryAsync(taskId, ct);
         public Task<IReadOnlyList<(Guid JobId, Guid TaskId)>> RequeueStaleAsync(CancellationToken ct = default) => inner.RequeueStaleAsync(ct);
+        public Task<IReadOnlyList<(Guid JobId, Guid TaskId)>> RequeueRunningTasksAsync(string? lockedBy, CancellationToken ct = default) => inner.RequeueRunningTasksAsync(lockedBy, ct);
+        public Task<IReadOnlyList<(Guid JobId, Guid TaskId)>> ListStaleQueuedAsync(DateTimeOffset idleSince, int limit, CancellationToken ct = default) => inner.ListStaleQueuedAsync(idleSince, limit, ct);
         public Task<IReadOnlyList<FilePairTask>> ListByJobAsync(Guid jobId, CancellationToken ct = default) => inner.ListByJobAsync(jobId, ct);
         public Task<int> CountActiveAsync(CancellationToken ct = default) => inner.CountActiveAsync(ct);
         public Task<IReadOnlyDictionary<FilePairTaskStatus, int>> CountByStatusForJobsAsync(IReadOnlyCollection<Guid> jobIds, CancellationToken ct = default) => inner.CountByStatusForJobsAsync(jobIds, ct);
@@ -112,6 +129,26 @@ public class CompareFilePairFinalizationTests
     }
 
     [Fact]
+    public async Task A_completion_that_lost_the_race_does_not_advance_the_processed_counter()
+    {
+        var jobStore = new InMemoryJobStore();
+        var job = await jobStore.CreateAsync(RunningJob());
+        // CompleteAsync reports the pair was already finished by a concurrent/duplicate worker (won == false).
+        var taskStore = new TokenCapturingTaskStore(new InMemoryFilePairTaskStore()) { ForceCompleteWon = false };
+        var task = QueuedPair(job.Id);
+        await taskStore.CreateManyAsync([task]);
+
+        await CompareFilePairHandler.Handle(
+            new CompareFilePair(job.Id, task.Id), jobStore, taskStore, new SuccessEngine(), new FakePaths(),
+            new NullJobProgressPublisher(), new WorkerInstanceIdProvider(), WorkerOpts(),
+            null!, // a lost-race completion returns before any FinalizeBatch publish, so the bus is never touched
+            NullLogger<CompareFilePairHandler>.Instance, CancellationToken.None);
+
+        // The losing completion must short-circuit: no double increment, no finalize.
+        Assert.Equal(0, (await jobStore.GetAsync(job.Id))!.ProcessedCount);
+    }
+
+    [Fact]
     public async Task Shutdown_during_compare_propagates_and_does_not_record_a_spurious_error()
     {
         var jobStore = new InMemoryJobStore();
@@ -135,5 +172,47 @@ public class CompareFilePairFinalizationTests
         Assert.NotEqual(FilePairTaskStatus.Completed, stored.Status);
         Assert.NotEqual(FilePairTaskStatus.Failed, stored.Status);
         Assert.Equal(0, (await jobStore.GetAsync(job.Id))!.ProcessedCount);
+    }
+
+    [Fact]
+    public async Task Pair_past_attempt_cap_is_dead_lettered_without_running_the_engine()
+    {
+        var jobStore = new InMemoryJobStore();
+        var job = await jobStore.CreateAsync(RunningJob()); // TotalCount = 2, so finalize is never reached (bus unused)
+        var taskStore = new TokenCapturingTaskStore(new InMemoryFilePairTaskStore());
+        var task = QueuedPair(job.Id) with { AttemptCount = 3 }; // claim bumps to 4 > MaxFilePairAttempts (3)
+        await taskStore.CreateManyAsync([task]);
+        var engine = new ThrowingEngine();
+
+        await CompareFilePairHandler.Handle(
+            new CompareFilePair(job.Id, task.Id), jobStore, taskStore, engine, new FakePaths(),
+            new NullJobProgressPublisher(), new WorkerInstanceIdProvider(), WorkerOpts(),
+            null!, NullLogger<CompareFilePairHandler>.Instance, CancellationToken.None);
+
+        Assert.False(engine.Called); // circuit breaker fired before the comparison — no re-crash
+        var stored = (await taskStore.ListByJobAsync(job.Id)).Single();
+        Assert.Equal(FilePairTaskStatus.Completed, stored.Status);
+        Assert.Equal(FilePairStatus.Error, stored.Result!.Status);
+        Assert.Contains("poison pill", stored.Result!.Error);
+        Assert.Equal(1, (await jobStore.GetAsync(job.Id))!.ProcessedCount); // dead-letter still advances the batch
+    }
+
+    [Fact]
+    public async Task Pair_at_attempt_cap_still_runs_the_comparison()
+    {
+        var jobStore = new InMemoryJobStore();
+        var job = await jobStore.CreateAsync(RunningJob());
+        var taskStore = new TokenCapturingTaskStore(new InMemoryFilePairTaskStore());
+        var task = QueuedPair(job.Id) with { AttemptCount = 2 }; // claim bumps to 3, NOT > 3 → compares normally
+        await taskStore.CreateManyAsync([task]);
+
+        await CompareFilePairHandler.Handle(
+            new CompareFilePair(job.Id, task.Id), jobStore, taskStore, new SuccessEngine(), new FakePaths(),
+            new NullJobProgressPublisher(), new WorkerInstanceIdProvider(), WorkerOpts(),
+            null!, NullLogger<CompareFilePairHandler>.Instance, CancellationToken.None);
+
+        var stored = (await taskStore.ListByJobAsync(job.Id)).Single();
+        Assert.Equal(FilePairTaskStatus.Completed, stored.Status);
+        Assert.Null(stored.Result!.Error); // compared, not dead-lettered (which would set a poison Error)
     }
 }

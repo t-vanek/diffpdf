@@ -137,7 +137,10 @@ public class IndexBatchIdempotencyTests : IDisposable
         // FinalizeBatch were lost. A redelivered IndexBatch should recover by nudging finalization.
         await Index(job, jobStore, taskStore, bus);
         foreach (var t in await taskStore.ListByJobAsync(job.Id))
+        {
+            await taskStore.TryClaimAsync(t.Id, "w", TimeSpan.FromMinutes(5));
             await taskStore.CompleteAsync(t.Id, new FilePairResult { RelativePath = t.RelativePath }, FilePairTaskStatus.Completed);
+        }
         bus.Published.Clear();
 
         var result = await Index(job, jobStore, taskStore, bus);

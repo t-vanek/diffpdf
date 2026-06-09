@@ -80,14 +80,21 @@ public sealed class GhostscriptPageRenderer(
 
             byte[] png = await File.ReadAllBytesAsync(tempOut, ct);
             using var bitmap = SKBitmap.Decode(png);
+            if (bitmap is null)
+            {
+                // A null decode means Ghostscript produced garbage/empty output — fail loudly instead of returning a
+                // 0×0 page that would silently corrupt the visual diff / blank detection. The engine contains it per-page.
+                outcome = "error";
+                throw new InvalidOperationException($"Ghostscript produced an undecodable PNG for page {pageNumber}.");
+            }
 
             outcome = "ok";
             return new RenderedPage
             {
                 PageNumber = pageNumber,
                 Dpi = dpi,
-                WidthPx = bitmap?.Width ?? 0,
-                HeightPx = bitmap?.Height ?? 0,
+                WidthPx = bitmap.Width,
+                HeightPx = bitmap.Height,
                 Png = png,
             };
         }

@@ -19,6 +19,8 @@ public sealed class DiffPdfMetrics : IDisposable
     private readonly Histogram<double> _jobDuration;
     private readonly Counter<long> _jobsFinished;
     private readonly ConcurrentDictionary<Guid, BranchDepth> _depths = new();
+    private volatile int _stuckJobs;
+    private volatile int _activeTasks;
 
     public DiffPdfMetrics()
     {
@@ -32,6 +34,12 @@ public sealed class DiffPdfMetrics : IDisposable
         _meter.CreateObservableGauge(
             "diffpdf.queue.depth", ObserveDepth, unit: "{job}",
             description: "Active comparison jobs per branch, by queue state.");
+        _meter.CreateObservableGauge(
+            "diffpdf.jobs.stuck", () => _stuckJobs, unit: "{job}",
+            description: "Comparison jobs Running past the stall threshold (no pair completion within the window).");
+        _meter.CreateObservableGauge(
+            "diffpdf.tasks.active", () => _activeTasks, unit: "{task}",
+            description: "Active (Queued or Running) file-pair tasks across all jobs — the comparison backlog.");
     }
 
     /// <summary>Refreshes the queue-depth snapshot for a branch (called by the dispatcher on every state publish).</summary>
@@ -40,6 +48,12 @@ public sealed class DiffPdfMetrics : IDisposable
 
     /// <summary>Drops a deleted branch from the snapshot so its gauge stops reporting.</summary>
     public void RemoveBranch(Guid branchId) => _depths.TryRemove(branchId, out _);
+
+    /// <summary>Refreshes the stuck-job gauge (fed by the watchdog tick — Running jobs past the stall window).</summary>
+    public void RecordStuckJobs(int count) => _stuckJobs = count;
+
+    /// <summary>Refreshes the active-task backlog gauge (fed by the watchdog tick — Queued+Running file-pair tasks).</summary>
+    public void RecordActiveTasks(int count) => _activeTasks = count;
 
     /// <summary>Records a job that reached a terminal state. <paramref name="result"/> is <c>passed</c> | <c>gate_violated</c> | <c>failed</c>.</summary>
     public void RecordJobFinished(string result, TimeSpan duration)

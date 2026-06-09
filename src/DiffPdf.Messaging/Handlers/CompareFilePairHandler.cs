@@ -42,6 +42,9 @@ public sealed class CompareFilePairHandler
         ILogger<CompareFilePairHandler> logger,
         CancellationToken ct)
     {
+        // Correlate every log line in this handler — and the comparison engine it calls — with the job id.
+        using var logScope = logger.BeginScope(new Dictionary<string, object> { ["JobId"] = command.JobId });
+
         // Check the job before claiming the task: if it is not Running (paused, cancelled
         // or finished) we leave the task untouched — a paused job's pending pairs stay
         // Queued so resume can re-dispatch them, while pairs already in flight finish.
@@ -49,37 +52,64 @@ public sealed class CompareFilePairHandler
         if (job is null || job.Status != JobStatus.Running)
             return;
 
-        var task = await taskStore.TryClaimAsync(command.TaskId, workerInstance.WorkerInstanceId, workerOptions.Value.JobLease, ct);
+        var task = await taskStore.TryClaimAsync(command.TaskId, workerInstance.WorkerInstanceId, workerOptions.Value.FilePairLease, ct);
         if (task is null)
             return; // already claimed / completed (idempotent)
 
+        // Domain span for the per-pair comparison, nested under Wolverine's message activity (so the whole job
+        // reads as one trace when an OTLP exporter is configured). No-op without a tracing listener.
+        using var activity = DiffPdfTracing.Source.StartActivity("comparison.pair");
+        activity?.SetTag("diffpdf.job_id", job.Id);
+        activity?.SetTag("diffpdf.branch", job.BranchKey);
+        activity?.SetTag("diffpdf.instance", job.InstanceKey);
+        activity?.SetTag("diffpdf.pair", task.RelativePath);
+
         FilePairResult result;
-        try
+        if (task.AttemptCount > workerOptions.Value.MaxFilePairAttempts)
         {
-            result = await CompareAsync(task, job, engine, paths, workerOptions.Value, ct);
+            // Circuit breaker: this pair has been claimed more times than the cap without ever completing —
+            // almost always a poison input that crashes the worker (OOM / native renderer fault) or lets its
+            // lease expire. Dead-letter it as an Error instead of re-running and re-crashing, so the batch can
+            // finalize. Bounds the damage to MaxFilePairAttempts crashes (each detected only by lease expiry).
+            // The transient-retry path below caps CAUGHT exceptions; this caps un-caught crash/requeue loops.
+            logger.LogError("Pair {Path} in job {JobId} dead-lettered after {Attempts} attempts (poison pill).",
+                task.RelativePath, job.Id, task.AttemptCount);
+            result = new FilePairResult
+            {
+                RelativePath = task.RelativePath,
+                Status = FilePairStatus.Error,
+                Error = $"dead-lettered after {workerOptions.Value.MaxFilePairAttempts} attempts (poison pill)",
+            };
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        else
         {
-            // Host shutdown / message cancellation — NOT a pair failure. Don't record it as a per-file error
-            // (CompareAsync deliberately propagates outer cancellation rather than turning it into one). Leave
-            // the task Running so it is retried after restart (lease sweeper → redelivery), and let the
-            // cancellation propagate so Wolverine treats the message as not-yet-processed.
-            throw;
-        }
-        catch (Exception ex) when (ExceptionClassifier.IsTransient(ex) && task.AttemptCount < workerOptions.Value.MaxFilePairAttempts)
-        {
-            // Transient and still under the attempt cap: return the task to the queue and let Wolverine
-            // redeliver (with cooldown). Requeue with None so a concurrent shutdown can't abandon the requeue
-            // and strand the task in Running.
-            logger.LogWarning(ex, "Transient failure on pair {Path} (attempt {Attempt}); requeuing", task.RelativePath, task.AttemptCount);
-            await taskStore.RequeueAsync(task.Id, CancellationToken.None);
-            throw;
-        }
-        catch (Exception ex)
-        {
-            // Permanent, or transient past the cap: record as an error and move on.
-            logger.LogError(ex, "Pair {Path} failed permanently in job {JobId}", task.RelativePath, job.Id);
-            result = new FilePairResult { RelativePath = task.RelativePath, Status = FilePairStatus.Error, Error = ex.Message };
+            try
+            {
+                result = await CompareAsync(task, job, engine, paths, workerOptions.Value, ct);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                // Host shutdown / message cancellation — NOT a pair failure. Don't record it as a per-file error
+                // (CompareAsync deliberately propagates outer cancellation rather than turning it into one). Leave
+                // the task Running so it is retried after restart (lease sweeper → redelivery), and let the
+                // cancellation propagate so Wolverine treats the message as not-yet-processed.
+                throw;
+            }
+            catch (Exception ex) when (ExceptionClassifier.IsTransient(ex) && task.AttemptCount < workerOptions.Value.MaxFilePairAttempts)
+            {
+                // Transient and still under the attempt cap: return the task to the queue and let Wolverine
+                // redeliver (with cooldown). Requeue with None so a concurrent shutdown can't abandon the requeue
+                // and strand the task in Running.
+                logger.LogWarning(ex, "Transient failure on pair {Path} (attempt {Attempt}); requeuing", task.RelativePath, task.AttemptCount);
+                await taskStore.RequeueAsync(task.Id, CancellationToken.None);
+                throw;
+            }
+            catch (Exception ex)
+            {
+                // Permanent, or transient past the cap: record as an error and move on.
+                logger.LogError(ex, "Pair {Path} failed permanently in job {JobId}", task.RelativePath, job.Id);
+                result = new FilePairResult { RelativePath = task.RelativePath, Status = FilePairStatus.Error, Error = ex.Message };
+            }
         }
 
         // The comparison itself is finished — recording its result and advancing the batch must run to
@@ -88,7 +118,13 @@ public sealed class CompareFilePairHandler
         // would, on a shutdown mid-pair, abandon them: the task is left in Running (recovered only later by the
         // lease sweeper) and the finished — and now slow — comparison is thrown away and redone. So finalize
         // with CancellationToken.None, not ct.
-        await taskStore.CompleteAsync(task.Id, result, FilePairTaskStatus.Completed, CancellationToken.None);
+        activity?.SetTag("diffpdf.outcome", result.Status.ToString());
+        activity?.SetTag("diffpdf.differing_pages", result.DifferingPages);
+        activity?.SetTag("diffpdf.content_errors", result.ContentErrorCount);
+
+        bool won = await taskStore.CompleteAsync(task.Id, result, FilePairTaskStatus.Completed, CancellationToken.None);
+        if (!won)
+            return; // a concurrent/duplicate delivery already completed this pair — don't double-count or re-finalize
 
         var (processed, total) = await jobStore.IncrementProcessedAsync(command.JobId, CancellationToken.None);
         await progressPublisher.PublishAsync(new JobProgressChanged(

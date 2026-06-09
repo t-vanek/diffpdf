@@ -89,6 +89,8 @@ public enum NotificationEvent
     HealthDegraded,
     StructureDrift,
     CheckRecovered,
+    JobStalled,
+    CompletedWithErrors,
 }
 
 /// <summary>What a control check does.</summary>

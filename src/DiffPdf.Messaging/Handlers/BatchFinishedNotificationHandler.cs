@@ -10,7 +10,11 @@ public sealed class BatchFinishedNotificationHandler
 {
     public static Task Handle(BatchFinished evt, INotificationDispatcher dispatcher, IOptions<NotificationOptions> options, CancellationToken ct)
     {
-        var kind = evt.Passed ? NotificationEvent.Completed : NotificationEvent.GateViolated;
+        // A batch that "passed" (gate ok / no gate) but still has errored pairs would otherwise be announced as a
+        // plain Completed — the errors silent. Escalate it to a distinct event so failure subscribers hear it.
+        var kind = !evt.Passed ? NotificationEvent.GateViolated
+            : evt.Errors > 0 ? NotificationEvent.CompletedWithErrors
+            : NotificationEvent.Completed;
         var notification = new BatchNotification(
             kind, evt.JobId, evt.BranchKey, evt.InstanceKey,
             evt.Total, evt.Identical, evt.Differing, evt.Errors, evt.FilesWithContentErrors,

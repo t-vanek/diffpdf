@@ -125,6 +125,16 @@ public sealed class PostgresJobStore(DiffPdfDbContext db, EntityMapper mapper) :
         return rows.Select(mapper.ToDomain).ToList();
     }
 
+    public async Task<IReadOnlyList<ComparisonJob>> ListRunningFullyProcessedAsync(DateTimeOffset idleSince, int limit, CancellationToken ct = default)
+    {
+        var rows = await db.Jobs.AsNoTracking()
+            .Where(j => j.Status == "Running" && j.TotalCount > 0 && j.ProcessedCount >= j.TotalCount && j.UpdatedAt < idleSince)
+            .OrderBy(j => j.UpdatedAt)
+            .Take(limit)
+            .ToListAsync(ct);
+        return rows.Select(mapper.ToDomain).ToList();
+    }
+
     public async Task<ComparisonJob?> TryStartAsync(Guid id, string workerId, TimeSpan lease, CancellationToken ct = default)
     {
         var now = DateTimeOffset.UtcNow;

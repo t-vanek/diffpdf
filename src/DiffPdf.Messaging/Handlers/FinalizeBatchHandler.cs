@@ -25,6 +25,8 @@ public sealed class FinalizeBatchHandler
         ILogger<FinalizeBatchHandler> logger,
         CancellationToken ct)
     {
+        using var logScope = logger.BeginScope(new Dictionary<string, object> { ["JobId"] = command.JobId });
+
         var job = await jobStore.GetAsync(command.JobId, ct);
         if (job is null || job.Status != JobStatus.Running)
             return null; // already finalized or not ready

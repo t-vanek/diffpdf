@@ -15,7 +15,11 @@ public sealed class PageAligner(ITextComparer textComparer) : IPageAligner
         IReadOnlyList<PageText> newPages,
         ComparisonOptions options)
     {
-        if (!options.AlignPages)
+        // Fall back to cheap index pairing when alignment is disabled, or when either document is so large that the
+        // O(n*m) Needleman–Wunsch matrix would risk OOM (a guard against pathological inputs).
+        if (!options.AlignPages
+            || (options.MaxAlignmentPages > 0
+                && (oldPages.Count > options.MaxAlignmentPages || newPages.Count > options.MaxAlignmentPages)))
             return PairByIndex(oldPages.Count, newPages.Count);
 
         var columns = SequenceAligner.Align(

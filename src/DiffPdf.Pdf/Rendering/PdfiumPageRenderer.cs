@@ -43,7 +43,8 @@ public sealed class PdfiumPageRenderer(IPdfWorkLimiter limiter, IOptions<PdfiumO
             {
                 // PDFtoImage page index is 0-based.
                 using SKBitmap bitmap = Conversion.ToImage(
-                    pdf, password: null, page: pageNumber - 1, options: new RenderOptions(Dpi: dpi));
+                        pdf, password: null, page: pageNumber - 1, options: new RenderOptions(Dpi: dpi))
+                    ?? throw new InvalidOperationException($"PDFium produced no image for page {pageNumber}.");
                 using SKData data = bitmap.Encode(SKEncodedImageFormat.Png, 100);
 
                 return new RenderedPage

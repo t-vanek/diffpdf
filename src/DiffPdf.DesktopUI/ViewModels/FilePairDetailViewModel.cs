@@ -44,6 +44,15 @@ public sealed partial class FilePairDetailViewModel : ViewModelBase
     /// <summary>The comparison's own error (distinct from <see cref="ViewModelBase.Error"/>, which surfaces action failures).</summary>
     public string? PairError => _line.Diff?.Error;
 
+    /// <summary>Pages with a contained processing failure or a detected content error.</summary>
+    public int ContentErrorCount => _line.Diff?.ContentErrorCount ?? 0;
+
+    /// <summary>True when the comparison flagged page/content errors (shown even when a diff PDF is present).</summary>
+    public bool HasContentErrors => ContentErrorCount > 0;
+
+    /// <summary>The owning job's id — the correlation id to quote in a support / log lookup.</summary>
+    public Guid JobId => _jobId;
+
     /// <summary>True when the run produced a highlighted diff PDF — only then is there a preview to render / save.</summary>
     public bool HasDiff => _line.HasDiff;
 
@@ -75,6 +84,9 @@ public sealed partial class FilePairDetailViewModel : ViewModelBase
         var saved = await _dialogs.SaveBytesAsync(_artifactName, _bytes);
         Status = saved is null ? "Uložení zrušeno." : $"Uloženo: {saved}";
     });
+
+    [RelayCommand]
+    private Task CopyJobIdAsync() => _dialogs.CopyToClipboardAsync(_jobId.ToString(), "ID úlohy zkopírováno.");
 
     /// <summary>Deletes the temp PDF the webview rendered (best-effort) — called when the window closes.</summary>
     public void Cleanup()

@@ -25,6 +25,12 @@ public sealed record FilePairLine(string Name, string Icon, string StatusText, I
         // Append the engine-only compare time for pairs that were actually compared.
         if (r.CompareMs is { } ms && r.Status is FilePairStatus.Identical or FilePairStatus.Differs)
             detail = detail.Length == 0 ? FormatMs(ms) : $"{detail} · {FormatMs(ms)}";
+        // Flag contained per-page failures / detected content errors, so a "compared with errors" pair is visible.
+        if (r.ContentErrorCount > 0)
+        {
+            string note = $"⚠ {r.ContentErrorCount} chyb v obsahu";
+            detail = detail.Length == 0 ? note : $"{detail} · {note}";
+        }
         return new FilePairLine(r.RelativePath, icon, text, brush, detail, differing, r);
     }
 

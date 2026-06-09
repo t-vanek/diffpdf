@@ -83,7 +83,8 @@ builder.Services.AddOpenTelemetry()
         t.AddAspNetCoreInstrumentation()
             .AddHttpClientInstrumentation()
             .AddEntityFrameworkCoreInstrumentation()
-            .AddSource("Wolverine");
+            .AddSource("Wolverine")
+            .AddSource("DiffPdf.Comparison"); // domain spans for the per-pair comparison (DiffPdfTracing.Source)
         if (otlpConfigured) t.AddOtlpExporter();
     })
     .WithMetrics(m =>
@@ -183,6 +184,20 @@ builder.Services.AddSingleton<OperationalStatusService>();
 
 // Recovers file-pair tasks abandoned by a crashed worker (works with either store).
 builder.Services.AddHostedService<StaleTaskRecoveryService>();
+
+// Bookends worker lifetime for fast interrupt recovery: on graceful shutdown returns this process's in-flight
+// pairs to the queue (Wolverine redelivers + re-compares on restart, in seconds rather than the ~12-min lease);
+// on startup reclaims orphaned Running pairs left by a hard crash (single-instance; see ReclaimOrphansOnStartup).
+builder.Services.AddHostedService<WorkerLifecycleService>();
+
+// Leader-gated watchdog: alerts (notify-only) on jobs stalled mid-comparison and feeds the stuck-job +
+// active-task backlog gauges. Idle when StuckJobWatchdog:Enabled=false.
+builder.Services.AddOptions<StuckJobWatchdogOptions>()
+    .Bind(builder.Configuration.GetSection(StuckJobWatchdogOptions.SectionName))
+    .Validate(o => o.IntervalSeconds > 0, "StuckJobWatchdog:IntervalSeconds must be > 0.")
+    .Validate(o => o.StallThresholdMinutes > 0, "StuckJobWatchdog:StallThresholdMinutes must be > 0.")
+    .ValidateOnStart();
+builder.Services.AddHostedService<JobStalledWatchdogService>();
 
 // On startup, ensure each registered instance's old/new/reports skeleton exists
 // (runs after the persistence migration above; no-op for the in-memory fallback).

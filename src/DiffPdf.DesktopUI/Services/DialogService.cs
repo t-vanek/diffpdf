@@ -26,6 +26,16 @@ public sealed class DialogService
     /// <summary>Raises a transient toast notification (bottom-right of the shell).</summary>
     public void ShowToast(string message, ToastKind kind = ToastKind.Info) => _toasts.Show(message, kind);
 
+    /// <summary>Copies <paramref name="text"/> to the OS clipboard via the shell window, with a confirmation toast.</summary>
+    public async Task CopyToClipboardAsync(string text, string toast = "Zkopírováno do schránky.")
+    {
+        if (Owner?.Clipboard is { } clipboard)
+        {
+            await clipboard.SetTextAsync(text);
+            ShowToast(toast, ToastKind.Success);
+        }
+    }
+
     /// <summary>Modal yes/no confirmation. Returns true only if the user confirms.</summary>
     public async Task<bool> ConfirmAsync(string title, string message)
     {

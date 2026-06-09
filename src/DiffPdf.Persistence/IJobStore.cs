@@ -47,6 +47,14 @@ public interface IJobStore
     /// </summary>
     Task<IReadOnlyList<ComparisonJob>> ListStaleUnindexedRunningAsync(DateTimeOffset leaseExpiredBefore, int limit, CancellationToken ct = default);
 
+    /// <summary>
+    /// Running jobs that finished every pair (TotalCount &gt; 0 &amp;&amp; ProcessedCount &gt;= TotalCount) but were
+    /// never finalized and have been idle since <paramref name="idleSince"/> — their FinalizeBatch was lost (a
+    /// crash between the processed-count increment and the publish). Re-publishing FinalizeBatch (idempotent)
+    /// frees the per-branch queue, which a wedged Running job would otherwise occupy forever.
+    /// </summary>
+    Task<IReadOnlyList<ComparisonJob>> ListRunningFullyProcessedAsync(DateTimeOffset idleSince, int limit, CancellationToken ct = default);
+
     /// <summary>Updates progress on a Running job; throws ConcurrencyConflictException on version/state mismatch.</summary>
     Task<ComparisonJob> UpdateProgressAsync(Guid id, int processedCount, int totalCount, long expectedVersion, CancellationToken ct = default);
 
