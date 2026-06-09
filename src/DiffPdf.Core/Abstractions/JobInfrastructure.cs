@@ -11,11 +11,12 @@ public sealed record JobProgressChanged(
     int ProcessedCount,
     int TotalCount,
     double Progress,
-    string? Error = null)
+    string? Error = null,
+    DateTimeOffset? RecoveredAt = null)
 {
     public static JobProgressChanged From(ComparisonJob job) => new(
         job.Id, job.BranchKey, job.InstanceKey, job.Status.ToString(),
-        job.ProcessedCount, job.TotalCount, job.Progress, job.Error);
+        job.ProcessedCount, job.TotalCount, job.Progress, job.Error, job.RecoveredAt);
 }
 
 /// <summary>Pushes job progress to interested clients (SignalR). A no-op is acceptable.</summary>

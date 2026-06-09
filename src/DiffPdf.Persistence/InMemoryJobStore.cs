@@ -49,6 +49,7 @@ public sealed class InMemoryJobStore : IJobStore
                 ProcessedCount = j.ProcessedCount, TotalCount = j.TotalCount,
                 CreatedAt = j.CreatedAt, CompletedAt = j.CompletedAt, Error = j.Error,
                 Differing = j.Report?.Differing, Errors = j.Report?.Errors, GatePassed = j.Report?.Passed,
+                RecoveredAt = j.RecoveredAt,
             })
             .ToList();
         return Task.FromResult<IReadOnlyList<JobListItem>>(result);
@@ -319,6 +320,19 @@ public sealed class InMemoryJobStore : IJobStore
         {
             if (_jobs.TryGetValue(id, out var job))
                 _jobs[id] = job with { ArtifactsPrunedAt = at };
+        }
+        return Task.CompletedTask;
+    }
+
+    public Task MarkRecoveredAsync(IReadOnlyCollection<Guid> jobIds, CancellationToken ct = default)
+    {
+        if (jobIds.Count == 0) return Task.CompletedTask;
+        var now = DateTimeOffset.UtcNow;
+        lock (_gate)
+        {
+            foreach (var id in jobIds)
+                if (_jobs.TryGetValue(id, out var job) && job.RecoveredAt is null)
+                    _jobs[id] = job with { RecoveredAt = now };
         }
         return Task.CompletedTask;
     }

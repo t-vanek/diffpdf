@@ -73,7 +73,10 @@ public class ComparisonTracingTests
             new NullJobProgressPublisher(), new WorkerInstanceIdProvider(), Options.Create(new WorkerOptions { MaxPdfSizeBytes = 0 }),
             null!, NullLogger<CompareFilePairHandler>.Instance, CancellationToken.None);
 
-        var span = Assert.Single(captured, a => a.OperationName == "comparison.pair");
+        // Filter to THIS test's job: the listener is process-global, so a comparison.pair span from another
+        // test's handler running in parallel would otherwise pollute the count (xUnit runs classes concurrently).
+        var span = Assert.Single(captured, a => a.OperationName == "comparison.pair"
+            && a.GetTagItem("diffpdf.job_id")?.ToString() == job.Id.ToString());
         Assert.Equal(job.Id.ToString(), span.GetTagItem("diffpdf.job_id")?.ToString());
         Assert.Equal("doc.pdf", span.GetTagItem("diffpdf.pair"));
         Assert.NotNull(span.GetTagItem("diffpdf.outcome")); // outcome tagged after the compare

@@ -116,7 +116,11 @@ public sealed class BranchQueueDispatcherService(
             catch (Exception ex) { logger.LogWarning(ex, "Could not re-dispatch stranded pair {TaskId}.", taskId); }
         }
         if (stranded.Count > 0)
+        {
+            // Flag the affected jobs so the client shows an "Obnoveno" chip (a lost-dispatch pair was recovered).
+            await jobs.MarkRecoveredAsync(stranded.Select(s => s.JobId).Distinct().ToList(), ct);
             logger.LogWarning("Re-dispatched {Count} stranded Queued pair(s) under stale Running jobs.", stranded.Count);
+        }
 
         // Advance every branch (per-branch isolation: one failing branch never blocks the rest of the tick).
         foreach (var branch in await branches.ListAsync(ct))

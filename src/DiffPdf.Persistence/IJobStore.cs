@@ -90,6 +90,14 @@ public interface IJobStore
     Task MarkArtifactsPrunedAsync(Guid id, DateTimeOffset at, CancellationToken ct = default);
 
     /// <summary>
+    /// Stamps <c>RecoveredAt</c> on the given jobs the first time an automatic recovery (crash / restart /
+    /// stale-worker requeue) returns their pairs to the queue (write-once: a later recovery keeps the first
+    /// stamp). Drives the client's "Obnoveno" chip. No version bump and no UpdatedAt change — it is side-band
+    /// metadata that must not disturb optimistic concurrency or the idle clock used by lost-finalize recovery.
+    /// </summary>
+    Task MarkRecoveredAsync(IReadOnlyCollection<Guid> jobIds, CancellationToken ct = default);
+
+    /// <summary>
     /// IDs of finished jobs (Completed/Failed/Cancelled) completed before the cutoff <b>whose artifacts have
     /// already been pruned</b> — the DB-row retention prune set. Requiring artifacts-pruned guarantees row
     /// deletion can never orphan on-disk reports. Bounded by <paramref name="limit"/>.

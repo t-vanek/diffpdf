@@ -310,6 +310,9 @@ public sealed record JobSummary
     public int? Differing { get; init; }
     public int? Errors { get; init; }
     public bool? GatePassed { get; init; }
+
+    /// <summary>When the job was auto-recovered (crash / restart / stale worker); null if never. Drives the "Obnoveno" chip.</summary>
+    public DateTimeOffset? RecoveredAt { get; init; }
 }
 
 /// <summary>Result for a single matched (or unmatched) file pair.</summary>
@@ -391,6 +394,10 @@ public sealed record FilePairTaskSummary
     public int AttemptCount { get; init; }
     public string? ResultStatus { get; init; }
     public string? Error { get; init; }
+
+    /// <summary>The full per-pair result once Completed (verdict + similarity + highlighted diff PDF path); null
+    /// while pending/running. Present even while the owning job is still in flight, so a finished pair's diff can be opened.</summary>
+    public FilePairResult? Result { get; init; }
 }
 
 /// <summary>Configured network: named shares + credential-profile names (never secrets).</summary>
@@ -631,4 +638,7 @@ public sealed record JobProgress
     public int TotalCount { get; init; }
     public double Progress { get; init; }
     public string? Error { get; init; }
+
+    /// <summary>Set once the job has been auto-recovered after an interruption — raises the "Obnoveno" toast + chip.</summary>
+    public DateTimeOffset? RecoveredAt { get; init; }
 }

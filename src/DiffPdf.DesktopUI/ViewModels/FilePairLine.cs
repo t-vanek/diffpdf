@@ -38,9 +38,16 @@ public sealed record FilePairLine(string Name, string Icon, string StatusText, I
 
     public static FilePairLine FromTask(FilePairTaskSummary t)
     {
+        // A completed pair already has its full result (verdict + similarity + the highlighted diff PDF) — render
+        // it exactly like a finished job's row, so its diff PDF can be OPENED mid-run, before the whole-job report
+        // exists. This also shows the real verdict (Shodné / Odlišné / …) instead of a generic "Hotovo".
+        // Non-terminal tasks fall through to the lifecycle state below.
+        if (t.Status == "Completed" && t.Result is { } result)
+            return FromResult(result);
+
         var (icon, text, brush) = t.Status switch
         {
-            "Completed" => ("✓", "Hotovo", Palette.Good),
+            "Completed" => ("✓", "Hotovo", Palette.Good), // completed but no parsable verdict (defensive fallback)
             "Running" => ("▶", "Běží", Palette.Info),
             "Failed" => ("✗", "Chyba", Palette.Bad),
             "Paused" => ("⏸", "Pozastaveno", Palette.Paused),

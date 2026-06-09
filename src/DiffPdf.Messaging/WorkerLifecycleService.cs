@@ -45,6 +45,7 @@ public sealed class WorkerLifecycleService(
         {
             await using var scope = scopeFactory.CreateAsyncScope();
             var taskStore = scope.ServiceProvider.GetRequiredService<IFilePairTaskStore>();
+            var jobStore = scope.ServiceProvider.GetRequiredService<IJobStore>();
             var bus = scope.ServiceProvider.GetRequiredService<IMessageBus>();
 
             // Hard-crash recovery: this is the only worker and it just started, so every Running task is an
@@ -54,7 +55,12 @@ public sealed class WorkerLifecycleService(
                 await bus.PublishAsync(new CompareFilePair(jobId, taskId));
 
             if (reclaimed.Count > 0)
+            {
+                // Flag the affected jobs so the client shows an "Obnoveno" chip (the flag rides each pair's
+                // next progress push as it re-compares).
+                await jobStore.MarkRecoveredAsync(reclaimed.Select(r => r.JobId).Distinct().ToList(), cancellationToken);
                 logger.LogInformation("Reclaimed {Count} orphaned in-flight pair(s) at startup", reclaimed.Count);
+            }
         }
         catch (Exception ex)
         {

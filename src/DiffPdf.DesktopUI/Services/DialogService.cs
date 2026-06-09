@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input.Platform; // ClipboardExtensions.SetTextAsync (Avalonia 12 moved it off IClipboard)
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;

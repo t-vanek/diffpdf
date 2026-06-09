@@ -34,6 +34,7 @@ public sealed class StaleTaskRecoveryService(
             {
                 await using var scope = scopeFactory.CreateAsyncScope();
                 var taskStore = scope.ServiceProvider.GetRequiredService<IFilePairTaskStore>();
+                var jobStore = scope.ServiceProvider.GetRequiredService<IJobStore>();
                 var bus = scope.ServiceProvider.GetRequiredService<IMessageBus>();
 
                 var recovered = await taskStore.RequeueStaleAsync(stoppingToken);
@@ -41,7 +42,12 @@ public sealed class StaleTaskRecoveryService(
                     await bus.PublishAsync(new CompareFilePair(jobId, taskId));
 
                 if (recovered.Count > 0)
+                {
+                    // Flag the affected jobs so the client shows an "Obnoveno" chip; the flag rides the next
+                    // natural progress push when each re-dispatched pair completes (and a toast fires there).
+                    await jobStore.MarkRecoveredAsync(recovered.Select(r => r.JobId).Distinct().ToList(), stoppingToken);
                     logger.LogInformation("Recovered {Count} stale file-pair task(s)", recovered.Count);
+                }
 
                 // Heal pairs stranded Queued under a now-terminal (Cancelled/Failed/Completed) job. Runs AFTER the
                 // requeue above so a stale-Running pair of a terminal job is first returned to Queued, then skipped

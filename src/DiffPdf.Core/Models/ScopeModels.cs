@@ -68,6 +68,9 @@ public sealed record JobListItem
     public int? Errors { get; init; }
     public bool? GatePassed { get; init; }
 
+    /// <summary>When the job was last auto-recovered (crash / restart / stale worker); null if never. Drives the "Obnoveno" chip.</summary>
+    public DateTimeOffset? RecoveredAt { get; init; }
+
     public double Progress => TotalCount == 0 ? 0 : (double)ProcessedCount / TotalCount;
 }
 

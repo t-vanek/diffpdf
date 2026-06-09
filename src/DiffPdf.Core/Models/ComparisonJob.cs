@@ -60,4 +60,8 @@ public sealed record ComparisonJob
     // --- Retention ---
     /// <summary>When the job's on-disk artifacts (its report folder) were pruned; null until pruned.</summary>
     public DateTimeOffset? ArtifactsPrunedAt { get; init; }
+
+    /// <summary>When an automatic recovery (crash / restart / stale-worker requeue) last returned this job's
+    /// pairs to the queue; null if it never needed recovering. Surfaced in the client as an "Obnoveno" chip.</summary>
+    public DateTimeOffset? RecoveredAt { get; init; }
 }
