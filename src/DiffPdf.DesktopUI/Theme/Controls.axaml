@@ -275,4 +275,38 @@
     <Setter Property="Foreground" Value="{DynamicResource Ink}"/>
   </Style>
 
+  <!-- ===== Combo-style button (a Button that reads like a ComboBox / input field) — used for the
+       multi-select scope dropdowns. Self-templated so it matches TextBox/ComboBox (Field fill, Line border,
+       RadSm) instead of FluentTheme's filled-button look. ===== -->
+  <Style Selector="Button.combo">
+    <Setter Property="Foreground" Value="{DynamicResource Ink}"/>
+    <Setter Property="HorizontalAlignment" Value="Stretch"/>
+    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+    <Setter Property="Template">
+      <ControlTemplate TargetType="Button">
+        <Border x:Name="bg" Background="{DynamicResource Field}" BorderBrush="{DynamicResource Line}"
+                BorderThickness="1" CornerRadius="{DynamicResource RadSm}" Padding="10,7">
+          <ContentPresenter Content="{TemplateBinding Content}"
+                            HorizontalContentAlignment="Stretch" VerticalContentAlignment="Center"/>
+        </Border>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="Button.combo:pointerover /template/ Border#bg">
+    <Setter Property="BorderBrush" Value="{DynamicResource LineStrong}"/>
+  </Style>
+  <Style Selector="Button.combo:pressed /template/ Border#bg">
+    <Setter Property="Background" Value="{DynamicResource Field}"/>
+  </Style>
+
+  <!-- Flyout popup skinned to match the app's cards (opt in via FlyoutPresenterClasses="scopeFlyout"); the
+       default FlyoutPresenter grey clashes with the dark surfaces. -->
+  <Style Selector="FlyoutPresenter.scopeFlyout">
+    <Setter Property="Background" Value="{DynamicResource SurfaceAlt}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Line}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="{DynamicResource RadMd}"/>
+    <Setter Property="Padding" Value="6"/>
+  </Style>
+
 </Styles>
