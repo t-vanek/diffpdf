@@ -25,3 +25,19 @@ jobs:
 
       - name: Test
         run: dotnet test DiffPdf.slnx -c Release --no-build --verbosity normal
+
+  # The desktop client (Avalonia, WinExe) is excluded from DiffPdf.slnx, so the job above never builds it.
+  # Build + test it on Windows so a client-only break is caught in CI.
+  client:
+    name: Build & test desktop client
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Build & test
+        run: dotnet test tests/DiffPdf.DesktopUI.Tests/DiffPdf.DesktopUI.Tests.csproj -c Release

@@ -550,8 +550,48 @@ proti reálné SQL Server instanci (např. LocalDB; žádný broker).
 
 ### CI (GitHub Actions)
 
-- **`.github/workflows/ci.yml`** — na každý push/PR: `restore` → `build` → `test`.
+- **`.github/workflows/ci.yml`** — na každý push/PR:
+  - **build-test** (ubuntu): `restore` → `build` → `test` nad `DiffPdf.slnx`.
+  - **client** (windows): `dotnet test` nad `DiffPdf.DesktopUI.Tests` — DesktopUI je ze `slnx` vyloučené, takže ho staví/testuje až tento job (chytí samostatné rozbití klienta).
 - **`.github/workflows/package.yml`** — na push do `main` a tag `v*`:
   - `dotnet pack` SDK → `.nupkg` jako artefakt (verze z tagu `vX.Y.Z`, jinak `0.0.0-ci.<run>`).
+- **`.github/workflows/release.yml`** — na tag `v*` (windows): publikuje server i klienta a vytvoří **GitHub Release** s oběma zipy (viz Nasazení).
 
   Bez publikace do NuGet feedu — žádné secrets.
+
+## Nasazení (Windows Server)
+
+Server běží jako **Windows služba** (Api hostuje workery in-process; migrace se aplikují při startu).
+Klient je **self-contained** desktop appka — tester jen rozbalí a spustí (žádný .NET runtime).
+
+### Release artefakty
+
+Tag `v*` → `release.yml` spustí `deploy/publish.ps1` a vytvoří GitHub Release se dvěma zipy:
+
+- `DiffPdf-Server-<verze>-win-x64.zip` — publikovaný server (self-contained) + skripty `install-service.ps1` /
+  `uninstall-service.ps1` / `update-service.ps1`.
+- `DiffPdf-Client-<verze>-win-x64.zip` — desktop klient jako jeden `.exe`.
+
+Lokálně totéž: `./deploy/publish.ps1 -Version 1.2.3` (vytvoří `publish/…`).
+
+### První instalace serveru
+
+```powershell
+# z rozbaleného server zipu, v elevated PowerShellu:
+.\install-service.ps1 -BinPath 'C:\DiffPdf\app\DiffPdf.Api.exe' `
+    -ConnectionString 'Server=.;Database=diffpdf;Trusted_Connection=True;TrustServerCertificate=True'
+```
+
+Skript zaregistruje službu (delayed-auto, závislost na SQL Serveru, restart při pádu) a nastaví **service-scoped
+env proměnné** `ASPNETCORE_ENVIRONMENT=Production`, `ASPNETCORE_URLS=http://0.0.0.0:5275` a connection string.
+Provozní config je tedy v env proměnných, ne v `appsettings` — přežije aktualizaci. `appsettings.Production.json`
+přepíná logování do souboru (`C:\ProgramData\DiffPdf\logs`), protože služba nemá konzoli.
+
+### Aktualizace serveru (bezpečná, s rollbackem)
+
+```powershell
+.\update-service.ps1 -InstallDir 'C:\DiffPdf\app' -Source '.\DiffPdf-Server-1.2.3-win-x64.zip'
+```
+
+Zastaví službu → zazálohuje aktuální složku → nakopíruje novou → spustí a počká na `Running`; když nová verze
+nenaběhne, **vrátí zálohu** a službu nastartuje zpět.

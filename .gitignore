@@ -26,3 +26,6 @@ storage/
 
 # Sample / local instance data — not versioned
 samples/
+
+# Local release output from deploy/publish.ps1
+publish/
