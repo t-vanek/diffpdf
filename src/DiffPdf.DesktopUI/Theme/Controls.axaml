@@ -224,4 +224,55 @@
     <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
   </Style>
 
+  <!-- ===== Tabs — quiet underline tabs on a hairline (replaces FluentTheme's heavy default).
+       Header strip sits on a 1px Line divider; the active tab gets an accent underline + Ink text,
+       others are InkDim and brighten on hover. Used by Konfigurace (and any future TabControl). ===== -->
+  <Style Selector="TabControl">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="Template">
+      <ControlTemplate TargetType="TabControl">
+        <DockPanel>
+          <Border DockPanel.Dock="Top" BorderBrush="{DynamicResource Line}" BorderThickness="0,0,0,1" Margin="0,0,0,16">
+            <ItemsPresenter Name="PART_ItemsPresenter" ItemsPanel="{TemplateBinding ItemsPanel}"/>
+          </Border>
+          <ContentPresenter Name="PART_SelectedContentHost"
+                            Content="{TemplateBinding SelectedContent}"
+                            ContentTemplate="{TemplateBinding SelectedContentTemplate}"/>
+        </DockPanel>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+
+  <Style Selector="TabItem">
+    <Setter Property="FontSize" Value="14"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="Foreground" Value="{DynamicResource InkDim}"/>
+    <Setter Property="Margin" Value="0,0,22,0"/>
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="Template">
+      <ControlTemplate TargetType="TabItem">
+        <Grid RowDefinitions="*,Auto" Background="Transparent">
+          <ContentPresenter Grid.Row="0"
+                            Content="{TemplateBinding Header}"
+                            Foreground="{TemplateBinding Foreground}"
+                            FontSize="{TemplateBinding FontSize}"
+                            FontWeight="{TemplateBinding FontWeight}"
+                            Padding="2,2,2,9"
+                            VerticalAlignment="Center" HorizontalAlignment="Center"/>
+          <Border Grid.Row="1" x:Name="underline" Height="2" CornerRadius="1,1,0,0" Background="Transparent"/>
+        </Grid>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="TabItem:selected">
+    <Setter Property="Foreground" Value="{DynamicResource Ink}"/>
+  </Style>
+  <Style Selector="TabItem:selected /template/ Border#underline">
+    <Setter Property="Background" Value="{DynamicResource Accent}"/>
+  </Style>
+  <Style Selector="TabItem:pointerover">
+    <Setter Property="Foreground" Value="{DynamicResource Ink}"/>
+  </Style>
+
 </Styles>
