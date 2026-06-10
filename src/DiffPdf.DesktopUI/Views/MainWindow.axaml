@@ -9,6 +9,8 @@
         Background="Transparent"
         TransparencyLevelHint="Mica, AcrylicBlur, Blur"
         WindowDecorations="BorderOnly"
+        FontFamily="{DynamicResource BrandFont}"
+        Icon="avares://DiffPdf.DesktopUI/Assets/Brand/d3energy-icon.png"
         Title="DiffPDF Remote Manager">
 
   <Panel>
@@ -23,8 +25,8 @@
          out as a modal. Margin top 48 keeps the title bar crisp. -->
     <ExperimentalAcrylicBorder IsVisible="{Binding !IsConnected}" Margin="0,48,0,0">
       <ExperimentalAcrylicBorder.Material>
-        <ExperimentalAcrylicMaterial BackgroundSource="Digger" TintColor="#16161A"
-                                     TintOpacity="0.62" MaterialOpacity="0.5" FallbackColor="#1C1C20"/>
+        <ExperimentalAcrylicMaterial BackgroundSource="Digger" TintColor="#022A38"
+                                     TintOpacity="0.62" MaterialOpacity="0.5" FallbackColor="#02222E"/>
       </ExperimentalAcrylicBorder.Material>
     </ExperimentalAcrylicBorder>
 
@@ -41,8 +43,15 @@
         <Grid.Transitions>
           <Transitions><DoubleTransition Property="Opacity" Duration="0:0:0.15"/></Transitions>
         </Grid.Transitions>
-        <TextBlock Grid.Column="0" Text="DiffPDF Remote Manager" FontWeight="SemiBold" FontSize="14"
-                   Foreground="{DynamicResource Ink}" VerticalAlignment="Center" Margin="16,0,0,0"/>
+        <!-- Co-brand: D3 Energy wordmark (white-on-navy variant) · divider · product name. -->
+        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="11" VerticalAlignment="Center" Margin="16,0,0,0">
+          <Image Source="avares://DiffPdf.DesktopUI/Assets/Brand/d3energy-wordmark-white.png"
+                 Height="18" VerticalAlignment="Center"
+                 RenderOptions.BitmapInterpolationMode="HighQuality"/>
+          <Border Width="1" Height="18" Background="{DynamicResource Line}" VerticalAlignment="Center"/>
+          <TextBlock Text="DiffPDF Remote Manager" FontWeight="SemiBold" FontSize="13"
+                     Foreground="{DynamicResource InkDim}" VerticalAlignment="Center"/>
+        </StackPanel>
 
         <!-- Column 1 (*) is the flexible, draggable gap. -->
 
@@ -114,7 +123,7 @@
 
     <!-- Nav rail. Switching pages activates (loads) the target; re-clicking the already-active item reloads it
          (see MainWindow.OnNavTapped) — that's the "refresh by clicking the nav item" affordance. -->
-    <ListBox x:Name="NavList" DockPanel.Dock="Left" Width="216" Padding="8,10"
+    <ListBox x:Name="NavList" DockPanel.Dock="Left" Width="234" Padding="8,10"
              Background="Transparent" BorderBrush="{DynamicResource Line}" BorderThickness="0,0,1,0"
              ItemsSource="{Binding Pages}"
              SelectedItem="{Binding SelectedPage}"
@@ -141,6 +150,9 @@
               MaxWidth="470" HorizontalAlignment="Center" VerticalAlignment="Center"
               BoxShadow="0 14 38 0 #73000000">
         <StackPanel Spacing="12" HorizontalAlignment="Center">
+          <Image Source="avares://DiffPdf.DesktopUI/Assets/Brand/d3energy-wordmark-white.png"
+                 Height="30" HorizontalAlignment="Center" Margin="0,0,0,4"
+                 RenderOptions.BitmapInterpolationMode="HighQuality"/>
           <TextBlock Text="⚠&#xFE0E;" FontSize="34" Foreground="{DynamicResource Warn}" HorizontalAlignment="Center"/>
           <TextBlock Text="Nepřipojeno k serveru" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource Ink}" HorizontalAlignment="Center"/>
           <TextBlock Text="{Binding ConnectionStatus}" Foreground="{DynamicResource Info}"

@@ -2,10 +2,10 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
   <!-- ============================================================================
-       DiffPDF design tokens — the single source of truth for colour and geometry.
-       Dark-only, Czech UI. Previously ~140 hard-coded hex values were scattered
-       across the views with drift (3 different reds for "error", ~9 greys for
-       "muted text", 3 border colours…). Everything now references these tokens.
+       DiffPDF design tokens — the single source of truth for colour, geometry and
+       type. Dark-only, Czech UI, aligned to the D3 Energy brand (brand.seyfor.com):
+       Sherpa Blue (#023444) surfaces, brand orange (#EE7D00) accent, Sora typeface.
+       Everything references these tokens (no scattered hex literals in the views).
 
        Status colours mirror Palette.cs (the C# side used by view-models) — keep
        the two in sync when changing a value.
@@ -13,15 +13,19 @@
        Spacing scale (apply as literals — 4/8 grid): 4 · 8 · 12 · 16 · 24 · 32
        ============================================================================ -->
 
-  <!-- Accent — Apple system blue (dark). FluentTheme derives every default control
-       (buttons, focus rings, selection, toggles, progress) from these. -->
-  <Color x:Key="SystemAccentColor">#0A84FF</Color>
-  <Color x:Key="SystemAccentColorLight1">#3D9BFF</Color>
-  <Color x:Key="SystemAccentColorLight2">#6FB4FF</Color>
-  <Color x:Key="SystemAccentColorLight3">#A1CDFF</Color>
-  <Color x:Key="SystemAccentColorDark1">#0974E0</Color>
-  <Color x:Key="SystemAccentColorDark2">#0863BE</Color>
-  <Color x:Key="SystemAccentColorDark3">#06539C</Color>
+  <!-- Accent — D3 Energy brand orange (#EE7D00). FluentTheme derives every default
+       control (buttons, focus rings, selection, toggles, progress) from these. -->
+  <Color x:Key="SystemAccentColor">#EE7D00</Color>
+  <Color x:Key="SystemAccentColorLight1">#FF8C1F</Color>
+  <Color x:Key="SystemAccentColorLight2">#FFA64D</Color>
+  <Color x:Key="SystemAccentColorLight3">#FFC180</Color>
+  <Color x:Key="SystemAccentColorDark1">#D26E00</Color>
+  <Color x:Key="SystemAccentColorDark2">#B25E00</Color>
+  <Color x:Key="SystemAccentColorDark3">#8F4B00</Color>
+
+  <!-- Brand typeface — Sora (OFL), embedded under Assets/Fonts. Applied as the app
+       default on the window roots; FontFamily inherits to all controls + popups. -->
+  <FontFamily x:Key="BrandFont">avares://DiffPdf.DesktopUI/Assets/Fonts#Sora</FontFamily>
 
   <!-- Geometry — one rounding scale. ControlCornerRadius/OverlayCornerRadius are
        honoured by FluentTheme app-wide (buttons, text boxes, combos, flyouts). -->
@@ -31,23 +35,25 @@
   <CornerRadius x:Key="RadMd">10</CornerRadius>
   <CornerRadius x:Key="RadPill">999</CornerRadius>
 
-  <!-- Surfaces & lines (elevation goes Bg → Surface → SurfaceAlt). -->
-  <SolidColorBrush x:Key="Bg"         Color="#1A1A1E"/>
-  <SolidColorBrush x:Key="Surface"    Color="#232327"/>
-  <SolidColorBrush x:Key="SurfaceAlt" Color="#2A2A30"/>
-  <SolidColorBrush x:Key="Field"      Color="#2A2A2F"/>
-  <SolidColorBrush x:Key="Line"       Color="#36363D"/>
-  <SolidColorBrush x:Key="LineStrong" Color="#4A4A52"/>
+  <!-- Surfaces & lines — re-based on the brand Sherpa Blue navy. Surface is the exact
+       brand colour; elevation goes Bg → Surface → SurfaceAlt. -->
+  <SolidColorBrush x:Key="Bg"         Color="#02222E"/>
+  <SolidColorBrush x:Key="Surface"    Color="#023444"/>
+  <SolidColorBrush x:Key="SurfaceAlt" Color="#0A4256"/>
+  <SolidColorBrush x:Key="Field"      Color="#04303F"/>
+  <SolidColorBrush x:Key="Line"       Color="#16495B"/>
+  <SolidColorBrush x:Key="LineStrong" Color="#2C6175"/>
 
-  <!-- Text — three levels, all ≥ WCAG AA (4.5:1) on Surface.
-       (The old #5A5A62 / #76767E greys sat at ~2:1 and ~3.4:1 — below AA.) -->
+  <!-- Text — three levels, all ≥ WCAG AA (4.5:1) on Surface. -->
   <SolidColorBrush x:Key="Ink"      Color="#ECECEC"/>
   <SolidColorBrush x:Key="InkDim"   Color="#A9A9B2"/>
   <SolidColorBrush x:Key="InkFaint" Color="#8A8A93"/>
-  <SolidColorBrush x:Key="OnAccent" Color="#FFFFFF"/>
+  <!-- Text/icons on the orange accent: Sherpa-blue navy clears AA (~4.6:1);
+       white on this orange would be only ~3:1. -->
+  <SolidColorBrush x:Key="OnAccent" Color="#023444"/>
 
-  <!-- Status — one brush per meaning (mirror Palette.cs). -->
-  <SolidColorBrush x:Key="Accent" Color="#0A84FF"/>
+  <!-- Status — one brush per meaning (mirror Palette.cs). Tuned to read on navy. -->
+  <SolidColorBrush x:Key="Accent" Color="#EE7D00"/>
   <SolidColorBrush x:Key="Good"   Color="#5FD27E"/>
   <SolidColorBrush x:Key="Bad"    Color="#FF5C61"/>
   <SolidColorBrush x:Key="Warn"   Color="#E2A03B"/>
@@ -59,6 +65,25 @@
   <SolidColorBrush x:Key="GoodFill"    Color="#16341E"/>
   <SolidColorBrush x:Key="BadFill"     Color="#3A1B1D"/>
   <SolidColorBrush x:Key="WarnFill"    Color="#382C15"/>
-  <SolidColorBrush x:Key="NeutralFill" Color="#2E2E35"/>
+  <SolidColorBrush x:Key="NeutralFill" Color="#0B3A4B"/>
+
+  <!-- DataGrid row selection — override Avalonia 12's DataGrid theme keys. Its Fluent theme
+       paints a selected row with the ACCENT brush at a fractional opacity
+       (DataGridRowSelected*BackgroundOpacity ≈ 0.6), so on the navy surface the translucent
+       orange reads as a muddy "mica" smear. We replace the brush with a SOLID navy and force
+       opacity to 1 — a clean, opaque selection. Navy (not orange like the nav rail) keeps the
+       coloured status cells — green "Povoleno", orange "Běží", red counts — readable on top.
+       These keys win over the StyleInclude'd DataGrid theme because Application.Resources is
+       resolved before Application.Styles. -->
+  <SolidColorBrush x:Key="DataGridRowSelectedBackgroundBrush"                Color="#0A4256"/>
+  <SolidColorBrush x:Key="DataGridRowSelectedUnfocusedBackgroundBrush"       Color="#0A4256"/>
+  <SolidColorBrush x:Key="DataGridRowSelectedHoveredBackgroundBrush"         Color="#0E5066"/>
+  <SolidColorBrush x:Key="DataGridRowSelectedHoveredUnfocusedBackgroundBrush" Color="#0E5066"/>
+  <x:Double x:Key="DataGridRowSelectedBackgroundOpacity">1</x:Double>
+  <x:Double x:Key="DataGridRowSelectedUnfocusedBackgroundOpacity">1</x:Double>
+  <x:Double x:Key="DataGridRowSelectedHoveredBackgroundOpacity">1</x:Double>
+  <x:Double x:Key="DataGridRowSelectedHoveredUnfocusedBackgroundOpacity">1</x:Double>
+  <!-- Plain (unselected) row hover — was a translucent accent too; make it a subtle opaque navy. -->
+  <Color x:Key="DataGridRowHoveredBackgroundColor">#06384A</Color>
 
 </ResourceDictionary>

@@ -6,6 +6,8 @@
         x:DataType="vm:FilePairDetailViewModel"
         Width="1100" Height="800" MinWidth="640" MinHeight="420"
         WindowStartupLocation="CenterOwner" WindowState="Maximized"
+        FontFamily="{DynamicResource BrandFont}"
+        Icon="avares://DiffPdf.DesktopUI/Assets/Brand/d3energy-icon.png"
         Title="{Binding FileName}">
 
   <DockPanel>

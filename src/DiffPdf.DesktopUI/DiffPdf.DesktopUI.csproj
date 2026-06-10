@@ -7,6 +7,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\Brand\d3energy.ico</ApplicationIcon>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <!-- The WebView2 package ships unused WinForms/WPF wrappers that reference an older WindowsBase; we only
          use Microsoft.Web.WebView2.Core, so the binding-conflict warning is benign — downgrade it to a message. -->
@@ -40,6 +41,15 @@
     <None Update="appsettings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+  </ItemGroup>
+
+  <!-- Brand assets bundled into the app: Sora font + runtime logo PNG + app-icon PNG/ICO. The
+       official vector sources live in Assets\Brand\source\ and are deliberately NOT bundled
+       (Assets\Brand\*.png only matches the direct runtime files, not the source\ subfolder). -->
+  <ItemGroup>
+    <AvaloniaResource Include="Assets\Fonts\*.ttf" />
+    <AvaloniaResource Include="Assets\Brand\*.png" />
+    <AvaloniaResource Include="Assets\Brand\*.ico" />
   </ItemGroup>
 
 </Project>
