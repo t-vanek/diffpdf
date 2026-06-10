@@ -19,8 +19,10 @@ using DiffPdf.Messaging.Scheduling;
 using DiffPdf.Messaging.ScopeSync;
 using DiffPdf.Notifications.DependencyInjection;
 using DiffPdf.Pdf.DependencyInjection;
+using DiffPdf.Pdf.Rendering;
 using DiffPdf.Persistence;
 using DiffPdf.Persistence.SqlServer.DependencyInjection;
+using DiffPdf.Worker;
 using DiffPdf.Worker.DependencyInjection;
 using OpenTelemetry;
 using OpenTelemetry.Metrics;
@@ -94,7 +96,8 @@ builder.Services.AddOpenTelemetry()
             .AddMeter("Wolverine*")
             .AddMeter(DiffPdfMetrics.MeterName)
             .AddMeter("DiffPdf.Render")
-            .AddMeter("DiffPdf.Compare");
+            .AddMeter("DiffPdf.Compare")
+            .AddMeter("DiffPdf.Engine"); // per-phase engine histograms (probe/extract/pixel/blank/highlight)
         m.AddPrometheusExporter(); // exposes /metrics (mapped below)
         if (otlpConfigured) m.AddOtlpExporter();
     });
@@ -118,6 +121,10 @@ builder.Services.AddRateLimiter(options =>
 });
 builder.Services.Configure<StorageOptions>(builder.Configuration.GetSection("Storage"));
 builder.Services.Configure<PdfWorkLimiterOptions>(builder.Configuration.GetSection("Pdf"));
+// Renderer options were registered (AddDiffPdf) but never bound — without these lines every
+// Ghostscript:*/Pdfium:* key (timeouts, block size, caches) was silently ignored.
+builder.Services.Configure<GhostscriptOptions>(builder.Configuration.GetSection("Ghostscript"));
+builder.Services.Configure<PdfiumOptions>(builder.Configuration.GetSection("Pdfium"));
 builder.Services.Configure<NetworkOptions>(builder.Configuration.GetSection(NetworkOptions.SectionName));
 
 // SignalR realtime progress. Registering the publisher before AddDiffPdfWorker
@@ -130,6 +137,11 @@ builder.Services.AddSingleton<IBranchQueueStatePublisher, SignalRBranchQueueStat
 builder.Services.AddDiffPdf();
 builder.Services.AddDiffPdfWorker();
 
+// AddDiffPdfWorker registers WorkerOptions with code defaults only — bind the Worker section here so
+// appsettings / env vars (Worker__*) actually take effect; the same values drive the queue parallelism below.
+builder.Services.Configure<WorkerOptions>(builder.Configuration.GetSection("Worker"));
+var workerOptions = builder.Configuration.GetSection("Worker").Get<WorkerOptions>() ?? new WorkerOptions();
+
 // Per-replica heartbeat registry: each automation background service records its ticks here,
 // and the operational status endpoint reads the snapshot.
 builder.Services.AddSingleton<IAutomationHeartbeat, AutomationHeartbeat>();
@@ -141,7 +153,7 @@ if (!string.IsNullOrWhiteSpace(relational))
     // Production / full stack: SQL Server source of truth + DB-backed durable local queues
     // (no external broker) via Wolverine.
     builder.Services.AddSqlServerPersistence(relational);
-    builder.Host.UseWolverine(opts => opts.ConfigureDiffPdfMessaging(relational));
+    builder.Host.UseWolverine(opts => opts.ConfigureDiffPdfMessaging(relational, workerOptions));
 }
 else
 {

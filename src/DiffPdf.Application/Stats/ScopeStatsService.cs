@@ -41,8 +41,11 @@ public sealed class ScopeStatsService(IJobStore jobs, IFilePairTaskStore tasks, 
 
     private async Task<ScopeStatsResponse> ComputeAsync(string branchKey, string? instanceKey, CancellationToken ct)
     {
-        // Load the scope's jobs once: gives both the job-status breakdown and the ids for the comparison counts.
-        var scopeJobs = await jobs.ListAsync(
+        // Load the scope's jobs once via the lightweight summary projection — scalar columns + status only, with
+        // NO per-job request/report JSON hydration (which ListAsync does, and which is pure waste here: a scope
+        // with thousands of historical jobs would deserialize every blob just to be counted). Yields both the
+        // job-status breakdown and the ids used to count the comparison (file-pair) tasks by status.
+        var scopeJobs = await jobs.ListSummariesAsync(
             new JobListQuery { BranchKey = branchKey, InstanceKey = instanceKey, Limit = int.MaxValue }, ct);
 
         int JobCount(JobStatus s) => scopeJobs.Count(j => j.Status == s);

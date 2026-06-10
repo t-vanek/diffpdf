@@ -23,6 +23,19 @@ public sealed class SqlServerJobStore(DiffPdfDbContext db, EntityMapper mapper) 
         return entity is null ? null : mapper.ToDomain(entity);
     }
 
+    public async Task<JobReportRaw?> GetReportRawAsync(Guid id, CancellationToken ct = default)
+    {
+        // Scalar projection on purpose: the full GetAsync would deserialize request_json + report_json just so
+        // the endpoint can re-serialize them; here the stored report JSON passes through untouched.
+        var row = await db.Jobs.AsNoTracking()
+            .Where(j => j.Id == id)
+            .Select(j => new { j.Status, j.Version, j.ReportJson })
+            .FirstOrDefaultAsync(ct);
+        if (row is null) return null;
+        var status = Enum.TryParse<JobStatus>(row.Status, out var s) ? s : JobStatus.Queued;
+        return new JobReportRaw(status, row.Version, row.ReportJson);
+    }
+
     public async Task<IReadOnlyList<ComparisonJob>> ListAsync(JobListQuery query, CancellationToken ct = default)
     {
         var rows = await FilteredQuery(query)

@@ -62,14 +62,19 @@ public partial class DashboardViewModel : PageViewModel
     private Task RefreshAsync() => RunAsync(async () =>
     {
         var c = _session.Require();
+        // Health stays first (sequential): it is the cheap liveness signal the hero banner needs even
+        // when the richer calls fail. Status and readiness are independent — fetch them concurrently.
         Healthy = await c.HealthAsync();
-        Status = await c.GetStatusAsync();
+        var statusTask = c.GetStatusAsync();
+        var readinessTask = c.GetReadinessAsync();
+        await Task.WhenAll(statusTask, readinessTask);
+        Status = statusTask.Result;
         RunningJobs = Status.Backlog.RunningJobs;
         QueuedJobs = Status.Backlog.QueuedJobs;
         PausedJobs = Status.Backlog.PausedJobs;
         ActiveTasks = Status.Backlog.ActiveTasks;
         EnabledChecks = Status.EnabledChecks;
-        Readiness = await c.GetReadinessAsync();
+        Readiness = readinessTask.Result;
     }, toastOnError: false); // periodic auto-refresh: errors show in the hero, don't spam a toast every 5 s
 
     // ----- Overall health summary (liveness + dependency health + readiness + leader lease) -----

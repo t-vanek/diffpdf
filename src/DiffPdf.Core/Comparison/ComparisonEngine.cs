@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using DiffPdf.Core.Abstractions;
 using DiffPdf.Core.Models;
 using Microsoft.Extensions.Logging;
@@ -30,8 +31,10 @@ public sealed class ComparisonEngine(
         string? artifactDirectory = null,
         CancellationToken ct = default)
     {
+        long probeStart = Stopwatch.GetTimestamp();
         var oldInfo = textExtractor.Probe(oldPath);
         var newInfo = textExtractor.Probe(newPath);
+        EngineMetrics.Record(EngineMetrics.Probe, probeStart);
 
         // Hard read errors on either side: no comparison possible.
         if (!oldInfo.IsComparable || !newInfo.IsComparable)
@@ -49,8 +52,10 @@ public sealed class ComparisonEngine(
             };
         }
 
+        long extractStart = Stopwatch.GetTimestamp();
         var oldText = await textExtractor.ExtractAsync(oldPath, options.Pages, ct);
         var newText = await textExtractor.ExtractAsync(newPath, options.Pages, ct);
+        EngineMetrics.Record(EngineMetrics.Extract, extractStart);
 
         var contentErrors = new List<ContentError>();
         if (options.DetectContentErrors)
@@ -69,37 +74,24 @@ public sealed class ComparisonEngine(
         var pageComparisons = new List<PageComparison>(pairs.Count);
         var spreads = new List<DiffSpread>();
 
-        foreach (var pair in pairs)
+        // Page pairs are independent: run a bounded number concurrently (renders stay capped by the process-wide
+        // IPdfWorkLimiter). Each result lands in its slot, so page order — and the spread sequence in the diff
+        // PDF — is preserved no matter which page finishes first.
+        var results = new (PageComparison Comparison, DiffSpread? Spread, ContentError? Error)[pairs.Count];
+        var parallelism = new ParallelOptions
         {
-            ct.ThrowIfCancellationRequested();
-            try
-            {
-                var (comparison, spread) = await ComparePairAsync(
-                    pair, oldPath, newPath, oldByNum, newByNum, oldGeom, newGeom, options, artifactDirectory is not null, ct);
-                pageComparisons.Add(comparison);
-                if (spread is not null) spreads.Add(spread);
-            }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
-            {
-                // Host shutdown / per-pair timeout — abort so the worker can retry or record the whole pair.
-                throw;
-            }
-            catch (Exception ex)
-            {
-                // One page failed to render/extract/compare (corrupt page, undecodable render). Flag THAT page and
-                // keep comparing the rest, instead of failing the whole file. The page shows as a processing error
-                // and is recorded as a content error so it surfaces in the report and the client.
-                int page = pair.NewPageNumber ?? pair.OldPageNumber ?? 0;
-                logger.LogWarning(ex, "Page {Page} of {New} failed to compare; flagging as a processing error and continuing.", page, newPath);
-                pageComparisons.Add(new PageComparison
-                {
-                    OldPageNumber = pair.OldPageNumber,
-                    NewPageNumber = pair.NewPageNumber,
-                    Changes = PageChangeType.ProcessingError,
-                    DifferenceScore = 1.0,
-                });
-                contentErrors.Add(new ContentError(ContentErrorSide.Engine, page, "processing", Truncate(ex.Message)));
-            }
+            MaxDegreeOfParallelism = Math.Clamp(options.MaxParallelPages, 1, 8),
+            CancellationToken = ct,
+        };
+        await Parallel.ForEachAsync(Enumerable.Range(0, pairs.Count), parallelism, async (i, token) =>
+            results[i] = await ComparePairContainedAsync(
+                pairs[i], oldPath, newPath, oldByNum, newByNum, oldGeom, newGeom, options, artifactDirectory is not null, token));
+
+        foreach (var (comparison, spread, error) in results)
+        {
+            pageComparisons.Add(comparison);
+            if (spread is not null) spreads.Add(spread);
+            if (error is not null) contentErrors.Add(error);
         }
 
         string? highlightedPath = null;
@@ -141,6 +133,54 @@ public sealed class ComparisonEngine(
         };
     }
 
+    /// <summary>
+    /// Runs one page-pair comparison with per-page error containment: a page that fails to render/extract/compare
+    /// is flagged as a <see cref="PageChangeType.ProcessingError"/> (plus an engine content error) instead of
+    /// failing the whole file. Cancellation propagates — the worker turns it into a retry or a per-pair timeout.
+    /// </summary>
+    private async Task<(PageComparison Comparison, DiffSpread? Spread, ContentError? Error)> ComparePairContainedAsync(
+        AlignedPagePair pair,
+        string oldPath,
+        string newPath,
+        IReadOnlyDictionary<int, PageText> oldByNum,
+        IReadOnlyDictionary<int, PageText> newByNum,
+        IReadOnlyDictionary<int, PageGeometry> oldGeom,
+        IReadOnlyDictionary<int, PageGeometry> newGeom,
+        ComparisonOptions options,
+        bool wantHighlight,
+        CancellationToken ct)
+    {
+        try
+        {
+            var (comparison, spread) = await ComparePairAsync(
+                pair, oldPath, newPath, oldByNum, newByNum, oldGeom, newGeom, options, wantHighlight, ct);
+            return (comparison, spread, null);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Host shutdown / per-pair timeout — abort so the worker can retry or record the whole pair.
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // One page failed to render/extract/compare (corrupt page, undecodable render). Flag THAT page and
+            // keep comparing the rest, instead of failing the whole file. The page shows as a processing error
+            // and is recorded as a content error so it surfaces in the report and the client.
+            int page = pair.NewPageNumber ?? pair.OldPageNumber ?? 0;
+            logger.LogWarning(ex, "Page {Page} of {New} failed to compare; flagging as a processing error and continuing.", page, newPath);
+            return (
+                new PageComparison
+                {
+                    OldPageNumber = pair.OldPageNumber,
+                    NewPageNumber = pair.NewPageNumber,
+                    Changes = PageChangeType.ProcessingError,
+                    DifferenceScore = 1.0,
+                },
+                null,
+                new ContentError(ContentErrorSide.Engine, page, "processing", Truncate(ex.Message)));
+        }
+    }
+
     private async Task<(PageComparison, DiffSpread?)> ComparePairAsync(
         AlignedPagePair pair,
         string oldPath,
@@ -164,7 +204,7 @@ public sealed class ComparisonEngine(
         if (pair.OldPageNumber is null && pair.NewPageNumber is int addedNum)
         {
             RenderedPage? render = needRenders ? await renderer.RenderAsync(newPath, addedNum, options.Dpi, ct) : null;
-            bool blank = render is not null && blankDetector.IsVisuallyBlank(render, options);
+            bool blank = render is not null && DetectBlankTimed(render, options);
             var comparison = new PageComparison
             {
                 NewPageNumber = addedNum,
@@ -183,7 +223,7 @@ public sealed class ComparisonEngine(
         if (pair.NewPageNumber is null && pair.OldPageNumber is int removedNum)
         {
             RenderedPage? render = needRenders ? await renderer.RenderAsync(oldPath, removedNum, options.Dpi, ct) : null;
-            bool blank = render is not null && blankDetector.IsVisuallyBlank(render, options);
+            bool blank = render is not null && DetectBlankTimed(render, options);
             var comparison = new PageComparison
             {
                 OldPageNumber = removedNum,
@@ -221,7 +261,9 @@ public sealed class ComparisonEngine(
 
         if (doText)
         {
+            long textStart = Stopwatch.GetTimestamp();
             var td = textComparer.ComparePage(oldFiltered, newFiltered, options);
+            EngineMetrics.Record(EngineMetrics.TextDiff, textStart);
             if (td.Score > 0 && td.Score >= options.EffectiveTextDifferenceThreshold)
             {
                 changes |= PageChangeType.TextChanged;
@@ -233,14 +275,29 @@ public sealed class ComparisonEngine(
         RenderedPage? oldRender = null, newRender = null;
         if (needRenders)
         {
-            oldRender = await renderer.RenderAsync(oldPath, oldNum, options.Dpi, ct);
-            newRender = await renderer.RenderAsync(newPath, newNum, options.Dpi, ct);
+            // The two sides are independent and IPdfWorkLimiter already bounds process-wide render
+            // concurrency, so rendering them concurrently halves the render wall-clock of a page pair.
+            var oldRenderTask = renderer.RenderAsync(oldPath, oldNum, options.Dpi, ct);
+            var newRenderTask = renderer.RenderAsync(newPath, newNum, options.Dpi, ct);
+            await Task.WhenAll(oldRenderTask, newRenderTask);
+            oldRender = oldRenderTask.Result;
+            newRender = newRenderTask.Result;
         }
+
+        bool oldBlank = false, newBlank = false;
+        bool blanksFromDiff = false;
 
         if (doVisual && oldRender is not null && newRender is not null)
         {
             var ignorePx = IgnoreFilter.PixelRegions(newNum, newRender, options);
+            long pixelStart = Stopwatch.GetTimestamp();
             var img = imageComparer.Compare(oldRender.Png, newRender.Png, options, ignorePx);
+            EngineMetrics.Record(EngineMetrics.PixelCompare, pixelStart);
+
+            // The comparer evaluates blankness on the bitmaps it already decoded for the diff —
+            // reuse that instead of paying two more PNG decodes in the standalone blank detector.
+            (oldBlank, newBlank, blanksFromDiff) = (img.OldBlank, img.NewBlank, true);
+
             if (img.DifferenceRatio >= options.EffectiveVisualThreshold && img.DifferentPixels > 0)
             {
                 changes |= PageChangeType.VisualChanged;
@@ -253,8 +310,11 @@ public sealed class ComparisonEngine(
             }
         }
 
-        bool oldBlank = oldRender is not null && blankDetector.IsVisuallyBlank(oldRender, options);
-        bool newBlank = newRender is not null && blankDetector.IsVisuallyBlank(newRender, options);
+        if (!blanksFromDiff)
+        {
+            oldBlank = oldRender is not null && DetectBlankTimed(oldRender, options);
+            newBlank = newRender is not null && DetectBlankTimed(newRender, options);
+        }
         if (options.DetectBlankPages)
         {
             if (oldBlank && !newBlank) changes |= PageChangeType.WasBlank;
@@ -294,6 +354,14 @@ public sealed class ComparisonEngine(
         return (pageComparison, matchedSpread);
     }
 
+    private bool DetectBlankTimed(RenderedPage render, ComparisonOptions options)
+    {
+        long start = Stopwatch.GetTimestamp();
+        bool blank = blankDetector.IsVisuallyBlank(render, options);
+        EngineMetrics.Record(EngineMetrics.BlankDetect, start);
+        return blank;
+    }
+
     private static bool SameSize(PageGeometry a, PageGeometry b)
     {
         var (aw, ah) = a.Effective;
@@ -317,10 +385,12 @@ public sealed class ComparisonEngine(
         // half-written .diff.pdf that could be mistaken for a valid diff.
         string tmpPath = outPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
         var writer = highlightedPdfWriterFactory.Get(options.HighlightStyle);
+        long writeStart = Stopwatch.GetTimestamp();
         try
         {
             await writer.WriteAsync(tmpPath, spreads, options.HighlightLayout, ct);
             File.Move(tmpPath, outPath, overwrite: true);
+            EngineMetrics.Record(EngineMetrics.HighlightWrite, writeStart);
             return outPath;
         }
         catch

@@ -19,18 +19,18 @@ public sealed class PdfiumPageRenderer(IPdfWorkLimiter limiter, IOptions<PdfiumO
 {
     private readonly PdfiumOptions _options = options.Value;
 
+    // PDFtoImage needs the whole document per call, so without this an N-page comparison re-reads
+    // each file N times (over the network for UNC inputs). Bounded + freshness-validated; see the class doc.
+    private readonly PdfBytesCache _documentCache = new(options.Value.DocumentCacheBytes);
+
     public RendererBackend Backend => RendererBackend.Pdfium;
 
-    public int GetPageCount(string path)
-    {
-        byte[] pdf = File.ReadAllBytes(path);
-        return Conversion.GetPageCount(pdf);
-    }
+    public int GetPageCount(string path) => Conversion.GetPageCount(_documentCache.Get(path));
 
     public async Task<RenderedPage> RenderAsync(string path, int pageNumber, int dpi, CancellationToken ct = default)
     {
         using var _ = await limiter.AcquireAsync(ct);
-        byte[] pdf = await File.ReadAllBytesAsync(path, ct);
+        byte[] pdf = await _documentCache.GetAsync(path, ct);
 
         // Conversion.ToImage is a blocking native call that ignores cancellation; run it off the await path and
         // cap it so a corrupt/oversized PDF can't wedge a worker thread forever. On timeout the await returns and

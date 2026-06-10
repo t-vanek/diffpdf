@@ -32,6 +32,10 @@ public interface IJobService
 {
     Task<JobListPage> ListAsync(JobFilter filter, CancellationToken ct = default);
     Task<ComparisonJob?> GetAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>The persisted report JSON + version for ETag/passthrough serving; null when the job is unknown.</summary>
+    Task<JobReportRaw?> GetReportRawAsync(Guid id, CancellationToken ct = default);
+
     Task<IReadOnlyList<FilePairTask>?> ListTasksAsync(Guid id, CancellationToken ct = default);
 
     /// <summary>A page of a job's file-pair tasks (optional name <c>search</c> + <c>onlyDiffering</c> filter); null
@@ -75,6 +79,9 @@ public sealed class JobService(
 
     public async Task<ComparisonJob?> GetAsync(Guid id, CancellationToken ct = default) =>
         await jobStore.GetAsync(id, ct);
+
+    public Task<JobReportRaw?> GetReportRawAsync(Guid id, CancellationToken ct = default) =>
+        jobStore.GetReportRawAsync(id, ct);
 
     public async Task<IReadOnlyList<FilePairTask>?> ListTasksAsync(Guid id, CancellationToken ct = default)
     {

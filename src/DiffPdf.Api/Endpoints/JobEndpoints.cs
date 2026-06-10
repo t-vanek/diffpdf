@@ -1,5 +1,6 @@
 using DiffPdf.Application.Jobs;
 using DiffPdf.Core.Models;
+using DiffPdf.Persistence;
 
 namespace DiffPdf.Api.Endpoints;
 
@@ -43,14 +44,26 @@ public static class JobEndpoints
         }).WithSummary("List the job's file-pair tasks (paged: limit<=1000 + offset; filter by search/onlyDiffering; total in X-Total-Count)")
             .Produces<IEnumerable<FilePairTaskSummary>>().ProducesProblem(StatusCodes.Status404NotFound);
 
-        group.MapGet("/{id:guid}/report", async (Guid id, IJobService jobs, CancellationToken ct) =>
+        group.MapGet("/{id:guid}/report", async (
+            Guid id, IJobService jobs, HttpRequest request, HttpResponse response, CancellationToken ct) =>
         {
-            var job = await jobs.GetAsync(id, ct);
-            if (job is null) return Results.NotFound();
-            if (job.Report is null)
+            var report = await jobs.GetReportRawAsync(id, ct);
+            if (report is null) return Results.NotFound();
+            if (report.ReportJson is null)
                 return Results.Problem("Report not ready.", statusCode: StatusCodes.Status409Conflict);
-            return Results.Ok(job.Report);
-        }).WithSummary("Aggregate batch report").Produces<BatchComparisonReport>().ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
+
+            // A finished report is immutable, so the job version makes a stable ETag: pollers revalidate with
+            // If-None-Match and a 304 skips both the multi-MB body and any serialization work.
+            string etag = $"\"{id:N}-{report.Version}\"";
+            response.Headers.ETag = etag;
+            if (MatchesIfNoneMatch(request.Headers.IfNoneMatch, etag))
+                return Results.StatusCode(StatusCodes.Status304NotModified);
+
+            // The stored JSON is written with the same Web-defaults serializer the HTTP layer uses (DiffPdfJson),
+            // so it streams back verbatim — no deserialize→re-serialize round-trip for the biggest payload.
+            return Results.Content(report.ReportJson, "application/json; charset=utf-8");
+        }).WithSummary("Aggregate batch report (ETag/If-None-Match supported)")
+          .Produces<BatchComparisonReport>().ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapGet("/{id:guid}/result", async (Guid id, IJobService jobs, CancellationToken ct) =>
         {
@@ -120,7 +133,8 @@ public static class JobEndpoints
             {
                 ArtifactOutcome.InvalidPath => Results.Problem("Invalid path.", statusCode: StatusCodes.Status400BadRequest),
                 ArtifactOutcome.JobNotFound or ArtifactOutcome.FileNotFound => Results.NotFound(),
-                _ => Results.File(artifact.AbsolutePath!, "application/pdf", Path.GetFileName(artifact.AbsolutePath!)),
+                _ => Results.File(artifact.AbsolutePath!, "application/pdf", Path.GetFileName(artifact.AbsolutePath!),
+                    enableRangeProcessing: true),
             };
         }).WithSummary("Download a highlighted diff PDF artifact").ProducesProblem(StatusCodes.Status404NotFound);
     }
@@ -130,5 +144,17 @@ public static class JobEndpoints
     {
         try { return await action(); }
         catch (JobConflictException ex) { return Results.Problem(ex.Message, statusCode: StatusCodes.Status409Conflict); }
+    }
+
+    /// <summary>True when any entity-tag in the If-None-Match header equals <paramref name="etag"/> (we only emit strong tags).</summary>
+    private static bool MatchesIfNoneMatch(Microsoft.Extensions.Primitives.StringValues ifNoneMatch, string etag)
+    {
+        foreach (string? raw in ifNoneMatch)
+        {
+            if (string.IsNullOrEmpty(raw)) continue;
+            foreach (var candidate in raw.Split(','))
+                if (candidate.Trim() == etag) return true;
+        }
+        return false;
     }
 }

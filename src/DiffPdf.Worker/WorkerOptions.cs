@@ -2,10 +2,15 @@ namespace DiffPdf.Worker;
 
 public sealed class WorkerOptions
 {
-    /// <summary>Max batch jobs processed concurrently by one worker.</summary>
+    /// <summary>
+    /// Together with <see cref="MaxFilePairsPerJob"/> bounds in-process comparison parallelism: the
+    /// CompareFilePair queue runs at most <c>MaxConcurrentJobs × MaxFilePairsPerJob</c> messages in
+    /// parallel (per-branch dispatch additionally serializes jobs within one branch). Renders are
+    /// further capped by <see cref="MaxConcurrentPdfOperations"/>.
+    /// </summary>
     public int MaxConcurrentJobs { get; set; } = 2;
 
-    /// <summary>Max file pairs compared in parallel within a single job.</summary>
+    /// <summary>See <see cref="MaxConcurrentJobs"/> — the second factor of the comparison-parallelism cap.</summary>
     public int MaxFilePairsPerJob { get; set; } = 2;
 
     /// <summary>Global cap on concurrent (CPU/RAM-heavy) PDF render operations across all jobs.</summary>

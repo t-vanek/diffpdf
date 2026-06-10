@@ -54,6 +54,13 @@ public sealed class OperationalStatusService(
     private IReadOnlyList<RendererHealth>? _rendererCache;
     private DateTimeOffset _rendererCachedAt;
 
+    // /health/ready is polled by orchestrators every few seconds and each storage check otherwise does a
+    // real write+delete probe on the artifact root (which may be a network share) — cache it briefly.
+    // A benign race at most duplicates one probe; degradation/recovery is still seen within the TTL.
+    private static readonly TimeSpan StorageCacheTtl = TimeSpan.FromSeconds(15);
+    private DependencyCheck? _storageCache;
+    private DateTimeOffset _storageCachedAt;
+
     /// <summary>The full operational dashboard (authenticated endpoint).</summary>
     public async Task<OperationalStatusResponse> BuildStatusAsync(CancellationToken ct = default)
     {
@@ -177,6 +184,18 @@ public sealed class OperationalStatusService(
     }
 
     private DependencyCheck CheckStorage()
+    {
+        var cached = _storageCache;
+        if (cached is not null && DateTimeOffset.UtcNow - _storageCachedAt < StorageCacheTtl)
+            return cached;
+
+        var fresh = ProbeStorage();
+        _storageCache = fresh;
+        _storageCachedAt = DateTimeOffset.UtcNow;
+        return fresh;
+    }
+
+    private DependencyCheck ProbeStorage()
     {
         string root = storage.Value.RootPath;
         try

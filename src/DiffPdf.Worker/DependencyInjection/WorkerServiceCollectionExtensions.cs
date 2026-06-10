@@ -15,6 +15,8 @@ public static class WorkerServiceCollectionExtensions
     public static IServiceCollection AddDiffPdfWorker(this IServiceCollection services)
     {
         services.AddOptions<WorkerOptions>()
+            .Validate(o => o.MaxConcurrentJobs >= 1, "Worker:MaxConcurrentJobs must be >= 1.")
+            .Validate(o => o.MaxFilePairsPerJob >= 1, "Worker:MaxFilePairsPerJob must be >= 1.")
             .Validate(o => o.JobLockMinutes > 0, "Worker:JobLockMinutes must be > 0.")
             .Validate(o => o.FilePairComparisonTimeoutMinutes > 0, "Worker:FilePairComparisonTimeoutMinutes must be > 0.")
             .Validate(o => o.MaxFilePairAttempts >= 1, "Worker:MaxFilePairAttempts must be >= 1.")
