@@ -21,8 +21,8 @@ public enum NotificationEvent
     /// <summary>A structure-sync control check found the scope/filesystem out of sync.</summary>
     StructureDrift,
 
-    /// <summary>A previously failing control check passed again.</summary>
-    CheckRecovered,
+    /// <summary>A previously failing automation passed again.</summary>
+    AutomationRecovered,
 
     /// <summary>A Running comparison job stopped making progress (stalled) past the watchdog's stall window.</summary>
     JobStalled,
@@ -31,6 +31,10 @@ public enum NotificationEvent
     /// errored, e.g. after exhausting their retries or an unreadable PDF. Escalated so the failures are not
     /// announced silently under a plain <see cref="Completed"/>.</summary>
     CompletedWithErrors,
+
+    /// <summary>An automation has failed its configured number of consecutive runs (escalation; raised once
+    /// when the failure streak crosses the threshold).</summary>
+    AutomationFailing,
 }
 
 /// <summary>

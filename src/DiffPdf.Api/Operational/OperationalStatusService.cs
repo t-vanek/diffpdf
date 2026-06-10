@@ -47,7 +47,7 @@ public sealed class OperationalStatusService(
     IHostEnvironment environment)
 {
     // Canonical automation services, so the status always lists them even before their first tick.
-    private static readonly string[] KnownServices = ["control-plane", "stale-recovery", "stuck-job-watchdog"];
+    private static readonly string[] KnownServices = ["automation-engine", "stale-recovery", "stuck-job-watchdog"];
 
     private static readonly TimeSpan RendererCacheTtl = TimeSpan.FromSeconds(60);
     private readonly SemaphoreSlim _rendererGate = new(1, 1);
@@ -70,18 +70,18 @@ public sealed class OperationalStatusService(
 
         BacklogInfo backlog;
         DependencyCheck database;
-        int enabledChecks;
+        int enabledAutomations;
         await using (var scope = scopeFactory.CreateAsyncScope())
         {
             var sp = scope.ServiceProvider;
             (backlog, database) = await BuildBacklogAsync(sp.GetRequiredService<IJobStore>(), sp.GetRequiredService<IFilePairTaskStore>(), ct);
-            enabledChecks = (await sp.GetRequiredService<IControlCheckStore>().ListEnabledAsync(ct)).Count;
+            enabledAutomations = (await sp.GetRequiredService<IAutomationStore>().ListEnabledAsync(ct)).Count;
         }
 
         var dependencies = new DependenciesInfo(database, await CheckRendererAsync(ct), CheckStorage());
 
         return new OperationalStatusResponse(
-            replica, leaderInfo, services, backlog, enabledChecks, dependencies);
+            replica, leaderInfo, services, backlog, enabledAutomations, dependencies);
     }
 
     /// <summary>Readiness: are the critical dependencies usable? Returns whether ready plus the per-check breakdown.</summary>

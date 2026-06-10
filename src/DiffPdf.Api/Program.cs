@@ -13,7 +13,7 @@ using DiffPdf.Core.Abstractions;
 using DiffPdf.Core.Network;
 using DiffPdf.Core.Storage;
 using DiffPdf.Messaging;
-using DiffPdf.Messaging.ControlPlane;
+using DiffPdf.Messaging.Automations;
 using DiffPdf.Messaging.Observability;
 using DiffPdf.Messaging.Scheduling;
 using DiffPdf.Messaging.ScopeSync;
@@ -97,7 +97,8 @@ builder.Services.AddOpenTelemetry()
             .AddMeter(DiffPdfMetrics.MeterName)
             .AddMeter("DiffPdf.Render")
             .AddMeter("DiffPdf.Compare")
-            .AddMeter("DiffPdf.Engine"); // per-phase engine histograms (probe/extract/pixel/blank/highlight)
+            .AddMeter("DiffPdf.Engine") // per-phase engine histograms (probe/extract/pixel/blank/highlight)
+            .AddMeter(AutomationMetrics.MeterName); // automation runs/steps/failing gauge
         m.AddPrometheusExporter(); // exposes /metrics (mapped below)
         if (otlpConfigured) m.AddOtlpExporter();
     });
@@ -164,8 +165,8 @@ else
     builder.Services.AddSingleton<IInstanceStore, InMemoryInstanceStore>();
     builder.Services.AddSingleton<ISubscriptionStore, InMemorySubscriptionStore>();
     builder.Services.AddSingleton<IEmailSettingsStore, InMemoryEmailSettingsStore>();
-    builder.Services.AddSingleton<IControlCheckStore, InMemoryControlCheckStore>();
-    builder.Services.AddSingleton<IControlCheckRunStore, InMemoryControlCheckRunStore>();
+    builder.Services.AddSingleton<IAutomationStore, InMemoryAutomationStore>();
+    builder.Services.AddSingleton<IAutomationRunStore, InMemoryAutomationRunStore>();
     builder.Services.AddSingleton<ITriggerStore, InMemoryTriggerStore>();
     builder.Services.AddSingleton<ITriggerRunStore, InMemoryTriggerRunStore>();
     builder.Services.AddSingleton<IAuditLogStore, InMemoryAuditLogStore>();
@@ -217,7 +218,7 @@ builder.Services.AddDiffPdfScopeSync(builder.Configuration);
 
 // Unified control/monitoring mechanism: runtime-configured checks (readiness, health, structure-sync,
 // retention) executed on a cadence by one leader-gated runner. Idle until checks are created via the API.
-builder.Services.AddDiffPdfControlPlane(builder.Configuration);
+builder.Services.AddDiffPdfAutomationEngine(builder.Configuration);
 
 var auth = builder.Configuration.GetSection("Auth").Get<AuthOptions>() ?? new AuthOptions();
 builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection("Auth"));
@@ -275,7 +276,7 @@ api.MapJobEndpoints();
 api.MapDiscoveryEndpoints();
 api.MapTriggerEndpoints();
 api.MapStatusEndpoints();
-api.MapControlCheckEndpoints();
+api.MapAutomationEndpoints();
 api.MapScopeConfigurationEndpoints();
 api.MapBranchQueueEndpoints();
 

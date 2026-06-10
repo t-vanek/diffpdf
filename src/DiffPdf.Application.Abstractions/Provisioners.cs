@@ -1,15 +1,15 @@
 namespace DiffPdf.Application.Abstractions;
 
-/// <summary>Provisions and removes the per-branch readiness control check (idempotent; honours auto-provision).</summary>
-public interface IControlCheckProvisioner
+/// <summary>Provisions and removes baseline + per-branch automations (idempotent; honours auto-provision).</summary>
+public interface IAutomationProvisioner
 {
-    /// <summary>Idempotently ensure the per-branch Readiness check exists. No-op when auto-provision is off.</summary>
-    Task EnsureBranchChecksAsync(string branchKey, CancellationToken ct = default);
+    /// <summary>Idempotently ensure the per-branch Readiness automation exists. No-op when auto-provision is off.</summary>
+    Task EnsureBranchAutomationsAsync(string branchKey, CancellationToken ct = default);
 
-    /// <summary>Remove the auto-provisioned per-branch check (called when a branch is deleted, to avoid orphans).</summary>
-    Task RemoveBranchChecksAsync(string branchKey, CancellationToken ct = default);
+    /// <summary>Remove the auto-provisioned per-branch automation (called when a branch is deleted, to avoid orphans).</summary>
+    Task RemoveBranchAutomationsAsync(string branchKey, CancellationToken ct = default);
 
-    /// <summary>Ensure the server-wide baseline and a Readiness check for every existing branch. Runs once at startup.</summary>
+    /// <summary>Ensure the server-wide baseline and a Readiness automation for every existing branch. Runs once at startup.</summary>
     Task ProvisionBaselineAndExistingAsync(CancellationToken ct = default);
 }
 

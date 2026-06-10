@@ -10,8 +10,8 @@ public sealed class DiffPdfDbContext(DbContextOptions<DiffPdfDbContext> options)
     public DbSet<JobEntity> Jobs => Set<JobEntity>();
     public DbSet<FilePairTaskEntity> FilePairTasks => Set<FilePairTaskEntity>();
     public DbSet<SubscriptionEntity> Subscriptions => Set<SubscriptionEntity>();
-    public DbSet<ControlCheckEntity> ControlChecks => Set<ControlCheckEntity>();
-    public DbSet<ControlCheckRunEntity> ControlCheckRuns => Set<ControlCheckRunEntity>();
+    public DbSet<AutomationEntity> Automations => Set<AutomationEntity>();
+    public DbSet<AutomationRunEntity> AutomationRuns => Set<AutomationRunEntity>();
     public DbSet<TriggerEntity> Triggers => Set<TriggerEntity>();
     public DbSet<TriggerRunEntity> TriggerRuns => Set<TriggerRunEntity>();
     public DbSet<AuditLogEntity> AuditLog => Set<AuditLogEntity>();
@@ -140,22 +140,31 @@ public sealed class DiffPdfDbContext(DbContextOptions<DiffPdfDbContext> options)
             e.Property(x => x.Version).HasColumnName("version");
         });
 
-        b.Entity<ControlCheckEntity>(e =>
+        b.Entity<AutomationEntity>(e =>
         {
-            e.ToTable("control_checks");
+            e.ToTable("automations");
             e.HasKey(x => x.Id);
             e.Property(x => x.Id).HasColumnName("id");
             e.Property(x => x.Key).HasColumnName("key").HasMaxLength(256);
             e.Property(x => x.Name).HasColumnName("name");
-            e.Property(x => x.Type).HasColumnName("type").HasMaxLength(32);
             e.Property(x => x.ScopeKind).HasColumnName("scope_kind").HasMaxLength(32);
             e.Property(x => x.BranchKey).HasColumnName("branch_key").HasMaxLength(256);
             e.Property(x => x.InstanceKey).HasColumnName("instance_key").HasMaxLength(256);
             e.Property(x => x.Cron).HasColumnName("cron").HasMaxLength(256);
             e.Property(x => x.IntervalSeconds).HasColumnName("interval_seconds");
-            e.Property(x => x.ParametersJson).HasColumnName("parameters_json");
+            e.Property(x => x.EventTriggersJson).HasColumnName("event_triggers_json");
+            e.Property(x => x.EventDebounceSeconds).HasColumnName("event_debounce_seconds");
+            e.Property(x => x.StepsJson).HasColumnName("steps_json");
+            e.Property(x => x.TimeoutSeconds).HasColumnName("timeout_seconds");
+            e.Property(x => x.MaxAttempts).HasColumnName("max_attempts");
+            e.Property(x => x.RetryDelaySeconds).HasColumnName("retry_delay_seconds");
+            e.Property(x => x.FailureThreshold).HasColumnName("failure_threshold");
             e.Property(x => x.EventsJson).HasColumnName("events_json");
             e.Property(x => x.Enabled).HasColumnName("enabled");
+            e.Property(x => x.NextRunAt).HasColumnName("next_run_at");
+            e.Property(x => x.RunningSince).HasColumnName("running_since");
+            e.Property(x => x.ConsecutiveFailures).HasColumnName("consecutive_failures");
+            e.Property(x => x.LastEventTriggeredAt).HasColumnName("last_event_triggered_at");
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
             e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
             e.Property(x => x.LastRunAt).HasColumnName("last_run_at");
@@ -165,17 +174,21 @@ public sealed class DiffPdfDbContext(DbContextOptions<DiffPdfDbContext> options)
             e.HasIndex(x => x.Enabled);
         });
 
-        b.Entity<ControlCheckRunEntity>(e =>
+        b.Entity<AutomationRunEntity>(e =>
         {
-            e.ToTable("control_check_runs");
+            e.ToTable("automation_runs");
             e.HasKey(x => x.Id);
             e.Property(x => x.Id).HasColumnName("id");
-            e.Property(x => x.CheckId).HasColumnName("check_id");
+            e.Property(x => x.AutomationId).HasColumnName("automation_id");
+            e.Property(x => x.TriggerKind).HasColumnName("trigger_kind").HasMaxLength(32);
+            e.Property(x => x.TriggerDetail).HasColumnName("trigger_detail");
+            e.Property(x => x.Attempt).HasColumnName("attempt");
             e.Property(x => x.StartedAt).HasColumnName("started_at");
             e.Property(x => x.CompletedAt).HasColumnName("completed_at");
             e.Property(x => x.Outcome).HasColumnName("outcome").HasMaxLength(32);
             e.Property(x => x.Detail).HasColumnName("detail");
-            e.HasIndex(x => new { x.CheckId, x.StartedAt });
+            e.Property(x => x.StepResultsJson).HasColumnName("step_results_json");
+            e.HasIndex(x => new { x.AutomationId, x.StartedAt });
         });
 
         b.Entity<TriggerEntity>(e =>

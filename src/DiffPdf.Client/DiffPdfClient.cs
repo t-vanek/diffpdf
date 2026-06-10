@@ -304,33 +304,33 @@ public sealed class DiffPdfClient(HttpClient http)
         return connection;
     }
 
-    // ---------------- Control checks ----------------
+    // ---------------- Automations ----------------
 
-    public Task<CheckResponse> CreateCheckAsync(CreateCheckRequest request, CancellationToken ct = default) =>
-        JsonAsync<CheckResponse>(HttpMethod.Post, "/api/v1/checks", request, ct);
+    public Task<AutomationResponse> CreateAutomationAsync(CreateAutomationRequest request, CancellationToken ct = default) =>
+        JsonAsync<AutomationResponse>(HttpMethod.Post, "/api/v1/automations", request, ct);
 
-    public Task<IReadOnlyList<CheckResponse>> ListChecksAsync(CancellationToken ct = default) =>
-        JsonAsync<IReadOnlyList<CheckResponse>>(HttpMethod.Get, "/api/v1/checks", null, ct);
+    public Task<IReadOnlyList<AutomationResponse>> ListAutomationsAsync(CancellationToken ct = default) =>
+        JsonAsync<IReadOnlyList<AutomationResponse>>(HttpMethod.Get, "/api/v1/automations", null, ct);
 
-    public Task<CheckResponse?> GetCheckAsync(Guid id, CancellationToken ct = default) =>
-        GetOrNullAsync<CheckResponse>($"/api/v1/checks/{id}", ct);
+    public Task<AutomationResponse?> GetAutomationAsync(Guid id, CancellationToken ct = default) =>
+        GetOrNullAsync<AutomationResponse>($"/api/v1/automations/{id}", ct);
 
-    public Task<CheckResponse> UpdateCheckAsync(Guid id, UpdateCheckRequest request, CancellationToken ct = default) =>
-        JsonAsync<CheckResponse>(HttpMethod.Put, $"/api/v1/checks/{id}", request, ct);
+    public Task<AutomationResponse> UpdateAutomationAsync(Guid id, UpdateAutomationRequest request, CancellationToken ct = default) =>
+        JsonAsync<AutomationResponse>(HttpMethod.Put, $"/api/v1/automations/{id}", request, ct);
 
-    public async Task DeleteCheckAsync(Guid id, CancellationToken ct = default)
+    public async Task DeleteAutomationAsync(Guid id, CancellationToken ct = default)
     {
-        using var resp = await SendRawAsync(HttpMethod.Delete, $"/api/v1/checks/{id}", null, ct);
+        using var resp = await SendRawAsync(HttpMethod.Delete, $"/api/v1/automations/{id}", null, ct);
     }
 
-    /// <summary>Runs a control check now and returns the recorded run.</summary>
-    public Task<CheckRunResponse> RunCheckAsync(Guid id, CancellationToken ct = default) =>
-        JsonAsync<CheckRunResponse>(HttpMethod.Post, $"/api/v1/checks/{id}/run", null, ct);
+    /// <summary>Runs an automation now and returns the recorded run (409 while a run is in flight).</summary>
+    public Task<AutomationRunResponse> RunAutomationAsync(Guid id, CancellationToken ct = default) =>
+        JsonAsync<AutomationRunResponse>(HttpMethod.Post, $"/api/v1/automations/{id}/run", null, ct);
 
-    /// <summary>Run history of a control check (newest first).</summary>
-    public Task<IReadOnlyList<CheckRunResponse>> ListCheckRunsAsync(Guid id, int? limit = null, CancellationToken ct = default) =>
-        JsonAsync<IReadOnlyList<CheckRunResponse>>(
-            HttpMethod.Get, $"/api/v1/checks/{id}/runs" + (limit is { } l ? $"?limit={l}" : ""), null, ct);
+    /// <summary>Run history of an automation (newest first, one row per attempt).</summary>
+    public Task<IReadOnlyList<AutomationRunResponse>> ListAutomationRunsAsync(Guid id, int? limit = null, CancellationToken ct = default) =>
+        JsonAsync<IReadOnlyList<AutomationRunResponse>>(
+            HttpMethod.Get, $"/api/v1/automations/{id}/runs" + (limit is { } l ? $"?limit={l}" : ""), null, ct);
 
     // ---------------- Triggers (Spouštěče) ----------------
 

@@ -104,20 +104,29 @@ public sealed class EmailSettingsEntity
     public long Version { get; set; } = 1;
 }
 
-public sealed class ControlCheckEntity
+public sealed class AutomationEntity
 {
     public Guid Id { get; set; }
     public string Key { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
-    public string Type { get; set; } = string.Empty;
     public string ScopeKind { get; set; } = "Global";
     public string? BranchKey { get; set; }
     public string? InstanceKey { get; set; }
     public string? Cron { get; set; }
     public int? IntervalSeconds { get; set; }
-    public string ParametersJson { get; set; } = "{}";
+    public string EventTriggersJson { get; set; } = "[]";
+    public int EventDebounceSeconds { get; set; } = 60;
+    public string StepsJson { get; set; } = "[]";
+    public int TimeoutSeconds { get; set; } = 600;
+    public int MaxAttempts { get; set; } = 1;
+    public int RetryDelaySeconds { get; set; } = 30;
+    public int FailureThreshold { get; set; } = 3;
     public string EventsJson { get; set; } = "[]";
     public bool Enabled { get; set; } = true;
+    public DateTimeOffset? NextRunAt { get; set; }
+    public DateTimeOffset? RunningSince { get; set; }
+    public int ConsecutiveFailures { get; set; }
+    public DateTimeOffset? LastEventTriggeredAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? UpdatedAt { get; set; }
     public DateTimeOffset? LastRunAt { get; set; }
@@ -125,14 +134,18 @@ public sealed class ControlCheckEntity
     public long Version { get; set; } = 1;
 }
 
-public sealed class ControlCheckRunEntity
+public sealed class AutomationRunEntity
 {
     public Guid Id { get; set; }
-    public Guid CheckId { get; set; }
+    public Guid AutomationId { get; set; }
+    public string TriggerKind { get; set; } = "Schedule";
+    public string? TriggerDetail { get; set; }
+    public int Attempt { get; set; } = 1;
     public DateTimeOffset StartedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? CompletedAt { get; set; }
     public string Outcome { get; set; } = "Ok";
     public string? Detail { get; set; }
+    public string StepResultsJson { get; set; } = "[]";
 }
 
 public sealed class TriggerEntity

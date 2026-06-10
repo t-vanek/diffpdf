@@ -33,11 +33,14 @@ public sealed partial class EntityMapper
     [MapperIgnoreSource(nameof(EmailSettingsEntity.Id))] // single-row settings; the domain model has no Id
     public partial EmailSettings ToDomain(EmailSettingsEntity entity);
 
-    [MapProperty(nameof(ControlCheckEntity.ParametersJson), nameof(ControlCheck.Parameters))]
-    [MapProperty(nameof(ControlCheckEntity.EventsJson), nameof(ControlCheck.Events))]
-    public partial ControlCheck ToDomain(ControlCheckEntity entity);
+    [MapProperty(nameof(AutomationEntity.StepsJson), nameof(Automation.Steps))]
+    [MapProperty(nameof(AutomationEntity.EventTriggersJson), nameof(Automation.EventTriggers))]
+    [MapProperty(nameof(AutomationEntity.EventsJson), nameof(Automation.Events))]
+    public partial Automation ToDomain(AutomationEntity entity);
 
-    public partial ControlCheckRun ToDomain(ControlCheckRunEntity entity);
+    [MapProperty(nameof(AutomationRunEntity.TriggerKind), nameof(AutomationRun.Trigger))]
+    [MapProperty(nameof(AutomationRunEntity.StepResultsJson), nameof(AutomationRun.StepResults))]
+    public partial AutomationRun ToDomain(AutomationRunEntity entity);
 
     public partial Trigger ToDomain(TriggerEntity entity);
 
@@ -66,13 +69,16 @@ public sealed partial class EntityMapper
         string.IsNullOrEmpty(json) ? null : DiffPdfJson.Deserialize<FilePairResult>(json);
 
     private static IReadOnlyList<NotificationEvent> MapEvents(string json) =>
-        DiffPdfJson.Deserialize<IReadOnlyList<NotificationEvent>>(json);
+        string.IsNullOrEmpty(json) ? [] : DiffPdfJson.Deserialize<IReadOnlyList<NotificationEvent>>(json);
 
     private static IReadOnlyList<string> MapStringList(string json) =>
         string.IsNullOrEmpty(json) ? [] : DiffPdfJson.Deserialize<IReadOnlyList<string>>(json);
 
-    private static IReadOnlyDictionary<string, string> MapParameters(string json) =>
-        string.IsNullOrEmpty(json) ? new Dictionary<string, string>() : DiffPdfJson.Deserialize<IReadOnlyDictionary<string, string>>(json);
+    private static IReadOnlyList<AutomationStep> MapSteps(string json) =>
+        string.IsNullOrEmpty(json) ? [] : DiffPdfJson.Deserialize<IReadOnlyList<AutomationStep>>(json);
+
+    private static IReadOnlyList<AutomationStepResult> MapStepResults(string json) =>
+        string.IsNullOrEmpty(json) ? [] : DiffPdfJson.Deserialize<IReadOnlyList<AutomationStepResult>>(json);
 
     // Tolerate legacy/unknown `source` strings instead of throwing. Job rows that pre-dated the
     // `source` column were backfilled with an empty string (AddTriggers migration), and Mapperly's

@@ -53,7 +53,7 @@ public sealed class InstanceService(
     IInstanceStructureService structure,
     INetworkShareResolver shareResolver,
     INetworkDiscoveryService discovery,
-    IControlCheckProvisioner provisioner,
+    IAutomationProvisioner provisioner,
     ITriggerProvisioner triggerProvisioner,
     IScopeConfigurationProvisioner configProvisioner,
     ITriggerEventPublisher events,
@@ -120,7 +120,7 @@ public sealed class InstanceService(
         // safety net for branches that predate the branch-create hook; suppressed when autoProvision is false.
         if (autoProvision)
         {
-            await provisioner.EnsureBranchChecksAsync(branchKey, ct);
+            await provisioner.EnsureBranchAutomationsAsync(branchKey, ct);
             // After a correct branch+instance creation, provision the instance's default trigger (idempotent).
             await triggerProvisioner.EnsureDefaultTriggerAsync(branch.Id, branchKey, created.Id, created.Key, actor: null, ct);
             // Provision the instance's config row (defaults to inheriting from the branch).

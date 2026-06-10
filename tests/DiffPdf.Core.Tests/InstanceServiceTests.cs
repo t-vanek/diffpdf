@@ -24,7 +24,7 @@ public class InstanceServiceTests
         var svc = new InstanceService(
             branches, instances, new InMemoryJobStore(), new NoopInstanceStructureService(),
             new NoopNetworkShareResolver(), new NoopNetworkDiscoveryService(),
-            new NoopControlCheckProvisioner(), new NoopTriggerProvisioner(), new NoopScopeConfigurationProvisioner(),
+            new NoopAutomationProvisioner(), new NoopTriggerProvisioner(), new NoopScopeConfigurationProvisioner(),
             events, audit, Options.Create(new ScopeSyncOptions()));
         return new Ctx(svc, branch, instances, audit, events);
     }

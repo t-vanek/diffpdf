@@ -6,10 +6,11 @@ namespace DiffPdf.Application.Stats;
 /// <summary>Job counts by status for one scope.</summary>
 public sealed record JobStats(int Queued, int Running, int Paused, int Completed, int Failed);
 
-/// <summary>Control-check counts for one scope (Running has no persistent state today, so it is 0).</summary>
+/// <summary>Check-style counts for one scope, derived from the scope's automations (kept for response-shape
+/// compatibility with the Checks panel; Running counts automations with a run claim in flight).</summary>
 public sealed record CheckStats(int Active, int Running, int Completed, int Failed);
 
-/// <summary>Automation counts for one scope — the umbrella over every automation type (control checks are the only type today).</summary>
+/// <summary>Automation counts for one scope.</summary>
 public sealed record AutomationStats(int Active, int Running, int Paused, int Completed, int Failed);
 
 /// <summary>Comparison (file-pair) counts by status for one scope. Paused/Stopped are not modelled, so they are omitted.</summary>
@@ -22,7 +23,7 @@ public sealed record ScopeStatsResponse(JobStats Jobs, CheckStats Checks, Automa
 /// Computes the per-branch / per-instance statistics shown in the branch and instance detail views:
 /// jobs, checks, automations and comparisons. Aggregates from the existing stores. The scope's jobs are
 /// loaded once — that single list yields both the job-status breakdown and the job ids used to count the
-/// comparison (file-pair) tasks by status. Checks bound to the scope are filtered from the full list.
+/// comparison (file-pair) tasks by status. Automations bound to the scope are filtered from the full list.
 /// </summary>
 public interface IScopeStatsService
 {
@@ -31,7 +32,7 @@ public interface IScopeStatsService
 }
 
 /// <inheritdoc />
-public sealed class ScopeStatsService(IJobStore jobs, IFilePairTaskStore tasks, IControlCheckStore checks) : IScopeStatsService
+public sealed class ScopeStatsService(IJobStore jobs, IFilePairTaskStore tasks, IAutomationStore automations) : IScopeStatsService
 {
     public Task<ScopeStatsResponse> ForBranchAsync(string branchKey, CancellationToken ct = default) =>
         ComputeAsync(branchKey, instanceKey: null, ct);
@@ -64,24 +65,23 @@ public sealed class ScopeStatsService(IJobStore jobs, IFilePairTaskStore tasks, 
             Failed: TaskCount(FilePairTaskStatus.Failed),
             Skipped: TaskCount(FilePairTaskStatus.Skipped));
 
-        // Checks bound to this scope. A branch view includes its branch-scoped checks and the instance-scoped
-        // checks beneath it; an instance view only its own. Global checks are server-wide, not per-scope.
-        var all = await checks.ListAsync(ct);
-        var scopeChecks = all.Where(c => instanceKey is null
-                ? c.BranchKey == branchKey && c.ScopeKind is CheckScopeKind.Branch or CheckScopeKind.Instance
-                : c.BranchKey == branchKey && c.InstanceKey == instanceKey && c.ScopeKind == CheckScopeKind.Instance)
+        // Automations bound to this scope. A branch view includes its branch-scoped automations and the
+        // instance-scoped ones beneath it; an instance view only its own. Global automations are
+        // server-wide, not per-scope.
+        var all = await automations.ListAsync(ct);
+        var scoped = all.Where(a => instanceKey is null
+                ? a.BranchKey == branchKey && a.ScopeKind is AutomationScopeKind.Branch or AutomationScopeKind.Instance
+                : a.BranchKey == branchKey && a.InstanceKey == instanceKey && a.ScopeKind == AutomationScopeKind.Instance)
             .ToList();
 
-        int active = scopeChecks.Count(c => c.Enabled);
-        int disabled = scopeChecks.Count(c => !c.Enabled);
-        int completed = scopeChecks.Count(c => c.LastOutcome == CheckRunOutcome.Ok);
-        int failed = scopeChecks.Count(c => c.LastOutcome is CheckRunOutcome.Failed or CheckRunOutcome.Warning);
+        int active = scoped.Count(a => a.Enabled);
+        int disabled = scoped.Count(a => !a.Enabled);
+        int running = scoped.Count(a => a.RunningSince is not null);
+        int completed = scoped.Count(a => a.LastOutcome == AutomationRunOutcome.Ok);
+        int failed = scoped.Count(a => a.LastOutcome is AutomationRunOutcome.Failed or AutomationRunOutcome.Warning);
 
-        // Checks have no persistent "running" state (a run is transient), so Running is 0.
-        var checkStats = new CheckStats(Active: active, Running: 0, Completed: completed, Failed: failed);
-        // Automations are the umbrella over all automation types; control checks are the only type today, so a
-        // disabled check maps to a "paused" automation.
-        var automationStats = new AutomationStats(Active: active, Running: 0, Paused: disabled, Completed: completed, Failed: failed);
+        var checkStats = new CheckStats(Active: active, Running: running, Completed: completed, Failed: failed);
+        var automationStats = new AutomationStats(Active: active, Running: running, Paused: disabled, Completed: completed, Failed: failed);
 
         return new ScopeStatsResponse(jobStats, checkStats, automationStats, comparisonStats);
     }

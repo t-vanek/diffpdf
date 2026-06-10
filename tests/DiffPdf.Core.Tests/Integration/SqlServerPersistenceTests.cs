@@ -30,12 +30,12 @@ public class SqlServerPersistenceTests(LocalDbFixture db)
     }
 
     [LocalDbFact]
-    public async Task Branch_Instance_Check_RoundTrip()
+    public async Task Branch_Instance_Automation_RoundTrip()
     {
         await using var ctx = db.NewContext();
         var branches = new SqlServerBranchStore(ctx, _mapper);
         var instances = new SqlServerInstanceStore(ctx, _mapper);
-        var checks = new SqlServerControlCheckStore(ctx, _mapper);
+        var automations = new SqlServerAutomationStore(ctx, _mapper);
 
         string bKey = "b_" + Guid.NewGuid().ToString("N")[..8];
         string basePath = $@"C:\root\{bKey}\inst1";
@@ -48,20 +48,59 @@ public class SqlServerPersistenceTests(LocalDbFixture db)
         var fetchedInstance = await instances.GetByKeyAsync(branch.Id, "inst1");
         Assert.Equal(basePath, fetchedInstance!.BasePath);
 
-        string checkKey = "rd_" + Guid.NewGuid().ToString("N")[..8];
-        await checks.CreateAsync(new ControlCheck
+        string automationKey = "rd_" + Guid.NewGuid().ToString("N")[..8];
+        await automations.CreateAsync(new Automation
         {
-            Id = Guid.NewGuid(), Key = checkKey, Name = "Readiness", Type = CheckType.Readiness,
-            ScopeKind = CheckScopeKind.Instance, BranchKey = branch.Key, InstanceKey = instance.Key,
+            Id = Guid.NewGuid(), Key = automationKey, Name = "Readiness",
+            ScopeKind = AutomationScopeKind.Instance, BranchKey = branch.Key, InstanceKey = instance.Key,
             IntervalSeconds = 300, Events = [NotificationEvent.ReadinessFailed],
-            Parameters = new Dictionary<string, string> { ["k"] = "v" }, Enabled = false,
+            EventTriggers = [NotificationEvent.Failed], EventDebounceSeconds = 120,
+            Steps =
+            [
+                new AutomationStep
+                {
+                    Type = AutomationStepType.Readiness, Name = "Vstupy",
+                    Parameters = new Dictionary<string, string> { ["k"] = "v" },
+                },
+            ],
+            TimeoutSeconds = 120, MaxAttempts = 2, RetryDelaySeconds = 5, FailureThreshold = 2,
+            Enabled = false,
         });
 
-        var fetched = await checks.GetByKeyAsync(checkKey);
+        var fetched = await automations.GetByKeyAsync(automationKey);
         Assert.False(fetched!.Enabled);
-        Assert.Equal(CheckType.Readiness, fetched.Type);
-        Assert.Equal("v", fetched.Parameters["k"]);
+        var step = Assert.Single(fetched.Steps);
+        Assert.Equal(AutomationStepType.Readiness, step.Type);
+        Assert.Equal("Vstupy", step.Name);
+        Assert.Equal("v", step.Parameters["k"]);
         Assert.Contains(NotificationEvent.ReadinessFailed, fetched.Events);
+        Assert.Contains(NotificationEvent.Failed, fetched.EventTriggers);
+        Assert.Equal(120, fetched.EventDebounceSeconds);
+        Assert.Equal(2, fetched.MaxAttempts);
+
+        // Engine-state ops round-trip against real SQL: claim (advances the schedule), complete, debounce.
+        var now = DateTimeOffset.UtcNow;
+        Assert.True(await automations.TryBeginRunAsync(fetched.Id, now, now.AddMinutes(5), TimeSpan.FromMinutes(10)));
+        Assert.False(await automations.TryBeginRunAsync(fetched.Id, now.AddSeconds(1), null, TimeSpan.FromMinutes(10))); // in flight
+        await automations.CompleteRunAsync(fetched.Id, now.AddSeconds(2), AutomationRunOutcome.Failed, consecutiveFailures: 1);
+        var completed = await automations.GetAsync(fetched.Id);
+        Assert.Null(completed!.RunningSince);
+        Assert.Equal(AutomationRunOutcome.Failed, completed.LastOutcome);
+        Assert.Equal(1, completed.ConsecutiveFailures);
+        Assert.True(await automations.TryClaimEventTriggerAsync(fetched.Id, now, TimeSpan.FromSeconds(60)) == false); // disabled
+
+        var runs = new SqlServerAutomationRunStore(ctx, _mapper);
+        await runs.AddAsync(new AutomationRun
+        {
+            Id = Guid.NewGuid(), AutomationId = fetched.Id, Trigger = AutomationTriggerKind.Manual,
+            TriggerDetail = "manual", Attempt = 1, CompletedAt = now,
+            Outcome = AutomationRunOutcome.Warning, Detail = "meh",
+            StepResults = [new AutomationStepResult(0, AutomationStepType.Readiness, "Vstupy", AutomationRunOutcome.Warning, "meh", 0.5)],
+        });
+        var history = await runs.ListByAutomationAsync(fetched.Id);
+        var run = Assert.Single(history);
+        Assert.Equal(AutomationTriggerKind.Manual, run.Trigger);
+        Assert.Equal("meh", Assert.Single(run.StepResults).Detail);
     }
 
     [LocalDbFact]
@@ -132,7 +171,7 @@ public class SqlServerPersistenceTests(LocalDbFixture db)
             var structure = new InstanceStructureService(resolver, connector, NullLogger<InstanceStructureService>.Instance);
 
             var sync = new ScopeSyncService(resolver, connector, branches, instances, structure,
-                new NoopControlCheckProvisioner(), Options.Create(new ScopeSyncOptions { RootPath = root }), NullLogger<ScopeSyncService>.Instance);
+                new NoopAutomationProvisioner(), Options.Create(new ScopeSyncOptions { RootPath = root }), NullLogger<ScopeSyncService>.Instance);
 
             var report = await sync.SynchronizeAsync(apply: true);
 

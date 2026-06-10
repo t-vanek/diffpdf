@@ -3,7 +3,7 @@ using DiffPdf.Core.Comparison;
 using DiffPdf.Core.Models;
 using DiffPdf.Core.Network;
 using DiffPdf.Core.Storage;
-using DiffPdf.Messaging.ControlPlane;
+using DiffPdf.Messaging.Automations;
 using DiffPdf.Persistence;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -32,7 +32,7 @@ public sealed class ScopeSyncService(
     IBranchStore branches,
     IInstanceStore instances,
     IInstanceStructureService structure,
-    IControlCheckProvisioner provisioner,
+    IAutomationProvisioner provisioner,
     IOptions<ScopeSyncOptions> options,
     ILogger<ScopeSyncService> logger) : IScopeSyncService
 {
@@ -98,7 +98,7 @@ public sealed class ScopeSyncService(
                     branchState = branch is not null ? BranchSyncState.Registered : BranchSyncState.Error;
                     // Newly registered from disk: give it the same readiness check as an API-created branch.
                     if (branch is not null)
-                        await provisioner.EnsureBranchChecksAsync(branch.Key, ct);
+                        await provisioner.EnsureBranchAutomationsAsync(branch.Key, ct);
                 }
                 else
                 {

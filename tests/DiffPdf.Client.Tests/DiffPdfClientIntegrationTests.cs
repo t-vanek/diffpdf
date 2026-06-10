@@ -19,50 +19,60 @@ public class DiffPdfClientIntegrationTests(InMemoryApiFactory factory)
         ("B" + Guid.NewGuid().ToString("N")[..8], "I" + Guid.NewGuid().ToString("N")[..8]);
 
     [Fact]
-    public async Task Check_Crud_Run_History_RoundTrip()
+    public async Task Automation_Crud_Run_History_RoundTrip()
     {
         var diff = NewClient();
 
-        // create (global health check on an interval)
-        var created = await diff.CreateCheckAsync(new CreateCheckRequest
+        // create (global health automation on an interval, with the engine's policy knobs)
+        var created = await diff.CreateAutomationAsync(new CreateAutomationRequest
         {
-            Key = "chk_" + Guid.NewGuid().ToString("N")[..8],
+            Key = "auto_" + Guid.NewGuid().ToString("N")[..8],
             Name = "Server health",
-            Type = CheckType.Health,
-            ScopeKind = CheckScopeKind.Global,
+            Steps = [new AutomationStepInput { Type = AutomationStepType.Health }],
+            ScopeKind = AutomationScopeKind.Global,
             IntervalSeconds = 300,
             Events = [NotificationEvent.HealthDegraded],
+            MaxAttempts = 2,
+            RetryDelaySeconds = 0,
         });
-        Assert.Equal(CheckType.Health, created.Type);
+        Assert.Equal(AutomationStepType.Health, Assert.Single(created.Steps).Type);
         Assert.Equal(1, created.Version);
+        Assert.NotNull(created.NextRunAt); // schedule seeded at creation, never firing immediately
 
         // get + list
-        var got = await diff.GetCheckAsync(created.Id);
+        var got = await diff.GetAutomationAsync(created.Id);
         Assert.NotNull(got);
-        Assert.Contains(await diff.ListChecksAsync(), c => c.Id == created.Id);
+        Assert.Contains(await diff.ListAutomationsAsync(), a => a.Id == created.Id);
 
         // update (optimistic concurrency via Version)
-        var updated = await diff.UpdateCheckAsync(created.Id, new UpdateCheckRequest
+        var updated = await diff.UpdateAutomationAsync(created.Id, new UpdateAutomationRequest
         {
-            Key = created.Key, Name = "Renamed", Type = CheckType.Health,
+            Key = created.Key, Name = "Renamed",
+            Steps = [new AutomationStepInput { Type = AutomationStepType.Health }],
             IntervalSeconds = 600, Enabled = false, Version = created.Version,
         });
         Assert.Equal("Renamed", updated.Name);
         Assert.Equal(2, updated.Version);
 
         // duplicate key -> 409
-        var dup = await Assert.ThrowsAsync<DiffPdfApiException>(() => diff.CreateCheckAsync(
-            new CreateCheckRequest { Key = created.Key, Type = CheckType.Health, IntervalSeconds = 60 }));
+        var dup = await Assert.ThrowsAsync<DiffPdfApiException>(() => diff.CreateAutomationAsync(
+            new CreateAutomationRequest
+            {
+                Key = created.Key, IntervalSeconds = 60,
+                Steps = [new AutomationStepInput { Type = AutomationStepType.Health }],
+            }));
         Assert.Equal(HttpStatusCode.Conflict, dup.StatusCode);
 
-        // run now -> recorded run + history
-        var run = await diff.RunCheckAsync(created.Id);
-        Assert.Equal(created.Id, run.CheckId);
-        Assert.True((await diff.ListCheckRunsAsync(created.Id)).Count >= 1);
+        // run now -> recorded run + history (with per-step results)
+        var run = await diff.RunAutomationAsync(created.Id);
+        Assert.Equal(created.Id, run.AutomationId);
+        Assert.Equal(AutomationTriggerKind.Manual, run.Trigger);
+        Assert.NotEmpty(run.StepResults);
+        Assert.True((await diff.ListAutomationRunsAsync(created.Id)).Count >= 1);
 
         // delete
-        await diff.DeleteCheckAsync(created.Id);
-        Assert.Null(await diff.GetCheckAsync(created.Id));
+        await diff.DeleteAutomationAsync(created.Id);
+        Assert.Null(await diff.GetAutomationAsync(created.Id));
     }
 
     [Fact]
@@ -211,7 +221,7 @@ public class DiffPdfClientIntegrationTests(InMemoryApiFactory factory)
         Assert.True(status.Leader.IsThisReplica);
         Assert.Equal(status.Replica.WorkerInstanceId, status.Leader.Owner);
         Assert.True(status.Dependencies.Database.Ok);
-        Assert.Contains(status.Services, s => s.Service == "control-plane");
+        Assert.Contains(status.Services, s => s.Service == "automation-engine");
         Assert.Contains(status.Services, s => s.Service == "stale-recovery");
     }
 
@@ -403,7 +413,7 @@ public class DiffPdfClientIntegrationTests(InMemoryApiFactory factory)
     }
 
     [Fact]
-    public async Task InstanceStats_ReflectScopedChecks()
+    public async Task InstanceStats_ReflectScopedAutomations()
     {
         var diff = NewClient();
         var (bk, ik) = FreshKeys();
@@ -412,11 +422,11 @@ public class DiffPdfClientIntegrationTests(InMemoryApiFactory factory)
         try
         {
             await diff.CreateInstanceAsync(bk, new(ik, "Inst", basePath));
-            await diff.CreateCheckAsync(new CreateCheckRequest
+            await diff.CreateAutomationAsync(new CreateAutomationRequest
             {
-                Key = "chk_" + Guid.NewGuid().ToString("N")[..8],
-                Type = CheckType.Readiness,
-                ScopeKind = CheckScopeKind.Instance,
+                Key = "auto_" + Guid.NewGuid().ToString("N")[..8],
+                Steps = [new AutomationStepInput { Type = AutomationStepType.Readiness }],
+                ScopeKind = AutomationScopeKind.Instance,
                 BranchKey = bk,
                 InstanceKey = ik,
                 IntervalSeconds = 60,

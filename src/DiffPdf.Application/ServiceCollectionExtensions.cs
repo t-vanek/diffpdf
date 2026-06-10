@@ -1,6 +1,6 @@
 using DiffPdf.Application.Abstractions;
+using DiffPdf.Application.Automations;
 using DiffPdf.Application.Configuration;
-using DiffPdf.Application.ControlChecks;
 using DiffPdf.Application.Email;
 using DiffPdf.Application.Jobs;
 using DiffPdf.Application.Queue;
@@ -13,7 +13,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace DiffPdf.Application;
 
-/// <summary>Registers the application-layer services (scope/job/check/subscription/trigger/config orchestration).</summary>
+/// <summary>Registers the application-layer services (scope/job/automation/subscription/trigger/config orchestration).</summary>
 public static class ServiceCollectionExtensions
 {
     /// <summary>
@@ -33,10 +33,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IScopeRunService, ScopeRunService>();
         services.AddScoped<IBranchQueueControl, BranchQueueControl>();
 
-        // Automation: triggers, checks, subscriptions
+        // Automation: triggers, automations, subscriptions
         services.AddScoped<ITriggerService, TriggerService>();
         services.AddScoped<ITriggerProvisioner, TriggerProvisioner>();
-        services.AddScoped<IControlCheckService, ControlCheckService>();
+        services.AddScoped<IAutomationService, AutomationService>();
         services.AddScoped<ISubscriptionService, SubscriptionService>();
         services.AddScoped<IEmailSettingsService, EmailSettingsService>();
 

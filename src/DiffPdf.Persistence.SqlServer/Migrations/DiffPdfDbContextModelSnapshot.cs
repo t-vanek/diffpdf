@@ -74,6 +74,190 @@ namespace DiffPdf.Persistence.SqlServer.Migrations
                     b.ToTable("audit_log", (string)null);
                 });
 
+            modelBuilder.Entity("DiffPdf.Persistence.SqlServer.Entities.AutomationEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("id");
+
+                    b.Property<string>("BranchKey")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)")
+                        .HasColumnName("branch_key");
+
+                    b.Property<int>("ConsecutiveFailures")
+                        .HasColumnType("int")
+                        .HasColumnName("consecutive_failures");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Cron")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)")
+                        .HasColumnName("cron");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("bit")
+                        .HasColumnName("enabled");
+
+                    b.Property<int>("EventDebounceSeconds")
+                        .HasColumnType("int")
+                        .HasColumnName("event_debounce_seconds");
+
+                    b.Property<string>("EventTriggersJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("event_triggers_json");
+
+                    b.Property<string>("EventsJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("events_json");
+
+                    b.Property<int>("FailureThreshold")
+                        .HasColumnType("int")
+                        .HasColumnName("failure_threshold");
+
+                    b.Property<string>("InstanceKey")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)")
+                        .HasColumnName("instance_key");
+
+                    b.Property<int?>("IntervalSeconds")
+                        .HasColumnType("int")
+                        .HasColumnName("interval_seconds");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)")
+                        .HasColumnName("key");
+
+                    b.Property<DateTimeOffset?>("LastEventTriggeredAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("last_event_triggered_at");
+
+                    b.Property<string>("LastOutcome")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)")
+                        .HasColumnName("last_outcome");
+
+                    b.Property<DateTimeOffset?>("LastRunAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("last_run_at");
+
+                    b.Property<int>("MaxAttempts")
+                        .HasColumnType("int")
+                        .HasColumnName("max_attempts");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("name");
+
+                    b.Property<DateTimeOffset?>("NextRunAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("next_run_at");
+
+                    b.Property<int>("RetryDelaySeconds")
+                        .HasColumnType("int")
+                        .HasColumnName("retry_delay_seconds");
+
+                    b.Property<DateTimeOffset?>("RunningSince")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("running_since");
+
+                    b.Property<string>("ScopeKind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)")
+                        .HasColumnName("scope_kind");
+
+                    b.Property<string>("StepsJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("steps_json");
+
+                    b.Property<int>("TimeoutSeconds")
+                        .HasColumnType("int")
+                        .HasColumnName("timeout_seconds");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long>("Version")
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Enabled");
+
+                    b.HasIndex("Key")
+                        .IsUnique();
+
+                    b.ToTable("automations", (string)null);
+                });
+
+            modelBuilder.Entity("DiffPdf.Persistence.SqlServer.Entities.AutomationRunEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("id");
+
+                    b.Property<int>("Attempt")
+                        .HasColumnType("int")
+                        .HasColumnName("attempt");
+
+                    b.Property<Guid>("AutomationId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("automation_id");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("completed_at");
+
+                    b.Property<string>("Detail")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("detail");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)")
+                        .HasColumnName("outcome");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("started_at");
+
+                    b.Property<string>("StepResultsJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("step_results_json");
+
+                    b.Property<string>("TriggerDetail")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("trigger_detail");
+
+                    b.Property<string>("TriggerKind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)")
+                        .HasColumnName("trigger_kind");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AutomationId", "StartedAt");
+
+                    b.ToTable("automation_runs", (string)null);
+                });
+
             modelBuilder.Entity("DiffPdf.Persistence.SqlServer.Entities.BranchEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -118,136 +302,6 @@ namespace DiffPdf.Persistence.SqlServer.Migrations
                         .IsUnique();
 
                     b.ToTable("branches", (string)null);
-                });
-
-            modelBuilder.Entity("DiffPdf.Persistence.SqlServer.Entities.ControlCheckEntity", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier")
-                        .HasColumnName("id");
-
-                    b.Property<string>("BranchKey")
-                        .HasMaxLength(256)
-                        .HasColumnType("nvarchar(256)")
-                        .HasColumnName("branch_key");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("datetimeoffset")
-                        .HasColumnName("created_at");
-
-                    b.Property<string>("Cron")
-                        .HasMaxLength(256)
-                        .HasColumnType("nvarchar(256)")
-                        .HasColumnName("cron");
-
-                    b.Property<bool>("Enabled")
-                        .HasColumnType("bit")
-                        .HasColumnName("enabled");
-
-                    b.Property<string>("EventsJson")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)")
-                        .HasColumnName("events_json");
-
-                    b.Property<string>("InstanceKey")
-                        .HasMaxLength(256)
-                        .HasColumnType("nvarchar(256)")
-                        .HasColumnName("instance_key");
-
-                    b.Property<int?>("IntervalSeconds")
-                        .HasColumnType("int")
-                        .HasColumnName("interval_seconds");
-
-                    b.Property<string>("Key")
-                        .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("nvarchar(256)")
-                        .HasColumnName("key");
-
-                    b.Property<string>("LastOutcome")
-                        .HasMaxLength(32)
-                        .HasColumnType("nvarchar(32)")
-                        .HasColumnName("last_outcome");
-
-                    b.Property<DateTimeOffset?>("LastRunAt")
-                        .HasColumnType("datetimeoffset")
-                        .HasColumnName("last_run_at");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)")
-                        .HasColumnName("name");
-
-                    b.Property<string>("ParametersJson")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)")
-                        .HasColumnName("parameters_json");
-
-                    b.Property<string>("ScopeKind")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("nvarchar(32)")
-                        .HasColumnName("scope_kind");
-
-                    b.Property<string>("Type")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("nvarchar(32)")
-                        .HasColumnName("type");
-
-                    b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("datetimeoffset")
-                        .HasColumnName("updated_at");
-
-                    b.Property<long>("Version")
-                        .HasColumnType("bigint")
-                        .HasColumnName("version");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Enabled");
-
-                    b.HasIndex("Key")
-                        .IsUnique();
-
-                    b.ToTable("control_checks", (string)null);
-                });
-
-            modelBuilder.Entity("DiffPdf.Persistence.SqlServer.Entities.ControlCheckRunEntity", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier")
-                        .HasColumnName("id");
-
-                    b.Property<Guid>("CheckId")
-                        .HasColumnType("uniqueidentifier")
-                        .HasColumnName("check_id");
-
-                    b.Property<DateTimeOffset?>("CompletedAt")
-                        .HasColumnType("datetimeoffset")
-                        .HasColumnName("completed_at");
-
-                    b.Property<string>("Detail")
-                        .HasColumnType("nvarchar(max)")
-                        .HasColumnName("detail");
-
-                    b.Property<string>("Outcome")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("nvarchar(32)")
-                        .HasColumnName("outcome");
-
-                    b.Property<DateTimeOffset>("StartedAt")
-                        .HasColumnType("datetimeoffset")
-                        .HasColumnName("started_at");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CheckId", "StartedAt");
-
-                    b.ToTable("control_check_runs", (string)null);
                 });
 
             modelBuilder.Entity("DiffPdf.Persistence.SqlServer.Entities.EmailSettingsEntity", b =>

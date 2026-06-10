@@ -22,7 +22,7 @@ public class BranchServiceTests
         var events = new CapturingTriggerEvents();
         var svc = new BranchService(
             branches, instances, new InMemoryJobStore(), new InMemoryFilePairTaskStore(),
-            new NoopControlCheckProvisioner(), new NoopScopeConfigurationProvisioner(), new NoopTriggerProvisioner(),
+            new NoopAutomationProvisioner(), new NoopScopeConfigurationProvisioner(), new NoopTriggerProvisioner(),
             events, audit, new NoopInstanceStructureService(), new NoopBranchQueueDispatcher(),
             new BranchDispatchLocks(), new DiffPdfMetrics(), Options.Create(new ScopeSyncOptions()));
         return new Ctx(svc, branches, instances, audit, events);

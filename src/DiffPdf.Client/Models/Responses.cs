@@ -424,37 +424,69 @@ public sealed record TokenResponse
     [JsonPropertyName("expires_in")] public int ExpiresIn { get; init; }
 }
 
-/// <summary>A control check as returned by the API.</summary>
-public sealed record CheckResponse
+/// <summary>One step of an automation as returned by the API.</summary>
+public sealed record AutomationStepResponse
+{
+    public AutomationStepType Type { get; init; }
+    public string? Name { get; init; }
+    public IReadOnlyDictionary<string, string> Parameters { get; init; } = new Dictionary<string, string>();
+}
+
+/// <summary>An automation as returned by the API. <c>NextRunAt</c> / <c>RunningSince</c> /
+/// <c>ConsecutiveFailures</c> are engine state — read-only.</summary>
+public sealed record AutomationResponse
 {
     public Guid Id { get; init; }
     public string Key { get; init; } = "";
     public string Name { get; init; } = "";
-    public CheckType Type { get; init; }
-    public CheckScopeKind ScopeKind { get; init; }
+    public AutomationScopeKind ScopeKind { get; init; }
     public string? BranchKey { get; init; }
     public string? InstanceKey { get; init; }
     public string? Cron { get; init; }
     public int? IntervalSeconds { get; init; }
-    public IReadOnlyDictionary<string, string> Parameters { get; init; } = new Dictionary<string, string>();
+    public IReadOnlyList<NotificationEvent> EventTriggers { get; init; } = [];
+    public int EventDebounceSeconds { get; init; }
+    public IReadOnlyList<AutomationStepResponse> Steps { get; init; } = [];
+    public int TimeoutSeconds { get; init; }
+    public int MaxAttempts { get; init; }
+    public int RetryDelaySeconds { get; init; }
+    public int FailureThreshold { get; init; }
     public IReadOnlyList<NotificationEvent> Events { get; init; } = [];
     public bool Enabled { get; init; }
+    public DateTimeOffset? NextRunAt { get; init; }
+    public DateTimeOffset? RunningSince { get; init; }
+    public int ConsecutiveFailures { get; init; }
     public DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset? UpdatedAt { get; init; }
     public DateTimeOffset? LastRunAt { get; init; }
-    public CheckRunOutcome? LastOutcome { get; init; }
+    public AutomationRunOutcome? LastOutcome { get; init; }
     public long Version { get; init; }
 }
 
-/// <summary>One run of a control check as returned by the API.</summary>
-public sealed record CheckRunResponse
+/// <summary>One step result within an automation run as returned by the API.</summary>
+public sealed record AutomationStepResultResponse
+{
+    public int Index { get; init; }
+    public AutomationStepType Type { get; init; }
+    public string? Name { get; init; }
+    public AutomationRunOutcome Outcome { get; init; }
+    public string Detail { get; init; } = "";
+    public double DurationSeconds { get; init; }
+}
+
+/// <summary>One automation run (attempt) as returned by the API.</summary>
+public sealed record AutomationRunResponse
 {
     public Guid Id { get; init; }
-    public Guid CheckId { get; init; }
+    public Guid AutomationId { get; init; }
+    public AutomationTriggerKind Trigger { get; init; }
+    public string? TriggerDetail { get; init; }
+    public int Attempt { get; init; }
     public DateTimeOffset StartedAt { get; init; }
     public DateTimeOffset? CompletedAt { get; init; }
-    public CheckRunOutcome Outcome { get; init; }
+    public AutomationRunOutcome Outcome { get; init; }
     public string? Detail { get; init; }
+    public IReadOnlyList<AutomationStepResultResponse> StepResults { get; init; } = [];
 }
 
 /// <summary>An e-mail notification rule as returned by the API.</summary>
@@ -580,7 +612,7 @@ public sealed record OperationalStatusResponse
     public LeaderInfo Leader { get; init; } = new();
     public IReadOnlyList<ServiceHealthInfo> Services { get; init; } = [];
     public BacklogInfo Backlog { get; init; } = new();
-    public int EnabledChecks { get; init; }
+    public int EnabledAutomations { get; init; }
     public DependenciesInfo Dependencies { get; init; } = new();
 }
 

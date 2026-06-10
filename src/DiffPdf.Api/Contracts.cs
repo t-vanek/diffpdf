@@ -397,7 +397,7 @@ public sealed record OperationalStatusResponse(
     LeaderInfo Leader,
     IReadOnlyList<ServiceHealthInfo> Services,
     BacklogInfo Backlog,
-    int EnabledChecks,
+    int EnabledAutomations,
     DependenciesInfo Dependencies);
 
 /// <summary>Readiness summary: overall status plus the per-check breakdown (200 ready / 503 degraded).</summary>

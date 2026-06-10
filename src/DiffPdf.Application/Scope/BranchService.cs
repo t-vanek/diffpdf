@@ -39,7 +39,7 @@ public sealed class BranchService(
     IInstanceStore instances,
     IJobStore jobs,
     IFilePairTaskStore tasks,
-    IControlCheckProvisioner provisioner,
+    IAutomationProvisioner provisioner,
     IScopeConfigurationProvisioner configProvisioner,
     ITriggerProvisioner triggerProvisioner,
     ITriggerEventPublisher events,
@@ -98,7 +98,7 @@ public sealed class BranchService(
         // best-effort so it never fails the create; suppressed when autoProvision is false.
         if (autoProvision)
         {
-            await provisioner.EnsureBranchChecksAsync(created.Key, ct);
+            await provisioner.EnsureBranchAutomationsAsync(created.Key, ct);
             await configProvisioner.EnsureBranchConfigAsync(created.Id, ct);
         }
 
@@ -186,7 +186,7 @@ public sealed class BranchService(
 
         await branches.DeleteByKeyAsync(branchKey, ct);
         // Remove the auto-provisioned readiness check, the branch config and the queue lock so nothing outlives the branch.
-        await provisioner.RemoveBranchChecksAsync(branchKey, ct);
+        await provisioner.RemoveBranchAutomationsAsync(branchKey, ct);
         await configProvisioner.RemoveBranchConfigAsync(branch.Id, ct);
         dispatchLocks.Remove(branch.Id);
         metrics.RemoveBranch(branch.Id);

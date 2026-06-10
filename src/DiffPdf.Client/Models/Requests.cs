@@ -68,35 +68,53 @@ public sealed record SingleComparisonRequest
     public ComparisonOptions Options { get; init; } = new();
 }
 
-/// <summary>Create a control check (the unified control/monitoring mechanism).</summary>
-public sealed record CreateCheckRequest
+/// <summary>One step of an automation's pipeline.</summary>
+public sealed record AutomationStepInput
+{
+    public required AutomationStepType Type { get; init; }
+    public string? Name { get; init; }
+    public IReadOnlyDictionary<string, string>? Parameters { get; init; }
+}
+
+/// <summary>Create an automation (triggers + ordered step pipeline + execution policy).</summary>
+public sealed record CreateAutomationRequest
 {
     public required string Key { get; init; }
     public string? Name { get; init; }
-    public required CheckType Type { get; init; }
-    public CheckScopeKind ScopeKind { get; init; } = CheckScopeKind.Global;
+    public required IReadOnlyList<AutomationStepInput> Steps { get; init; }
+    public AutomationScopeKind ScopeKind { get; init; } = AutomationScopeKind.Global;
     public string? BranchKey { get; init; }
     public string? InstanceKey { get; init; }
     public string? Cron { get; init; }
     public int? IntervalSeconds { get; init; }
-    public IReadOnlyDictionary<string, string>? Parameters { get; init; }
+    public IReadOnlyList<NotificationEvent>? EventTriggers { get; init; }
+    public int EventDebounceSeconds { get; init; } = 60;
+    public int TimeoutSeconds { get; init; } = 600;
+    public int MaxAttempts { get; init; } = 1;
+    public int RetryDelaySeconds { get; init; } = 30;
+    public int FailureThreshold { get; init; } = 3;
     public IReadOnlyList<NotificationEvent>? Events { get; init; }
     public bool Enabled { get; init; } = true;
 }
 
-/// <summary>Update a control check. <see cref="Version"/> guards against concurrent edits (409 on mismatch).</summary>
-public sealed record UpdateCheckRequest
+/// <summary>Update an automation. <see cref="Version"/> guards against concurrent edits (409 on mismatch).</summary>
+public sealed record UpdateAutomationRequest
 {
     public required string Key { get; init; }
     public string? Name { get; init; }
-    public required CheckType Type { get; init; }
+    public required IReadOnlyList<AutomationStepInput> Steps { get; init; }
     public required long Version { get; init; }
-    public CheckScopeKind ScopeKind { get; init; } = CheckScopeKind.Global;
+    public AutomationScopeKind ScopeKind { get; init; } = AutomationScopeKind.Global;
     public string? BranchKey { get; init; }
     public string? InstanceKey { get; init; }
     public string? Cron { get; init; }
     public int? IntervalSeconds { get; init; }
-    public IReadOnlyDictionary<string, string>? Parameters { get; init; }
+    public IReadOnlyList<NotificationEvent>? EventTriggers { get; init; }
+    public int EventDebounceSeconds { get; init; } = 60;
+    public int TimeoutSeconds { get; init; } = 600;
+    public int MaxAttempts { get; init; } = 1;
+    public int RetryDelaySeconds { get; init; } = 30;
+    public int FailureThreshold { get; init; } = 3;
     public IReadOnlyList<NotificationEvent>? Events { get; init; }
     public bool Enabled { get; init; } = true;
 }

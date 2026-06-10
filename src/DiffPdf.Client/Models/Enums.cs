@@ -79,7 +79,7 @@ public enum IgnoreUnit
     Points,
 }
 
-/// <summary>The kind of event a notification subscription can fire on (batch outcome or control-check result).</summary>
+/// <summary>The kind of event a notification subscription can fire on (batch outcome or automation result).</summary>
 public enum NotificationEvent
 {
     Completed,
@@ -88,13 +88,14 @@ public enum NotificationEvent
     ReadinessFailed,
     HealthDegraded,
     StructureDrift,
-    CheckRecovered,
+    AutomationRecovered,
     JobStalled,
     CompletedWithErrors,
+    AutomationFailing,
 }
 
-/// <summary>What a control check does.</summary>
-public enum CheckType
+/// <summary>What one automation step does.</summary>
+public enum AutomationStepType
 {
     Readiness,
     Health,
@@ -104,20 +105,28 @@ public enum CheckType
     ScheduledComparison,
 }
 
-/// <summary>How widely a control check applies.</summary>
-public enum CheckScopeKind
+/// <summary>How widely an automation applies.</summary>
+public enum AutomationScopeKind
 {
     Global,
     Branch,
     Instance,
 }
 
-/// <summary>Outcome of one control-check run.</summary>
-public enum CheckRunOutcome
+/// <summary>Outcome of one automation run (or one step).</summary>
+public enum AutomationRunOutcome
 {
     Ok,
     Warning,
     Failed,
+}
+
+/// <summary>What caused an automation run to start.</summary>
+public enum AutomationTriggerKind
+{
+    Schedule,
+    Event,
+    Manual,
 }
 
 /// <summary>The kind of action a trigger performs.</summary>

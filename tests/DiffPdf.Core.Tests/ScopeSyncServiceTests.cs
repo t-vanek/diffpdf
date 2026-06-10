@@ -23,7 +23,7 @@ public class ScopeSyncServiceTests : IDisposable
         var connector = new PlatformShareConnector(net, NullLogger<PlatformShareConnector>.Instance);
         var structure = new InstanceStructureService(resolver, connector, NullLogger<InstanceStructureService>.Instance);
         return new ScopeSyncService(resolver, connector, _branches, _instances, structure,
-            new NoopControlCheckProvisioner(), Options.Create(opt), NullLogger<ScopeSyncService>.Instance);
+            new NoopAutomationProvisioner(), Options.Create(opt), NullLogger<ScopeSyncService>.Instance);
     }
 
     private void MakeInstanceFolders(string branch, string instance, params string[] subfolders)
