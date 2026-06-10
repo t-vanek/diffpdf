@@ -1,4 +1,6 @@
 using System.Collections.Concurrent;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using DiffPdf.Core.Models;
 using DiffPdf.Core.Storage;
 
@@ -23,6 +25,21 @@ public sealed class InMemoryJobStore : IJobStore
 
     public Task<ComparisonJob?> GetAsync(Guid id, CancellationToken ct = default) =>
         Task.FromResult(_jobs.TryGetValue(id, out var job) ? job : null);
+
+    // Mirrors the SQL store's DiffPdfJson (Web defaults + string enums + omit nulls), so the raw report served
+    // in dev/in-memory mode is byte-compatible with what the SQL Server store persists and serves.
+    private static readonly JsonSerializerOptions ReportJsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        Converters = { new JsonStringEnumConverter() },
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
+
+    public Task<JobReportRaw?> GetReportRawAsync(Guid id, CancellationToken ct = default)
+    {
+        if (!_jobs.TryGetValue(id, out var job)) return Task.FromResult<JobReportRaw?>(null);
+        string? json = job.Report is null ? null : JsonSerializer.Serialize(job.Report, ReportJsonOptions);
+        return Task.FromResult<JobReportRaw?>(new JobReportRaw(job.Status, job.Version, json));
+    }
 
     public Task<IReadOnlyList<ComparisonJob>> ListAsync(JobListQuery query, CancellationToken ct = default)
     {

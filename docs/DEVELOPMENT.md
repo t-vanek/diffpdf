@@ -206,6 +206,7 @@ Volby (`options`) nese jednorázové `POST /comparisons` i každý rozvrh.
 | `textDifferenceThreshold` | *(preset)* | Min. podíl změněných slov; `0` flagne jakoukoli změnu. |
 | `shiftTolerance` | *(preset)* | Poloměr (px) pro pohlcení sub-pixelových/AA posunů; `0` = striktně poziční. |
 | `visualClusterCellSize` | `24` | Velikost shluku zvýraznění (px); `1` = regiony po pixelech. |
+| `maxParallelPages` | `2` | Kolik stránek jedné dvojice se porovnává souběžně (`1` = sekvenčně; strop 8). Rendery dál globálně omezuje `Pdf:MaxConcurrentOperations`. |
 | `alignPages` | `true` | Zarovnat stránky podle obsahu (detekce insert/delete). |
 | `pageMatchThreshold` | `0.2` | Min. překryv slov, aby šlo o tutéž změněnou stránku (vs add+remove). |
 | `detectBlankPages` | `true` | Hlásit přechody prázdná/neprázdná. |

@@ -48,6 +48,10 @@ public sealed record ImageDiffResult
     /// <summary>Bounding boxes (in pixels, top-left origin) of clustered differences.</summary>
     public IReadOnlyList<RectangleD> Regions { get; init; } = [];
 
-    /// <summary>Optional visualization with differences highlighted (PNG bytes).</summary>
-    public byte[]? DiffImagePng { get; init; }
+    /// <summary>Whether the old page is visually blank — evaluated on the same decode the diff already paid
+    /// for (see <see cref="ComparisonOptions.BlankPageThreshold"/>), so the engine need not re-decode.</summary>
+    public bool OldBlank { get; init; }
+
+    /// <summary>Whether the new page is visually blank (same contract as <see cref="OldBlank"/>).</summary>
+    public bool NewBlank { get; init; }
 }

@@ -404,8 +404,14 @@ public partial class InstancesViewModel : PageViewModel
             return;
         var client = _session.Require();
 
-        var readiness = await client.GetReadinessAsync(branch.Key, instance.Key, sampleSize: 10);
-        var stats = await client.GetInstanceStatsAsync(branch.Key, instance.Key);
+        // Two independent server round-trips (each handled in its own request scope) — fire them together so the
+        // panel waits on the slower one (the readiness folder scan), not the sum of both. The staleness guard
+        // below still discards the results if the selection moved on meanwhile.
+        var readinessTask = client.GetReadinessAsync(branch.Key, instance.Key, sampleSize: 10);
+        var statsTask = client.GetInstanceStatsAsync(branch.Key, instance.Key);
+        await Task.WhenAll(readinessTask, statsTask);
+        var readiness = await readinessTask;
+        var stats = await statsTask;
 
         // Selection moved on while we loaded → discard these now-stale results; the current selection's own
         // load populates the panel. (OnSelectedRowChanged already cleared Stats on the change.)

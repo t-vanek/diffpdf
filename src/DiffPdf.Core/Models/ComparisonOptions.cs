@@ -130,6 +130,16 @@ public sealed record ComparisonOptions
     /// </summary>
     public double PageMatchThreshold { get; init; } = 0.2;
 
+    // ---- Engine parallelism ----
+
+    /// <summary>
+    /// How many page pairs of one document comparison run concurrently (1 = strictly sequential).
+    /// Renders are additionally bounded by the process-wide render limiter
+    /// (<c>Pdf:MaxConcurrentOperations</c>); each in-flight page holds two rendered pages in memory,
+    /// so the engine clamps this to at most 8.
+    /// </summary>
+    public int MaxParallelPages { get; init; } = 2;
+
     // ---- Blank page detection ----
 
     public bool DetectBlankPages { get; init; } = true;

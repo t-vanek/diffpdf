@@ -109,4 +109,15 @@ public interface IJobStore
 
     /// <summary>Counts jobs grouped by status (for the operational backlog view). Doubles as a cheap DB ping.</summary>
     Task<IReadOnlyDictionary<JobStatus, int>> CountByStatusAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Raw report projection for the report endpoint: status + version + the report JSON exactly as persisted.
+    /// The stored JSON is written with the same Web-defaults serializer the HTTP layer uses, so the endpoint can
+    /// return it verbatim — no request/report deserialization for a potentially multi-MB payload. Null when the
+    /// job does not exist; <see cref="JobReportRaw.ReportJson"/> is null until the job completes.
+    /// </summary>
+    Task<JobReportRaw?> GetReportRawAsync(Guid id, CancellationToken ct = default);
 }
+
+/// <summary>Raw report projection — see <see cref="IJobStore.GetReportRawAsync"/>.</summary>
+public sealed record JobReportRaw(JobStatus Status, long Version, string? ReportJson);
