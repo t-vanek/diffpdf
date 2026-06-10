@@ -23,6 +23,13 @@ public sealed class SqlServerJobStore(DiffPdfDbContext db, EntityMapper mapper) 
         return entity is null ? null : mapper.ToDomain(entity);
     }
 
+    public async Task<IReadOnlyList<Guid>> ListBranchIdsWithPendingJobsAsync(CancellationToken ct = default) =>
+        await db.Jobs.AsNoTracking()
+            .Where(j => j.Status == "Queued" || j.Status == "Draft")
+            .Select(j => j.BranchId)
+            .Distinct()
+            .ToListAsync(ct);
+
     public async Task<JobReportRaw?> GetReportRawAsync(Guid id, CancellationToken ct = default)
     {
         // Scalar projection on purpose: the full GetAsync would deserialize request_json + report_json just so

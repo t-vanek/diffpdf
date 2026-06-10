@@ -65,7 +65,6 @@ public sealed class BranchQueueDispatcherService(
             return;
 
         await using var scope = scopeFactory.CreateAsyncScope();
-        var branches = scope.ServiceProvider.GetRequiredService<IBranchStore>();
         var jobs = scope.ServiceProvider.GetRequiredService<IJobStore>();
         var dispatcher = scope.ServiceProvider.GetRequiredService<IBranchQueueDispatcher>();
         var bus = scope.ServiceProvider.GetRequiredService<IMessageBus>();
@@ -122,13 +121,15 @@ public sealed class BranchQueueDispatcherService(
             logger.LogWarning("Re-dispatched {Count} stranded Queued pair(s) under stale Running jobs.", stranded.Count);
         }
 
-        // Advance every branch (per-branch isolation: one failing branch never blocks the rest of the tick).
-        foreach (var branch in await branches.ListAsync(ct))
+        // Advance only branches that actually have a pending job — one query instead of a dispatch probe per
+        // branch (an idle branch has nothing to release or re-kick; reactive dispatch covers the rest).
+        // Per-branch isolation: one failing branch never blocks the rest of the tick.
+        foreach (var branchId in await jobs.ListBranchIdsWithPendingJobsAsync(ct))
         {
             ct.ThrowIfCancellationRequested();
-            try { await dispatcher.DispatchBranchAsync(branch.Id, ct); }
+            try { await dispatcher.DispatchBranchAsync(branchId, ct); }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
-            catch (Exception ex) { logger.LogWarning(ex, "Branch {Branch} dispatch failed in tick.", branch.Key); }
+            catch (Exception ex) { logger.LogWarning(ex, "Branch {BranchId} dispatch failed in tick.", branchId); }
         }
     }
 }

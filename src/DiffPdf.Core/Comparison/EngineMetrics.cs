@@ -14,7 +14,7 @@ internal static class EngineMetrics
 {
     public const string MeterName = "DiffPdf.Engine";
 
-    public const string Probe = "probe";
+    /// <summary>Covers the combined probe + text extraction (one document open per side).</summary>
     public const string Extract = "extract";
     public const string TextDiff = "text.diff";
     public const string PixelCompare = "pixel.compare";

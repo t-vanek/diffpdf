@@ -31,10 +31,16 @@ public sealed class ComparisonEngine(
         string? artifactDirectory = null,
         CancellationToken ct = default)
     {
-        long probeStart = Stopwatch.GetTimestamp();
-        var oldInfo = textExtractor.Probe(oldPath);
-        var newInfo = textExtractor.Probe(newPath);
-        EngineMetrics.Record(EngineMetrics.Probe, probeStart);
+        // One document open per side covers probe + extraction, and the two sides run concurrently. An
+        // unreadable pair pays one extraction it won't use (the rare error path); every healthy pair saves
+        // a second open + page pass per side — decisive for UNC inputs.
+        long extractStart = Stopwatch.GetTimestamp();
+        var oldExtractTask = textExtractor.ProbeAndExtractAsync(oldPath, options.Pages, ct);
+        var newExtractTask = textExtractor.ProbeAndExtractAsync(newPath, options.Pages, ct);
+        await Task.WhenAll(oldExtractTask, newExtractTask);
+        var (oldInfo, oldText) = oldExtractTask.Result;
+        var (newInfo, newText) = newExtractTask.Result;
+        EngineMetrics.Record(EngineMetrics.Extract, extractStart);
 
         // Hard read errors on either side: no comparison possible.
         if (!oldInfo.IsComparable || !newInfo.IsComparable)
@@ -51,11 +57,6 @@ public sealed class ComparisonEngine(
                 Error = FormatError(oldInfo, newInfo),
             };
         }
-
-        long extractStart = Stopwatch.GetTimestamp();
-        var oldText = await textExtractor.ExtractAsync(oldPath, options.Pages, ct);
-        var newText = await textExtractor.ExtractAsync(newPath, options.Pages, ct);
-        EngineMetrics.Record(EngineMetrics.Extract, extractStart);
 
         var contentErrors = new List<ContentError>();
         if (options.DetectContentErrors)

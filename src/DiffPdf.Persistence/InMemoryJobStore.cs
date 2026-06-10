@@ -34,6 +34,13 @@ public sealed class InMemoryJobStore : IJobStore
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
+    public Task<IReadOnlyList<Guid>> ListBranchIdsWithPendingJobsAsync(CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<Guid>>(_jobs.Values
+            .Where(j => j.Status is JobStatus.Queued or JobStatus.Draft)
+            .Select(j => j.BranchId)
+            .Distinct()
+            .ToList());
+
     public Task<JobReportRaw?> GetReportRawAsync(Guid id, CancellationToken ct = default)
     {
         if (!_jobs.TryGetValue(id, out var job)) return Task.FromResult<JobReportRaw?>(null);

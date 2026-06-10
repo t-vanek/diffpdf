@@ -9,7 +9,24 @@ public interface IPdfTextExtractor
     DocumentInfo Probe(string path);
 
     Task<IReadOnlyList<PageText>> ExtractAsync(string path, PageRange range, CancellationToken ct = default);
+
+    /// <summary>
+    /// Probe + extraction from a single document open (and a single page pass): returns the document
+    /// status/geometry together with the positioned text; extraction is skipped when the document is not
+    /// comparable. The default routes through <see cref="Probe"/> + <see cref="ExtractAsync"/> (two opens)
+    /// so existing implementations keep working — real extractors override it with a one-open implementation.
+    /// </summary>
+    async Task<DocumentExtraction> ProbeAndExtractAsync(string path, PageRange range, CancellationToken ct = default)
+    {
+        var info = Probe(path);
+        IReadOnlyList<PageText> pages = info.IsComparable ? await ExtractAsync(path, range, ct) : [];
+        return new DocumentExtraction(info, pages);
+    }
 }
+
+/// <summary>Result of <see cref="IPdfTextExtractor.ProbeAndExtractAsync"/>: document status + extracted pages
+/// (empty when the document is not comparable).</summary>
+public sealed record DocumentExtraction(DocumentInfo Info, IReadOnlyList<PageText> Pages);
 
 /// <summary>Renders PDF pages to raster images.</summary>
 public interface IPdfPageRenderer

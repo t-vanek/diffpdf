@@ -34,7 +34,7 @@ public sealed class VectorHighlightPdfWriter : IHighlightedPdfWriter
         catch { return null; }
     }
 
-    public Task WriteAsync(
+    public async Task WriteAsync(
         string outputPath, IReadOnlyList<DiffSpread> spreads, HighlightLayout layout, CancellationToken ct = default)
     {
         using var document = new PdfDocument();
@@ -50,8 +50,13 @@ public sealed class VectorHighlightPdfWriter : IHighlightedPdfWriter
         }
 
         Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
-        document.Save(outputPath);
-        return Task.CompletedTask;
+        // PdfSharp can only serialize synchronously (into memory); the disk write — reports/ may be a slow
+        // network share — goes through real async IO so it doesn't pin a worker thread on Save.
+        using var buffer = new MemoryStream();
+        document.Save(buffer, false); // keep the stream open for the copy below
+        buffer.Position = 0;
+        await using var file = new FileStream(outputPath, FileMode.Create, FileAccess.Write, FileShare.None, 81920, useAsync: true);
+        await buffer.CopyToAsync(file, ct);
     }
 
     private static void DrawSingle(PdfDocument document, DiffSpread spread)
