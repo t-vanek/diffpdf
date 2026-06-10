@@ -111,8 +111,9 @@ Stropy a cache hot path (appsettings / env, např. `Worker__MaxFilePairsPerJob`)
 | volba porovnání `maxParallelPages` | `2` | Souběžné stránky jedné dvojice — viz [volby porovnání](#volby-porovnání). |
 
 Kde čas mizí, ukazují fázové metriky: meter `DiffPdf.Engine` (histogram
-`diffpdf.engine.phase.duration`, tag `phase` = `probe` / `extract` / `text.diff` / `pixel.compare` /
-`blank.detect` / `highlight.write`) doplňuje `DiffPdf.Render` a `DiffPdf.Compare` na `/metrics`.
+`diffpdf.engine.phase.duration`, tag `phase` = `extract` (probe + extrakce textu) / `text.diff` /
+`pixel.compare` / `blank.detect` / `highlight.write`) doplňuje `DiffPdf.Render` a `DiffPdf.Compare`
+na `/metrics`.
 
 ### Schéma databáze
 

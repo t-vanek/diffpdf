@@ -87,10 +87,19 @@ public partial class SubscriptionsViewModel : PageViewModel
     public string BranchScopeSummary => Summarize(BranchChoices, "Všechny větve");
     public string InstanceScopeSummary => Summarize(InstanceChoices, "Všechny instance");
 
+    /// <summary>True when the rule restricts the scope (anything ticked) — drives the dropdowns' accent look.</summary>
+    public bool HasBranchSelection => BranchChoices.Any(c => c.IsChecked);
+    public bool HasInstanceSelection => InstanceChoices.Any(c => c.IsChecked);
+
     private static string Summarize(IEnumerable<CheckableKey> choices, string allLabel)
     {
         var picked = choices.Where(c => c.IsChecked).Select(c => c.Key).ToList();
-        return picked.Count == 0 ? allLabel : string.Join(", ", picked);
+        return picked.Count switch
+        {
+            0 => allLabel,
+            1 or 2 => string.Join(", ", picked),
+            _ => $"Vybráno: {picked.Count}",
+        };
     }
 
     // Events — Úlohy
@@ -124,6 +133,9 @@ public partial class SubscriptionsViewModel : PageViewModel
         HasNoRules = Rules.Count == 0;
     }
 
+    /// <summary>Instance keys per branch — feeds the branch-driven narrowing of the instance offer.</summary>
+    private readonly Dictionary<string, SortedSet<string>> _instancesByBranch = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>Loads the branch + (distinct) instance keys that back the scope multi-selects, preserving ticks.</summary>
     private async Task LoadScopeChoicesAsync()
     {
@@ -135,19 +147,59 @@ public partial class SubscriptionsViewModel : PageViewModel
         foreach (var b in branches)
             BranchChoices.Add(Track(new CheckableKey(b.Key) { IsChecked = checkedBranches.Contains(b.Key) }, OnBranchCheckChanged));
 
-        // Instance keys are matched flat (key-only), so collect the distinct set across all branches.
-        var instanceKeys = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+        // Instance keys are matched flat (key-only) on the server; remember them per branch so the
+        // instance dropdown can narrow its offer to the selected branches.
+        _instancesByBranch.Clear();
         foreach (var b in branches)
+        {
+            var keys = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var inst in await client.ListInstancesAsync(b.Key))
-                instanceKeys.Add(inst.Key);
+                keys.Add(inst.Key);
+            _instancesByBranch[b.Key] = keys;
+        }
 
-        var checkedInstances = InstanceChoices.Where(c => c.IsChecked).Select(c => c.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        InstanceChoices.Clear();
-        foreach (var k in instanceKeys)
-            InstanceChoices.Add(Track(new CheckableKey(k) { IsChecked = checkedInstances.Contains(k) }, OnInstanceCheckChanged));
-
+        RebuildInstanceChoices();
         OnPropertyChanged(nameof(BranchScopeSummary));
+        OnPropertyChanged(nameof(HasBranchSelection));
+    }
+
+    /// <summary>
+    /// The instance offer follows the branch selection: with branches restricted, only their instances are
+    /// listed. Any already-ticked key stays listed (and ticked) even when its branch is filtered out, so
+    /// narrowing branches never silently drops part of a saved rule.
+    /// </summary>
+    private void RebuildInstanceChoices()
+    {
+        var pickedBranches = BranchChoices.Where(c => c.IsChecked).Select(c => c.Key)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var visible = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (branch, keys) in _instancesByBranch)
+        {
+            if (pickedBranches.Count == 0 || pickedBranches.Contains(branch))
+                visible.UnionWith(keys);
+        }
+
+        var ticked = InstanceChoices.Where(c => c.IsChecked).Select(c => c.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        visible.UnionWith(ticked);
+
+        InstanceChoices.Clear();
+        foreach (var k in visible)
+            InstanceChoices.Add(Track(new CheckableKey(k) { IsChecked = ticked.Contains(k) }, OnInstanceCheckChanged));
+
         OnPropertyChanged(nameof(InstanceScopeSummary));
+        OnPropertyChanged(nameof(HasInstanceSelection));
+    }
+
+    /// <summary>A saved rule may reference instance keys outside the current offer (deleted instance, branch
+    /// filtered out) — list them anyway so editing the rule shows, and can untick, its full selection.</summary>
+    private void EnsureInstanceChoices(IReadOnlyList<string> keys)
+    {
+        foreach (var k in keys)
+        {
+            if (!InstanceChoices.Any(c => string.Equals(c.Key, k, StringComparison.OrdinalIgnoreCase)))
+                InstanceChoices.Add(Track(new CheckableKey(k), OnInstanceCheckChanged));
+        }
     }
 
     // Live-update the dropdown summaries as the user ticks scope checkboxes.
@@ -159,12 +211,17 @@ public partial class SubscriptionsViewModel : PageViewModel
 
     private void OnBranchCheckChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(CheckableKey.IsChecked)) OnPropertyChanged(nameof(BranchScopeSummary));
+        if (e.PropertyName != nameof(CheckableKey.IsChecked)) return;
+        OnPropertyChanged(nameof(BranchScopeSummary));
+        OnPropertyChanged(nameof(HasBranchSelection));
+        RebuildInstanceChoices(); // the instance offer follows the branch selection
     }
 
     private void OnInstanceCheckChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(CheckableKey.IsChecked)) OnPropertyChanged(nameof(InstanceScopeSummary));
+        if (e.PropertyName != nameof(CheckableKey.IsChecked)) return;
+        OnPropertyChanged(nameof(InstanceScopeSummary));
+        OnPropertyChanged(nameof(HasInstanceSelection));
     }
 
     // Selecting a rule loads it into the editor (edit mode); clearing the selection leaves the editor as-is.
@@ -185,6 +242,7 @@ public partial class SubscriptionsViewModel : PageViewModel
         foreach (var r in s.Recipients) Recipients.Add(r);
 
         SetChecks(BranchChoices, s.BranchKeys);
+        EnsureInstanceChoices(s.InstanceKeys);
         SetChecks(InstanceChoices, s.InstanceKeys);
         ApplyEvents(s.Events);
         Info = $"Úprava pravidla: {(string.IsNullOrWhiteSpace(s.Name) ? s.Id.ToString() : s.Name)}";

@@ -53,6 +53,9 @@
   <Style Selector="TextBlock.kpiSub">
     <Setter Property="Foreground" Value="{DynamicResource InkFaint}"/>
     <Setter Property="FontSize" Value="11"/>
+    <!-- Subs carry one-liners that can outgrow their card (e.g. "verze 1.0.0+<git-sha>") — trim with an
+         ellipsis instead of a hard mid-glyph clip; the full value belongs in a ToolTip at the usage site. -->
+    <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
   </Style>
 
   <!-- Table header / cell -->
@@ -310,6 +313,11 @@
   </Style>
   <Style Selector="Button.combo:pressed /template/ Border#bg">
     <Setter Property="Background" Value="{DynamicResource Field}"/>
+  </Style>
+  <!-- Restricted state (anything ticked in the multi-select): accent border = an active scope filter,
+       mirroring how a focused input highlights. Toggled from MultiSelectDropDown's code-behind. -->
+  <Style Selector="Button.combo.restricted /template/ Border#bg">
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
   </Style>
 
   <!-- Flyout popup skinned to match the app's cards (opt in via FlyoutPresenterClasses="scopeFlyout"); the

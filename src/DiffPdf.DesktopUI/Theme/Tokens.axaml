@@ -35,6 +35,12 @@
   <CornerRadius x:Key="RadMd">10</CornerRadius>
   <CornerRadius x:Key="RadPill">999</CornerRadius>
 
+  <!-- Disconnected frost layer (MainWindow) — acrylic tint between Bg and Surface, plus the
+       opaque fallback (= Bg) used when the OS grants no transparency. Kept as Colors because
+       ExperimentalAcrylicMaterial takes Color, not Brush. -->
+  <Color x:Key="DisconnectedTintColor">#022A38</Color>
+  <Color x:Key="DisconnectedTintFallbackColor">#02222E</Color>
+
   <!-- Surfaces & lines — re-based on the brand Sherpa Blue navy. Surface is the exact
        brand colour; elevation goes Bg → Surface → SurfaceAlt. -->
   <SolidColorBrush x:Key="Bg"         Color="#02222E"/>

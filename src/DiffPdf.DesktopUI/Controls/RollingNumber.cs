@@ -13,6 +13,10 @@ namespace DiffPdf.DesktopUI.Controls;
 /// </summary>
 public class RollingNumber : TextBlock
 {
+    // Style as a plain TextBlock: without this, selectors like "TextBlock.kpiValue" skip the control
+    // (Avalonia matches the concrete style key), so the dashboard KPI typography silently wouldn't apply.
+    protected override Type StyleKeyOverride => typeof(TextBlock);
+
     public static readonly StyledProperty<double> ValueProperty =
         AvaloniaProperty.Register<RollingNumber, double>(nameof(Value));
 

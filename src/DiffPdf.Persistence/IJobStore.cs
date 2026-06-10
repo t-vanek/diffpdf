@@ -111,6 +111,12 @@ public interface IJobStore
     Task<IReadOnlyDictionary<JobStatus, int>> CountByStatusAsync(CancellationToken ct = default);
 
     /// <summary>
+    /// Branch ids that currently have a pending (Queued/Draft) job — the dispatcher's per-tick work list, so an
+    /// idle fleet of branches costs one query instead of one dispatch probe per branch.
+    /// </summary>
+    Task<IReadOnlyList<Guid>> ListBranchIdsWithPendingJobsAsync(CancellationToken ct = default);
+
+    /// <summary>
     /// Raw report projection for the report endpoint: status + version + the report JSON exactly as persisted.
     /// The stored JSON is written with the same Web-defaults serializer the HTTP layer uses, so the endpoint can
     /// return it verbatim — no request/report deserialization for a potentially multi-MB payload. Null when the

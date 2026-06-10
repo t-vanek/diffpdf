@@ -1,0 +1,45 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:DiffPdf.DesktopUI.ViewModels"
+             x:Class="DiffPdf.DesktopUI.Controls.MultiSelectDropDown"
+             x:Name="Root">
+
+  <!-- Trigger: a combo-look button carrying the selection summary; the flyout is the "opened field". -->
+  <Button x:Name="Trigger" Classes="combo">
+    <Grid ColumnDefinitions="*,Auto">
+      <TextBlock Grid.Column="0" Text="{Binding #Root.Summary}" Foreground="{DynamicResource Ink}"
+                 TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+      <TextBlock Grid.Column="1" Text="▾" FontSize="11" Margin="8,0,0,0" VerticalAlignment="Center"
+                 Foreground="{DynamicResource InkDim}"/>
+    </Grid>
+    <Button.Flyout>
+      <Flyout Placement="BottomEdgeAlignedLeft" FlyoutPresenterClasses="scopeFlyout">
+        <DockPanel x:Name="FlyoutRoot" MaxWidth="560">
+          <TextBlock DockPanel.Dock="Top" Classes="caption" Margin="6,4,6,8" TextWrapping="Wrap"
+                     Text="{Binding #Root.Hint}"
+                     IsVisible="{Binding #Root.Hint, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+
+          <!-- Empty offer (e.g. no branches exist yet) — visibility maintained from code-behind on open. -->
+          <TextBlock x:Name="EmptyLabel" DockPanel.Dock="Top" Margin="6,2,6,6" TextWrapping="Wrap"
+                     Foreground="{DynamicResource InkFaint}" Text="{Binding #Root.EmptyText}" IsVisible="False"/>
+
+          <!-- "Empty selection = everything" semantics → one clear action instead of a vše/žádná pair. -->
+          <Button DockPanel.Dock="Bottom" Classes="ghost" Margin="2,8,2,2" HorizontalAlignment="Stretch"
+                  HorizontalContentAlignment="Center" Content="Zrušit výběr"
+                  IsVisible="{Binding #Root.HasSelection}" Click="OnClearClick"/>
+
+          <ScrollViewer MaxHeight="280">
+            <ItemsControl ItemsSource="{Binding #Root.ItemsSource}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:CheckableKey">
+                  <CheckBox Content="{Binding Key}" IsChecked="{Binding IsChecked}" Padding="6,3" Margin="0,1"
+                            HorizontalAlignment="Stretch"/>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+        </DockPanel>
+      </Flyout>
+    </Button.Flyout>
+  </Button>
+</UserControl>

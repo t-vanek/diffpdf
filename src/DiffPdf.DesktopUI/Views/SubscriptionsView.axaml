@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:DiffPdf.DesktopUI.ViewModels"
+             xmlns:controls="using:DiffPdf.DesktopUI.Controls"
              x:Class="DiffPdf.DesktopUI.Views.SubscriptionsView"
              x:DataType="vm:SubscriptionsViewModel"
              x:Name="Root">
@@ -93,51 +94,26 @@
             <TextBlock Text="Pravidlo musí mít aspoň jednoho příjemce." Classes="caption"/>
           </StackPanel>
 
-          <!-- Rozsah: větve + instance — combo-style rozbalovátko s víc výběrem (prázdné = vše). -->
+          <!-- Rozsah: větve + instance — multi-select dropdown (prázdný výběr = pravidlo platí všude);
+               nabídka instancí se zužuje podle vybraných větví. -->
           <StackPanel Spacing="4">
             <TextBlock Text="Větve" FontWeight="SemiBold"/>
-            <Button Classes="combo" ToolTip.Tip="Vyber větve (prázdné = všechny)">
-              <Grid ColumnDefinitions="*,Auto">
-                <TextBlock Grid.Column="0" Text="{Binding BranchScopeSummary}" Foreground="{DynamicResource Ink}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
-                <TextBlock Grid.Column="1" Text="▾" FontSize="11" Margin="8,0,0,0" VerticalAlignment="Center" Foreground="{DynamicResource InkDim}"/>
-              </Grid>
-              <Button.Flyout>
-                <Flyout Placement="BottomEdgeAlignedLeft" FlyoutPresenterClasses="scopeFlyout">
-                  <ScrollViewer MaxHeight="260">
-                    <ItemsControl ItemsSource="{Binding BranchChoices}" MinWidth="240">
-                      <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="vm:CheckableKey">
-                          <CheckBox Content="{Binding Key}" IsChecked="{Binding IsChecked}" Padding="6,3" Margin="0,1"/>
-                        </DataTemplate>
-                      </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                  </ScrollViewer>
-                </Flyout>
-              </Button.Flyout>
-            </Button>
+            <controls:MultiSelectDropDown ItemsSource="{Binding BranchChoices}"
+                                          Summary="{Binding BranchScopeSummary}"
+                                          HasSelection="{Binding HasBranchSelection}"
+                                          Hint="Prázdný výběr = pravidlo platí pro všechny větve."
+                                          EmptyText="Zatím nejsou žádné větve."
+                                          ToolTip.Tip="Vyber větve (prázdné = všechny)"/>
           </StackPanel>
 
           <StackPanel Spacing="4">
             <TextBlock Text="Instance" FontWeight="SemiBold"/>
-            <Button Classes="combo" ToolTip.Tip="Vyber instance (prázdné = všechny)">
-              <Grid ColumnDefinitions="*,Auto">
-                <TextBlock Grid.Column="0" Text="{Binding InstanceScopeSummary}" Foreground="{DynamicResource Ink}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
-                <TextBlock Grid.Column="1" Text="▾" FontSize="11" Margin="8,0,0,0" VerticalAlignment="Center" Foreground="{DynamicResource InkDim}"/>
-              </Grid>
-              <Button.Flyout>
-                <Flyout Placement="BottomEdgeAlignedLeft" FlyoutPresenterClasses="scopeFlyout">
-                  <ScrollViewer MaxHeight="260">
-                    <ItemsControl ItemsSource="{Binding InstanceChoices}" MinWidth="240">
-                      <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="vm:CheckableKey">
-                          <CheckBox Content="{Binding Key}" IsChecked="{Binding IsChecked}" Padding="6,3" Margin="0,1"/>
-                        </DataTemplate>
-                      </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                  </ScrollViewer>
-                </Flyout>
-              </Button.Flyout>
-            </Button>
+            <controls:MultiSelectDropDown ItemsSource="{Binding InstanceChoices}"
+                                          Summary="{Binding InstanceScopeSummary}"
+                                          HasSelection="{Binding HasInstanceSelection}"
+                                          Hint="Prázdný výběr = všechny instance. Nabídka se řídí vybranými větvemi."
+                                          EmptyText="Vybrané větve nemají žádné instance."
+                                          ToolTip.Tip="Vyber instance (prázdné = všechny)"/>
           </StackPanel>
 
           <!-- Události -->

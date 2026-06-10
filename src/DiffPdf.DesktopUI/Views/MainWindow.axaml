@@ -25,8 +25,9 @@
          out as a modal. Margin top 48 keeps the title bar crisp. -->
     <ExperimentalAcrylicBorder IsVisible="{Binding !IsConnected}" Margin="0,48,0,0">
       <ExperimentalAcrylicBorder.Material>
-        <ExperimentalAcrylicMaterial BackgroundSource="Digger" TintColor="#022A38"
-                                     TintOpacity="0.62" MaterialOpacity="0.5" FallbackColor="#02222E"/>
+        <ExperimentalAcrylicMaterial BackgroundSource="Digger" TintColor="{StaticResource DisconnectedTintColor}"
+                                     TintOpacity="0.62" MaterialOpacity="0.5"
+                                     FallbackColor="{StaticResource DisconnectedTintFallbackColor}"/>
       </ExperimentalAcrylicBorder.Material>
     </ExperimentalAcrylicBorder>
 

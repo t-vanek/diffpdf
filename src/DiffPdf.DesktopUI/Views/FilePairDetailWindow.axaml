@@ -34,9 +34,19 @@
       </DockPanel>
     </Border>
 
-    <!-- PDF náhled přes celé okno (WebView2/Edge) -->
+    <!-- PDF náhled přes celé okno (WebView2/Edge). Host je viditelný jen když je co zobrazit A engine se
+         povedlo vytvořit — neinicializovaný NativeControlHost by jinak překryl UI prázdným nativním oknem;
+         bez runtime se místo něj ukáže fallback s externím otevřením. -->
     <Panel Background="{DynamicResource Bg}">
-      <controls:WebView2Host Source="{Binding FileUri}" IsVisible="{Binding HasDiff}"/>
+      <controls:WebView2Host x:Name="PdfHost" Source="{Binding FileUri}">
+        <controls:WebView2Host.IsVisible>
+          <MultiBinding Converter="{x:Static BoolConverters.And}">
+            <Binding Path="HasDiff"/>
+            <Binding Path="IsPreviewAvailable" ElementName="PdfHost"/>
+          </MultiBinding>
+        </controls:WebView2Host.IsVisible>
+      </controls:WebView2Host>
+
       <StackPanel IsVisible="{Binding !HasDiff}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="6" MaxWidth="520">
         <TextBlock Text="Pro tuto dvojici není diff k zobrazení." Foreground="{DynamicResource InkDim}" HorizontalAlignment="Center"/>
         <TextBlock Text="{Binding PairError}" Foreground="{DynamicResource Bad}" TextWrapping="Wrap" TextAlignment="Center"
@@ -44,6 +54,25 @@
         <TextBlock Text="{Binding ContentErrorCount, StringFormat='⚠ {0} stránek s chybou v obsahu'}" Foreground="{DynamicResource Bad}"
                    HorizontalAlignment="Center" IsVisible="{Binding HasContentErrors}"/>
       </StackPanel>
+
+      <!-- Fallback: diff existuje, ale vestavěný náhled není k dispozici (chybí WebView2 Runtime). -->
+      <Border Background="{DynamicResource Bg}">
+        <Border.IsVisible>
+          <MultiBinding Converter="{x:Static BoolConverters.And}">
+            <Binding Path="HasDiff"/>
+            <Binding Path="!IsPreviewAvailable" ElementName="PdfHost"/>
+          </MultiBinding>
+        </Border.IsVisible>
+        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="10" MaxWidth="420">
+          <TextBlock Text="🗗" FontSize="32" Foreground="{DynamicResource InkFaint}" HorizontalAlignment="Center"/>
+          <TextBlock Text="Vestavěný náhled není k dispozici — vyžaduje WebView2 Runtime (součást Microsoft Edge)."
+                     Foreground="{DynamicResource InkDim}" TextAlignment="Center" TextWrapping="Wrap"/>
+          <Button Content="Otevřít diff PDF v systémovém prohlížeči" Classes="accent" HorizontalAlignment="Center"
+                  Command="{Binding OpenExternallyCommand}"/>
+          <TextBlock Text="„Uložit PDF“ v liště funguje i bez náhledu; WebView2 Runtime lze doinstalovat z webu Microsoftu."
+                     Classes="caption" TextAlignment="Center" TextWrapping="Wrap"/>
+        </StackPanel>
+      </Border>
     </Panel>
   </DockPanel>
 </Window>
