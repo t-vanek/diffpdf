@@ -29,3 +29,8 @@ samples/
 
 # Local release output from deploy/publish.ps1
 publish/
+
+# D3 Energy brand vector sources (.ai/.eps/.pdf/.svg originals) — ~2.8 MB of design
+# binaries kept locally for regenerating the logo/icon; not needed by the build, which
+# bundles only Assets/Brand/*.png|*.ico. Remove this line to version them if desired.
+src/DiffPdf.DesktopUI/Assets/Brand/source/

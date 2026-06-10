@@ -125,7 +125,20 @@
   <Style Selector="Border.badge.warn > TextBlock"><Setter Property="Foreground" Value="{DynamicResource Warn}"/></Style>
 
   <!-- ===== Buttons ===== -->
-  <!-- Primary action → Classes="accent" (FluentTheme built-in, uses SystemAccentColor). -->
+  <!-- Primary action → Classes="accent" (FluentTheme built-in, uses SystemAccentColor). The accent
+       fill is brand orange; force a Sherpa-blue foreground (OnAccent) so the label clears WCAG AA on
+       it — FluentTheme's default white text sits at only ~3:1. Targets the template's ContentPresenter
+       across states so it wins over FluentTheme's per-state foreground. -->
+  <Style Selector="Button.accent /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Foreground" Value="{DynamicResource OnAccent}"/>
+  </Style>
+  <Style Selector="Button.accent:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Foreground" Value="{DynamicResource OnAccent}"/>
+  </Style>
+  <Style Selector="Button.accent:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Foreground" Value="{DynamicResource OnAccent}"/>
+  </Style>
+
   <!-- Destructive: restrained red text rather than a full red fill. -->
   <Style Selector="Button.destructive">
     <Setter Property="Foreground" Value="{DynamicResource Bad}"/>
@@ -307,6 +320,36 @@
     <Setter Property="BorderThickness" Value="1"/>
     <Setter Property="CornerRadius" Value="{DynamicResource RadMd}"/>
     <Setter Property="Padding" Value="6"/>
+  </Style>
+
+  <!-- Data-list selection.
+       · DataGrid rows: the muddy "mica" selection is fixed at the source in Tokens.axaml, by
+         overriding the DataGrid theme's DataGridRowSelected*BackgroundBrush + *Opacity keys to a
+         solid navy (the template binds those resources, so styling PART_Root here had no effect).
+       · ListBox items (e.g. Automatizace type list): FluentTheme paints the selected item's fill
+         on the ContentPresenter, so a solid SurfaceAlt there replaces its low-opacity accent.
+         The primary nav rail (#NavList) overrides this to orange below. -->
+  <Style Selector="ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource SurfaceAlt}"/>
+  </Style>
+  <Style Selector="ListBoxItem:selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource SurfaceAlt}"/>
+  </Style>
+
+  <!-- Nav rail (MainWindow #NavList): selected item uses a clean brand-orange fill with navy
+       (OnAccent) label — vibrant and AA-readable, consistent with primary accent buttons —
+       instead of FluentTheme's muddy low-opacity accent fill on the dark navy. -->
+  <Style Selector="ListBox#NavList ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Accent}"/>
+    <Setter Property="TextElement.Foreground" Value="{DynamicResource OnAccent}"/>
+  </Style>
+  <Style Selector="ListBox#NavList ListBoxItem:selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Accent}"/>
+    <Setter Property="TextElement.Foreground" Value="{DynamicResource OnAccent}"/>
+  </Style>
+  <Style Selector="ListBox#NavList ListBoxItem:selected:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Accent}"/>
+    <Setter Property="TextElement.Foreground" Value="{DynamicResource OnAccent}"/>
   </Style>
 
 </Styles>
