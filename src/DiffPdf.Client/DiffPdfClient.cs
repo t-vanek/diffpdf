@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Net;
 using System.Net.Http.Json;
@@ -160,8 +161,29 @@ public sealed class DiffPdfClient(HttpClient http)
     public async Task<JobSummary> RetryJobAsync(Guid id, CancellationToken ct = default) =>
         (await JsonAsync<JobActionResult>(HttpMethod.Post, $"/api/v1/jobs/{id}/retry", null, ct)).Job;
 
-    public Task<BatchComparisonReport> GetReportAsync(Guid id, CancellationToken ct = default) =>
-        JsonAsync<BatchComparisonReport>(HttpMethod.Get, $"/api/v1/jobs/{id}/report", null, ct);
+    // Finished reports are immutable and the server tags them (ETag derived from the job version): remember
+    // the last few per job and revalidate with If-None-Match — a 304 skips re-downloading a multi-MB body.
+    private readonly ConcurrentDictionary<Guid, (string ETag, BatchComparisonReport Report)> _reportCache = new();
+
+    public async Task<BatchComparisonReport> GetReportAsync(Guid id, CancellationToken ct = default)
+    {
+        bool hasCached = _reportCache.TryGetValue(id, out var cached);
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/jobs/{id}/report");
+        if (hasCached) req.Headers.TryAddWithoutValidation("If-None-Match", cached.ETag);
+
+        using var resp = await http.SendAsync(req, ct);
+        if (hasCached && resp.StatusCode == HttpStatusCode.NotModified)
+            return cached.Report;
+        if (!resp.IsSuccessStatusCode) throw await ApiException(resp, ct);
+
+        var report = (await resp.Content.ReadFromJsonAsync<BatchComparisonReport>(Json, ct))!;
+        if (resp.Headers.ETag?.Tag is { } etag)
+        {
+            if (_reportCache.Count >= 8) _reportCache.Clear(); // tiny memo — a desktop session revisits few jobs
+            _reportCache[id] = (etag, report);
+        }
+        return report;
+    }
 
     public Task<IReadOnlyList<FilePairTaskSummary>> GetTasksAsync(Guid id, CancellationToken ct = default) =>
         JsonAsync<IReadOnlyList<FilePairTaskSummary>>(HttpMethod.Get, $"/api/v1/jobs/{id}/tasks", null, ct);
@@ -196,7 +218,21 @@ public sealed class DiffPdfClient(HttpClient http)
         return await resp.Content.ReadAsByteArrayAsync(ct);
     }
 
-    /// <summary>Polls a job to a terminal state and returns its report. Throws if it ends Failed/Cancelled.</summary>
+    /// <summary>
+    /// Streams a highlighted diff PDF artifact into <paramref name="destination"/> without buffering the whole
+    /// file in memory — for save-to-disk flows. The byte[] overload remains for in-memory rendering.
+    /// </summary>
+    public async Task DownloadArtifactAsync(Guid id, string relativePath, Stream destination, CancellationToken ct = default)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/jobs/{id}/artifacts/{relativePath.TrimStart('/')}");
+        using var resp = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
+        if (!resp.IsSuccessStatusCode) throw await ApiException(resp, ct);
+        await resp.Content.CopyToAsync(destination, ct);
+    }
+
+    /// <summary>Polls a job to a terminal state and returns its report. Throws if it ends Failed/Cancelled.
+    /// Without an explicit <paramref name="pollInterval"/> the poll backs off progressively (1 s → 5 s cap) —
+    /// a long batch does not deserve a request every second; an explicit interval is honoured as-is.</summary>
     public async Task<BatchComparisonReport> WaitForReportAsync(Guid jobId, TimeSpan? pollInterval = null, CancellationToken ct = default)
     {
         var delay = pollInterval ?? TimeSpan.FromSeconds(1);
@@ -212,6 +248,8 @@ public sealed class DiffPdfClient(HttpClient http)
                     throw new DiffPdfApiException(HttpStatusCode.Conflict, job.Error, $"Job {jobId} ended {job.Status}: {job.Error}");
             }
             await Task.Delay(delay, ct);
+            if (pollInterval is null)
+                delay = TimeSpan.FromTicks(Math.Min((long)(delay.Ticks * 1.5), TimeSpan.FromSeconds(5).Ticks));
         }
     }
 
