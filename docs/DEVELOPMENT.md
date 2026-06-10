@@ -97,6 +97,23 @@ Principy:
 - **Omezený paralelismus renderu** — procesový semafor (`IPdfWorkLimiter`,
   `Pdf:MaxConcurrentOperations`, default 4) omezí souběžné rendery napříč všemi joby.
 
+### Výkonové ladění (konfigurace)
+
+Stropy a cache hot path (appsettings / env, např. `Worker__MaxFilePairsPerJob`):
+
+| Klíč | Výchozí | Význam |
+|---|---|---|
+| `Worker:MaxConcurrentJobs` × `Worker:MaxFilePairsPerJob` | `2` × `2` | Součin je strop souběžně porovnávaných dvojic (paralelismus fronty `CompareFilePair`). |
+| `Pdf:MaxConcurrentOperations` | `4` | Procesový semafor souběžných renderů (ochrana CPU/RAM) napříč všemi joby. |
+| `Ghostscript:RenderBlockSize` | `8` | Kolik stránek vyrenderuje jeden gs spawn — amortizuje parsování dokumentu; `1` = spawn na stránku. |
+| `Ghostscript:RenderCacheBytes` | 128 MB | Buffer pro stránky vyrenderované blokem, než si je engine vyzvedne; `≤ 0` vypne blokový render. |
+| `Pdfium:DocumentCacheBytes` | 256 MB | Cache bytů dokumentu (PDFium potřebuje celý soubor pro každou stránku); `≤ 0` vypne. |
+| volba porovnání `maxParallelPages` | `2` | Souběžné stránky jedné dvojice — viz [volby porovnání](#volby-porovnání). |
+
+Kde čas mizí, ukazují fázové metriky: meter `DiffPdf.Engine` (histogram
+`diffpdf.engine.phase.duration`, tag `phase` = `probe` / `extract` / `text.diff` / `pixel.compare` /
+`blank.detect` / `highlight.write`) doplňuje `DiffPdf.Render` a `DiffPdf.Compare` na `/metrics`.
+
 ### Schéma databáze
 
 Tabulky `branches`, `instances`, `jobs`, `file_pair_tasks`, `comparison_schedules`,

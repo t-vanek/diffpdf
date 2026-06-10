@@ -66,21 +66,26 @@ public sealed partial class FilePairDetailViewModel : ViewModelBase
     public Task LoadAsync() => RunAsync(async () =>
     {
         if (_artifactName is null) return; // no diff → nothing to render
-        _bytes = await _session.Require().DownloadArtifactAsync(_jobId, _artifactName);
 
-        // The webview renders a local file: write the artifact to a temp PDF the window deletes on close.
+        // The webview renders a local file: stream the artifact straight into a temp PDF the window deletes
+        // on close — the preview path never holds the whole file as a byte[].
         var dir = Path.Combine(Path.GetTempPath(), "DiffPdf", "preview");
         Directory.CreateDirectory(dir);
-        _tempPath = Path.Combine(dir, $"{Guid.NewGuid():N}-{_artifactName}");
-        await File.WriteAllBytesAsync(_tempPath, _bytes);
-        FileUri = new Uri(_tempPath).AbsoluteUri;
+        var tempPath = Path.Combine(dir, $"{Guid.NewGuid():N}-{_artifactName}");
+        await using (var file = File.Create(tempPath))
+            await _session.Require().DownloadArtifactAsync(_jobId, _artifactName, file);
+        _tempPath = tempPath;
+        FileUri = new Uri(tempPath).AbsoluteUri;
     });
 
     [RelayCommand]
     private Task SaveAsync() => RunAsync(async () =>
     {
         if (_artifactName is null) throw new InvalidOperationException("Pro tuto dvojici není diff-artefakt.");
-        _bytes ??= await _session.Require().DownloadArtifactAsync(_jobId, _artifactName);
+        // Prefer the already-downloaded preview copy; fall back to a fresh download.
+        _bytes ??= _tempPath is { } p && File.Exists(p)
+            ? await File.ReadAllBytesAsync(p)
+            : await _session.Require().DownloadArtifactAsync(_jobId, _artifactName);
         var saved = await _dialogs.SaveBytesAsync(_artifactName, _bytes);
         Status = saved is null ? "Uložení zrušeno." : $"Uloženo: {saved}";
     });

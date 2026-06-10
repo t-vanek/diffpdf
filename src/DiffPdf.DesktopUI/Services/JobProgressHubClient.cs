@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Avalonia.Threading;
 using DiffPdf.Client;
 using Microsoft.AspNetCore.SignalR.Client;
@@ -49,8 +50,7 @@ public sealed class JobProgressHubClient(ServerSession session, TokenSource toke
             .WithAutomaticReconnect(new ForeverRetryPolicy())
             .Build();
 
-        conn.On<JobProgress>("jobProgress", p =>
-            Dispatcher.UIThread.Post(() => ProgressReceived?.Invoke(p)));
+        conn.On<JobProgress>("jobProgress", OnJobProgressPush);
 
         conn.On<TriggerEvent>("triggerEvent", e =>
             Dispatcher.UIThread.Post(() => TriggerEventReceived?.Invoke(e)));
@@ -72,6 +72,37 @@ public sealed class JobProgressHubClient(ServerSession session, TokenSource toke
         // (the early-return guard above would never re-attempt). Non-blocking so the page loads over HTTP meanwhile.
         _ = StartWithRetryAsync(conn);
         return Task.CompletedTask;
+    }
+
+    // Coalesce the non-terminal progress stream: a fast batch pushes many jobProgress events per second and a
+    // Dispatcher.Post per event would queue that many UI callbacks. Latest-wins per job, flushed on the UI
+    // thread at most every ~100 ms; terminal events bypass the buffer (and drop their job's pending tick, so a
+    // stale Running can never land after Completed).
+    private readonly ConcurrentDictionary<Guid, JobProgress> _pendingProgress = new();
+    private int _progressFlushScheduled;
+
+    private void OnJobProgressPush(JobProgress p)
+    {
+        if (p.Status is "Completed" or "Failed" or "Cancelled")
+        {
+            _pendingProgress.TryRemove(p.JobId, out _);
+            Dispatcher.UIThread.Post(() => ProgressReceived?.Invoke(p));
+            return;
+        }
+
+        _pendingProgress[p.JobId] = p;
+        if (Interlocked.Exchange(ref _progressFlushScheduled, 1) == 0)
+            DispatcherTimer.RunOnce(FlushPendingProgress, TimeSpan.FromMilliseconds(100));
+    }
+
+    private void FlushPendingProgress()
+    {
+        Interlocked.Exchange(ref _progressFlushScheduled, 0);
+        foreach (var jobId in _pendingProgress.Keys)
+        {
+            if (_pendingProgress.TryRemove(jobId, out var p))
+                ProgressReceived?.Invoke(p); // DispatcherTimer.RunOnce callbacks run on the UI thread
+        }
     }
 
     private async Task StartWithRetryAsync(HubConnection conn)
