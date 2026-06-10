@@ -93,6 +93,15 @@ public sealed partial class FilePairDetailViewModel : ViewModelBase
     [RelayCommand]
     private Task CopyJobIdAsync() => _dialogs.CopyToClipboardAsync(_jobId.ToString(), "ID úlohy zkopírováno.");
 
+    /// <summary>Opens the downloaded diff PDF in the system viewer — the fallback action when the embedded
+    /// WebView2 preview is unavailable (missing runtime).</summary>
+    [RelayCommand]
+    private void OpenExternally()
+    {
+        if (_tempPath is { } p && File.Exists(p))
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(p) { UseShellExecute = true });
+    }
+
     /// <summary>Deletes the temp PDF the webview rendered (best-effort) — called when the window closes.</summary>
     public void Cleanup()
     {

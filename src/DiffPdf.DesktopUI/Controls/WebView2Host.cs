@@ -16,7 +16,11 @@ public sealed class WebView2Host : NativeControlHost
     public static readonly DirectProperty<WebView2Host, string?> SourceProperty =
         AvaloniaProperty.RegisterDirect<WebView2Host, string?>(nameof(Source), o => o.Source, (o, v) => o.Source = v);
 
+    public static readonly DirectProperty<WebView2Host, bool> IsPreviewAvailableProperty =
+        AvaloniaProperty.RegisterDirect<WebView2Host, bool>(nameof(IsPreviewAvailable), o => o.IsPreviewAvailable);
+
     private string? _source;
+    private bool _isPreviewAvailable = true;
     private CoreWebView2Controller? _controller;
 
     /// <summary>The URI the webview navigates to (a <c>file://</c> path to the temp PDF); re-navigates when changed.</summary>
@@ -26,11 +30,25 @@ public sealed class WebView2Host : NativeControlHost
         set { if (SetAndRaise(SourceProperty, ref _source, value)) Navigate(); }
     }
 
+    /// <summary>
+    /// False once the embedded browser could not be created (non-Windows, or the WebView2 runtime is
+    /// missing). Views MUST gate the host's own visibility on this and show a fallback instead: the bare
+    /// native child window the host otherwise keeps is painted by the OS (a white rectangle over the navy
+    /// theme), so a silently failed preview cannot be covered by Avalonia content drawn underneath it.
+    /// </summary>
+    public bool IsPreviewAvailable
+    {
+        get => _isPreviewAvailable;
+        private set => SetAndRaise(IsPreviewAvailableProperty, ref _isPreviewAvailable, value);
+    }
+
     protected override IPlatformHandle CreateNativeControlCore(IPlatformHandle parent)
     {
         var handle = base.CreateNativeControlCore(parent);
         if (OperatingSystem.IsWindows())
             _ = InitializeAsync(handle.Handle);
+        else
+            IsPreviewAvailable = false;
         return handle;
     }
 
@@ -47,10 +65,13 @@ public sealed class WebView2Host : NativeControlHost
             _controller = await env.CreateCoreWebView2ControllerAsync(hwnd);
             ApplyBounds(Bounds.Width, Bounds.Height);
             Navigate();
+            IsPreviewAvailable = true; // a re-attached host may retry after an earlier failure
         }
         catch
         {
-            // WebView2 runtime unavailable / init failed → leave the host blank (best-effort preview).
+            // WebView2 runtime unavailable / init failed — flip the flag so the view swaps in its fallback.
+            // (Called from the UI thread; the awaits return to the Avalonia context, so the set is safe here.)
+            IsPreviewAvailable = false;
         }
     }
 

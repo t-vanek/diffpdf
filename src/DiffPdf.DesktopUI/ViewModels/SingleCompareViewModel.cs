@@ -102,6 +102,15 @@ public partial class SingleCompareViewModel : PageViewModel
         HasResult = true;
     });
 
+    /// <summary>Opens the downloaded diff PDF in the system viewer — the fallback action when the embedded
+    /// WebView2 preview is unavailable (missing runtime), and a handy escape hatch otherwise.</summary>
+    [RelayCommand]
+    private void OpenExternally()
+    {
+        if (_tempPath is { } p && File.Exists(p))
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(p) { UseShellExecute = true });
+    }
+
     /// <summary>Deletes the previous preview's temp PDF (best-effort) — the file the webview may still hold open
     /// gets a fresh unique name each compare, so a locked delete here is harmless.</summary>
     private void CleanupTemp()
