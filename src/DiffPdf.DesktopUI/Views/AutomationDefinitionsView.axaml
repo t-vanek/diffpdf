@@ -227,8 +227,27 @@
                               CommandParameter="{Binding}"/>
                     </Grid>
                     <TextBox Text="{Binding Name}" PlaceholderText="Popisek kroku (volitelný)"/>
-                    <TextBox Text="{Binding ParametersText}" AcceptsReturn="True" Height="46"
-                             PlaceholderText="Parametry: klíč=hodnota na řádek (např. retentionDays=30)"/>
+                    <!-- Typovaná pole parametrů řízená katalogem; prázdné u kroků bez parametrů. -->
+                    <ItemsControl x:CompileBindings="False" ItemsSource="{Binding Fields}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                          <Grid ColumnDefinitions="150,*" Margin="0,2">
+                            <TextBlock Grid.Column="0" Text="{Binding Label}" VerticalAlignment="Center"
+                                       TextWrapping="Wrap" ToolTip.Tip="{Binding Help}"/>
+                            <NumericUpDown Grid.Column="1" Value="{Binding IntValue}"
+                                           Minimum="{Binding Minimum}" Maximum="{Binding Maximum}"
+                                           IsVisible="{Binding IsInt}" ToolTip.Tip="{Binding Help}"/>
+                            <CheckBox Grid.Column="1" IsChecked="{Binding BoolValue}"
+                                      IsVisible="{Binding IsBool}" ToolTip.Tip="{Binding Help}"/>
+                            <ComboBox Grid.Column="1" HorizontalAlignment="Stretch"
+                                      ItemsSource="{Binding EnumValues}" SelectedItem="{Binding StringValue}"
+                                      IsVisible="{Binding IsEnum}" ToolTip.Tip="{Binding Help}"/>
+                            <TextBox Grid.Column="1" Text="{Binding StringValue}"
+                                     IsVisible="{Binding IsString}" ToolTip.Tip="{Binding Help}"/>
+                          </Grid>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                   </StackPanel>
                 </Border>
               </DataTemplate>

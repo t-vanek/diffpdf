@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DiffPdf.Client;
@@ -6,37 +7,128 @@ using DiffPdf.DesktopUI.Services;
 
 namespace DiffPdf.DesktopUI.ViewModels;
 
-/// <summary>One editovatelný krok pipeline v editoru automatizace.</summary>
+/// <summary>Provides the parameter schema for a step type (from the loaded server catalog; empty until loaded).</summary>
+public delegate IReadOnlyList<AutomationParameterSpecResponse> ParameterSpecProvider(AutomationStepType type);
+
+/// <summary>
+/// One typed parameter field in the step editor, driven by an <see cref="AutomationParameterSpecResponse"/>
+/// (label, help, type, default, bounds). Renders as a NumericUpDown / CheckBox / ComboBox / TextBox; the
+/// edited value is serialised back to the step's string parameter via <see cref="ToValue"/>.
+/// </summary>
+public partial class AutomationParameterFieldViewModel : ObservableObject
+{
+    public AutomationParameterSpecResponse Spec { get; }
+    public string Key => Spec.Key;
+    public string Label => Spec.Label;
+    public string Help => Spec.Help;
+
+    public bool IsInt => Spec.Type == AutomationParameterType.Int;
+    public bool IsBool => Spec.Type == AutomationParameterType.Bool;
+    public bool IsEnum => Spec.Type == AutomationParameterType.Enum;
+    public bool IsString => Spec.Type == AutomationParameterType.String;
+    public IReadOnlyList<string> EnumValues => Spec.EnumValues ?? [];
+    public decimal Minimum => Spec.Min ?? decimal.MinValue;
+    public decimal Maximum => Spec.Max ?? decimal.MaxValue;
+
+    [ObservableProperty] private decimal _intValue;
+    [ObservableProperty] private bool _boolValue;
+    [ObservableProperty] private string _stringValue = string.Empty;
+
+    public AutomationParameterFieldViewModel(AutomationParameterSpecResponse spec, string? seedValue)
+    {
+        Spec = spec;
+        string? v = string.IsNullOrWhiteSpace(seedValue) ? spec.Default : seedValue;
+        switch (spec.Type)
+        {
+            case AutomationParameterType.Int:
+                _intValue = decimal.TryParse(v, NumberStyles.Any, CultureInfo.InvariantCulture, out var d) ? d : 0;
+                break;
+            case AutomationParameterType.Bool:
+                _boolValue = bool.TryParse(v, out var b) && b;
+                break;
+            default:
+                _stringValue = v ?? string.Empty;
+                break;
+        }
+    }
+
+    /// <summary>The current value as the string stored in the step's parameter dictionary.</summary>
+    public string ToValue() => Spec.Type switch
+    {
+        AutomationParameterType.Int => ((long)IntValue).ToString(CultureInfo.InvariantCulture),
+        AutomationParameterType.Bool => BoolValue ? "true" : "false",
+        _ => StringValue.Trim(),
+    };
+}
+
+/// <summary>
+/// One editovatelný krok pipeline v editoru automatizace. Parametry se zobrazují jako typovaná pole řízená
+/// katalogem (<see cref="ParameterSpecProvider"/>); při změně typu se pole přestaví podle nového schématu.
+/// </summary>
 public partial class AutomationStepRowViewModel : ObservableObject
 {
+    private readonly ParameterSpecProvider _specs;
+    private Dictionary<string, string> _seed;
+
     public AutomationStepType[] Types { get; } = Enum.GetValues<AutomationStepType>();
+
+    /// <summary>Typovaná pole pro parametry aktuálního typu kroku.</summary>
+    public ObservableCollection<AutomationParameterFieldViewModel> Fields { get; } = [];
 
     [ObservableProperty] private AutomationStepType _type = AutomationStepType.Readiness;
     [ObservableProperty] private string _name = string.Empty;
-    [ObservableProperty] private string _parametersText = string.Empty;
+
+    public AutomationStepRowViewModel(
+        ParameterSpecProvider specs,
+        AutomationStepType type = AutomationStepType.Readiness,
+        string name = "",
+        IReadOnlyDictionary<string, string>? seed = null)
+    {
+        _specs = specs;
+        _type = type;
+        _name = name;
+        _seed = seed is null ? new Dictionary<string, string>() : new Dictionary<string, string>(seed);
+        BuildFields();
+    }
+
+    // A manual type switch drops the previous type's parameters (they don't apply to the new type).
+    partial void OnTypeChanged(AutomationStepType value)
+    {
+        _seed = new Dictionary<string, string>();
+        BuildFields();
+    }
+
+    /// <summary>Rebuilds the typed fields from the catalog — called after the catalog finishes loading.</summary>
+    public void RefreshFields() => BuildFields();
+
+    private void BuildFields()
+    {
+        // Preserve any current edits and unknown/extra params across the rebuild.
+        var values = new Dictionary<string, string>(_seed);
+        foreach (var f in Fields) values[f.Key] = f.ToValue();
+
+        Fields.Clear();
+        foreach (var spec in _specs(Type))
+        {
+            values.TryGetValue(spec.Key, out var seedValue);
+            Fields.Add(new AutomationParameterFieldViewModel(spec, seedValue));
+        }
+        _seed = values;
+    }
 
     public AutomationStepInput ToInput() => new()
     {
         Type = Type,
         Name = string.IsNullOrWhiteSpace(Name) ? null : Name,
-        Parameters = ParseParameters(),
+        Parameters = BuildParameters(),
     };
 
-    public static AutomationStepRowViewModel From(AutomationStepResponse step) => new()
+    private Dictionary<string, string> BuildParameters()
     {
-        Type = step.Type,
-        Name = step.Name ?? string.Empty,
-        ParametersText = string.Join('\n', step.Parameters.Select(kv => $"{kv.Key}={kv.Value}")),
-    };
-
-    private Dictionary<string, string> ParseParameters()
-    {
-        var dict = new Dictionary<string, string>();
-        foreach (var line in ParametersText.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            int eq = line.IndexOf('=');
-            if (eq > 0) dict[line[..eq].Trim()] = line[(eq + 1)..].Trim();
-        }
+        // Typed fields are authoritative; leftover seed keeps params not covered by the schema
+        // (e.g. when the catalog has not loaded yet, so the original values survive a save).
+        var dict = new Dictionary<string, string>(_seed);
+        foreach (var f in Fields) dict[f.Key] = f.ToValue();
         return dict;
     }
 }
@@ -74,6 +166,13 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
 
     private static readonly AutomationCategory[] CategoryOrder =
         [AutomationCategory.Monitoring, AutomationCategory.Operations, AutomationCategory.Maintenance, AutomationCategory.Synchronization];
+
+    /// <summary>Parameter schema per step type, from the server catalog (empty until loaded). Drives the typed fields.</summary>
+    private IReadOnlyDictionary<AutomationStepType, IReadOnlyList<AutomationParameterSpecResponse>> _parameterSpecs =
+        new Dictionary<AutomationStepType, IReadOnlyList<AutomationParameterSpecResponse>>();
+
+    private IReadOnlyList<AutomationParameterSpecResponse> SpecsFor(AutomationStepType type) =>
+        _parameterSpecs.TryGetValue(type, out var specs) ? specs : [];
 
     /// <summary>Spouštěcí události (multi-select) — automatizace se spustí, když nastane zaškrtnutá událost.</summary>
     public IReadOnlyList<EventTriggerOptionViewModel> EventTriggerOptions { get; } =
@@ -131,14 +230,22 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
     {
         _session = session;
         _dialogs = dialogs;
-        Steps.Add(new AutomationStepRowViewModel());
+        Steps.Add(new AutomationStepRowViewModel(SpecsFor));
     }
 
     public Task ActivateAsync() => RunAsync(async () =>
     {
         await LoadAsync();
         if (TemplateGroups.Count == 0) await LoadTemplatesAsync();
+        if (_parameterSpecs.Count == 0) await LoadCatalogAsync();
     });
+
+    private async Task LoadCatalogAsync()
+    {
+        var catalog = await _session.Require().GetAutomationCatalogAsync();
+        _parameterSpecs = catalog.ToDictionary(c => c.Type, c => c.Parameters);
+        foreach (var step in Steps) step.RefreshFields(); // seed fields once the schema is known
+    }
 
     private async Task LoadAsync()
     {
@@ -191,7 +298,7 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
         RetryDelaySeconds = 30;
         FailureThreshold = 3;
         Steps.Clear();
-        Steps.Add(new AutomationStepRowViewModel());
+        Steps.Add(new AutomationStepRowViewModel(SpecsFor));
         foreach (var opt in EventTriggerOptions) opt.IsChecked = false;
         EventReadinessFailed = EventHealthDegraded = EventStructureDrift = true;
         EventAutomationRecovered = false;
@@ -219,8 +326,8 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
         FailureThreshold = 3;
 
         Steps.Clear();
-        foreach (var step in template.Steps) Steps.Add(AutomationStepRowViewModel.From(step));
-        if (Steps.Count == 0) Steps.Add(new AutomationStepRowViewModel());
+        foreach (var step in template.Steps) Steps.Add(new AutomationStepRowViewModel(SpecsFor, step.Type, step.Name ?? string.Empty, step.Parameters));
+        if (Steps.Count == 0) Steps.Add(new AutomationStepRowViewModel(SpecsFor));
 
         foreach (var opt in EventTriggerOptions) opt.IsChecked = false;
         EventReadinessFailed = template.DefaultEvents.Contains(NotificationEvent.ReadinessFailed);
@@ -260,8 +367,8 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
         RetryDelaySeconds = a.RetryDelaySeconds;
         FailureThreshold = a.FailureThreshold;
         Steps.Clear();
-        foreach (var step in a.Steps) Steps.Add(AutomationStepRowViewModel.From(step));
-        if (Steps.Count == 0) Steps.Add(new AutomationStepRowViewModel());
+        foreach (var step in a.Steps) Steps.Add(new AutomationStepRowViewModel(SpecsFor, step.Type, step.Name ?? string.Empty, step.Parameters));
+        if (Steps.Count == 0) Steps.Add(new AutomationStepRowViewModel(SpecsFor));
         foreach (var opt in EventTriggerOptions) opt.IsChecked = a.EventTriggers.Contains(opt.Event);
         EventReadinessFailed = a.Events.Contains(NotificationEvent.ReadinessFailed);
         EventHealthDegraded = a.Events.Contains(NotificationEvent.HealthDegraded);
@@ -272,7 +379,7 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
     }
 
     [RelayCommand]
-    private void AddStep() => Steps.Add(new AutomationStepRowViewModel());
+    private void AddStep() => Steps.Add(new AutomationStepRowViewModel(SpecsFor));
 
     [RelayCommand]
     private void RemoveStep(AutomationStepRowViewModel row)

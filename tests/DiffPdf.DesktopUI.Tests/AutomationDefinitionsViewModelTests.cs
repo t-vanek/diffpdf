@@ -58,20 +58,36 @@ public class AutomationDefinitionsViewModelTests
     }
 
     [Fact]
-    public void StepRow_parses_parameters_and_blank_name_to_null()
+    public void StepRow_emits_typed_parameters_and_blank_name_to_null()
     {
-        var row = new AutomationStepRowViewModel
-        {
-            Type = AutomationStepType.Retention,
-            Name = "  ",
-            ParametersText = "retentionDays=30\nmaxPerTick=100",
-        };
+        ParameterSpecProvider specs = type => type == AutomationStepType.Retention
+            ?
+            [
+                new AutomationParameterSpecResponse { Key = "retentionDays", Label = "Dny", Type = AutomationParameterType.Int, Default = "30" },
+                new AutomationParameterSpecResponse { Key = "maxPerTick", Label = "Max", Type = AutomationParameterType.Int, Default = "100" },
+            ]
+            : [];
+
+        var row = new AutomationStepRowViewModel(specs, AutomationStepType.Retention, "  ",
+            new Dictionary<string, string> { ["retentionDays"] = "45", ["maxPerTick"] = "100" });
 
         var input = row.ToInput();
         Assert.Equal(AutomationStepType.Retention, input.Type);
         Assert.Null(input.Name);
-        Assert.Equal("30", input.Parameters!["retentionDays"]);
+        Assert.Equal("45", input.Parameters!["retentionDays"]); // seeded value populated the typed field
         Assert.Equal("100", input.Parameters!["maxPerTick"]);
+    }
+
+    [Fact]
+    public void StepRow_preserves_unknown_parameters_when_catalog_not_loaded()
+    {
+        // Empty schema (catalog not loaded) → typed fields are empty, but original params survive a save.
+        ParameterSpecProvider noSpecs = _ => [];
+        var row = new AutomationStepRowViewModel(noSpecs, AutomationStepType.Retention, "",
+            new Dictionary<string, string> { ["retentionDays"] = "30" });
+
+        Assert.Empty(row.Fields);
+        Assert.Equal("30", row.ToInput().Parameters!["retentionDays"]);
     }
 
     [Fact]

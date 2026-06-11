@@ -250,11 +250,15 @@ Každá fáze je samostatně nasaditelná a nic nerozbije po cestě.
   (dlaždice s ikonou, názvem, účelem) — výběr předvyplní editor (vše zůstává
   editovatelné, klíč se navrhne unikátní). Seznam má sloupec **Kategorie**; dropdown
   kroků i historie běhů zobrazují **lidské názvy** místo syrového enumu.
-- Build i testy zelené (Core 407 / Client 33 / DesktopUI 75, 0 failed).
+- **Typovaná pole parametrů** řízená katalogem (`GET /catalog`): místo `klíč=hodnota`
+  se podle schématu kroku renderují NumericUpDown / CheckBox / ComboBox / TextBox
+  s popiskem, nápovědou, výchozí hodnotou a mezemi. Při změně typu kroku se pole
+  přestaví; neznámé/extra parametry i stav „katalog ještě nenačten" jsou ošetřené
+  (hodnoty přežijí uložení).
+- Build i testy zelené (Core 407 / Client 33 / DesktopUI 76, 0 failed).
 
-**Zbývá (volitelné):** typovaná pole parametrů řízená katalogem (zatím `klíč=hodnota`),
-seskupení samotného seznamu do kategorií a zbývající P2/P3 kroky (CI brána, export,
-archivace, …). Vše aditivní — bez migrace DB.
+**Zbývá (volitelné):** seskupení samotného seznamu do kategorií (teď je to sloupec) a
+zbývající P2/P3 kroky (CI brána, export, archivace, …). Vše aditivní — bez migrace DB.
 
 > Pozn.: v tomto prostředí není .NET SDK, takže backend nešlo lokálně zkompilovat;
 > kód je psaný podle stávajících vzorů a switche nad `AutomationStepType` mají default arm.
