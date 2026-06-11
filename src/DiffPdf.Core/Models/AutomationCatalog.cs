@@ -83,9 +83,11 @@ public static class AutomationCatalog
         AutomationStepType.QueueHealth => AutomationCategory.Monitoring,
         AutomationStepType.ComparisonFreshness => AutomationCategory.Monitoring,
         AutomationStepType.ScheduledComparison => AutomationCategory.Operations,
+        AutomationStepType.ReRunFailed => AutomationCategory.Operations,
         AutomationStepType.Retention => AutomationCategory.Maintenance,
         AutomationStepType.DbRowRetention => AutomationCategory.Maintenance,
         AutomationStepType.StructureSync => AutomationCategory.Synchronization,
+        AutomationStepType.FolderSync => AutomationCategory.Synchronization,
         _ => AutomationCategory.Maintenance,
     };
 
@@ -108,9 +110,11 @@ public static class AutomationCatalog
         AutomationStepType.QueueHealth => "Fronta a zaseknuté joby",
         AutomationStepType.ComparisonFreshness => "Čerstvost porovnání",
         AutomationStepType.ScheduledComparison => "Plánované porovnání",
+        AutomationStepType.ReRunFailed => "Přegenerování chyb",
         AutomationStepType.Retention => "Úklid reportů",
         AutomationStepType.DbRowRetention => "Úklid databáze",
         AutomationStepType.StructureSync => "Synchronizace struktury",
+        AutomationStepType.FolderSync => "Synchronizace složek",
         _ => type.ToString(),
     };
 
@@ -123,9 +127,11 @@ public static class AutomationCatalog
         AutomationStepType.QueueHealth => "Hlídá hloubku fronty a joby běžící podezřele dlouho.",
         AutomationStepType.ComparisonFreshness => "Upozorní, když instance nevyprodukovala úspěšné porovnání déle než daná lhůta.",
         AutomationStepType.ScheduledComparison => "Pravidelně spustí porovnání pro každou zapnutou instanci v rozsahu.",
+        AutomationStepType.ReRunFailed => "Znovu zařadí porovnání pro instance, jejichž poslední dávka selhala (transientní chyby).",
         AutomationStepType.Retention => "Maže diff-PDF a JSON reporty dokončených jobů starší než lhůta.",
         AutomationStepType.DbRowRetention => "Maže staré řádky z databáze, aby nerostla bez hranic.",
         AutomationStepType.StructureSync => "Srovná složky na disku se scope stromem (větve/instance) v databázi.",
+        AutomationStepType.FolderSync => "Zrcadlí soubory ze zdrojové složky do new/ (nebo old/) instancí v rozsahu.",
         _ => string.Empty,
     };
 
@@ -162,6 +168,20 @@ public static class AutomationCatalog
         [
             new("warnAgeHours", "Stáří — varování (h)", "Bez úspěšného porovnání déle než tolik hodin → varování.", AutomationParameterType.Int, "24", Min: 1),
             new("failAgeHours", "Stáří — selhání (h)", "Bez úspěšného porovnání déle než tolik hodin → selhání.", AutomationParameterType.Int, "48", Min: 1),
+        ],
+        AutomationStepType.ReRunFailed =>
+        [
+            new("includePairErrors", "I chyby dvojic", "Přegenerovat i dávky dokončené s chybami jednotlivých dvojic (může cyklit u trvale vadných PDF).", AutomationParameterType.Bool, "false"),
+            new("withinHours", "Jen do stáří (h)", "Přegenerovat jen dávky dokončené v posledních tolika hodinách.", AutomationParameterType.Int, "24", Min: 1),
+        ],
+        AutomationStepType.FolderSync =>
+        [
+            new("source", "Zdrojová složka", "Cesta / UNC / share: odkud se kopíruje. Podporuje {branchKey} a {instanceKey}.", AutomationParameterType.String),
+            new("target", "Cílová podsložka", "Do které podsložky instance se kopíruje.", AutomationParameterType.Enum, "new", EnumValues: ["new", "old"]),
+            new("pattern", "Maska souborů", "Které soubory se kopírují.", AutomationParameterType.String, "*.pdf"),
+            new("recursive", "Včetně podsložek", "Procházet i podsložky zdroje.", AutomationParameterType.Bool, "false"),
+            new("mirror", "Zrcadlit (mazat navíc)", "Smazat v cíli soubory, které ve zdroji nejsou.", AutomationParameterType.Bool, "false"),
+            new("credentialProfile", "Přihlašovací profil", "Pojmenovaný profil pro přístup ke zdroji (volitelné).", AutomationParameterType.String),
         ],
         _ => [],
     };
@@ -235,6 +255,16 @@ public static class AutomationCatalog
             RecommendedCron: "0 2 * * *",
             DefaultEvents: [NotificationEvent.CompletedWithErrors, NotificationEvent.Failed]),
 
+        new("re-run-failed", AutomationCategory.Operations, "Přegenerování chyb",
+            PurposeFor(AutomationStepType.ReRunFailed), "♻️", AutomationScopeKind.Branch,
+            [new AutomationStep
+            {
+                Type = AutomationStepType.ReRunFailed,
+                Parameters = new Dictionary<string, string> { ["includePairErrors"] = "false", ["withinHours"] = "24" },
+            }],
+            RecommendedIntervalSeconds: 900,
+            DefaultEvents: [NotificationEvent.Failed]),
+
         // 🧹 Údržbové
         new("retention", AutomationCategory.Maintenance, "Úklid reportů",
             PurposeFor(AutomationStepType.Retention), "🗂️", AutomationScopeKind.Global,
@@ -260,5 +290,21 @@ public static class AutomationCatalog
             [new AutomationStep { Type = AutomationStepType.StructureSync }],
             RecommendedIntervalSeconds: 300,
             DefaultEvents: [NotificationEvent.StructureDrift, NotificationEvent.AutomationRecovered]),
+
+        new("folder-sync", AutomationCategory.Synchronization, "Synchronizace složek",
+            PurposeFor(AutomationStepType.FolderSync), "📥", AutomationScopeKind.Instance,
+            [new AutomationStep
+            {
+                Type = AutomationStepType.FolderSync,
+                Parameters = new Dictionary<string, string>
+                {
+                    ["source"] = @"\\fileserver\drops\{instanceKey}",
+                    ["target"] = "new",
+                    ["pattern"] = "*.pdf",
+                    ["mirror"] = "false",
+                },
+            }],
+            RecommendedIntervalSeconds: 300,
+            DefaultEvents: [NotificationEvent.AutomationRecovered]),
     ];
 }

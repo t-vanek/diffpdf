@@ -31,6 +31,14 @@ public enum AutomationStepType
     /// <summary>Monitors data freshness: warns when an in-scope instance has produced no successful comparison
     /// within a window (a silently stalled pipeline).</summary>
     ComparisonFreshness,
+
+    /// <summary>Re-enqueues a fresh comparison for in-scope instances whose most recent batch failed
+    /// (job-level failure, and optionally pair-level errors) — recovers from transient failures.</summary>
+    ReRunFailed,
+
+    /// <summary>Mirrors files from a configured source folder (local / UNC / <c>share:</c>) into each in-scope
+    /// instance's <c>new/</c> (or <c>old/</c>) folder, so a drop location feeds the comparison inputs.</summary>
+    FolderSync,
 }
 
 /// <summary>How widely an <see cref="Automation"/> applies.</summary>

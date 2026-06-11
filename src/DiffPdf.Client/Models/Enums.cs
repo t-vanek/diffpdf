@@ -106,6 +106,8 @@ public enum AutomationStepType
     SystemResource,
     QueueHealth,
     ComparisonFreshness,
+    ReRunFailed,
+    FolderSync,
 }
 
 /// <summary>How widely an automation applies.</summary>

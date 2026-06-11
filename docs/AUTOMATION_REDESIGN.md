@@ -231,10 +231,20 @@ Každá fáze je samostatně nasaditelná a nic nerozbije po cestě.
 - Oba v katalogu (kategorie/název/účel/parametry + šablony) a registrované v DI; klient
   zná oba nové kroky.
 
+**Hotovo (backend, Fáze 1 / P2 — provozní + synchronizační):**
+- Krok `ReRunFailed` (Provozní) + executor — pro instance, jejichž poslední dávka
+  selhala (job-level `Failed`, volitelně i pair-level chyby), znovu zařadí porovnání.
+  Bezpečné proti cyklení: in-flight job je throttle, okno `withinHours`, pair-chyby
+  jen na vyžádání. Staví na `IBatchLauncher`/`IScopeConfigurationResolver`.
+- Krok `FolderSync` (Synchronizační) + executor — zrcadlí soubory ze zdrojové složky
+  (local / UNC / `share:`, placeholdery `{branchKey}`/`{instanceKey}`) do `new/` (nebo
+  `old/`) instancí v rozsahu; kopíruje změněné, volitelně `mirror` maže navíc. Staví na
+  `INetworkShareResolver`/`INetworkShareConnector` (stejný přístup jako pipeline).
+- Oba v katalogu + šablonách, registrované v DI; klient zná nové kroky.
+
 **Zbývá:** desktop UI (galerie šablon, seskupený seznam, typovaná pole parametrů) a
-provozní/synchronizační kroky P2 (CI brána, přegenerování chyb, FolderSync, export
-výsledků — ty potřebují doladit zdroje/auth) + rozšíření P3. Vše aditivní — bez migrace
-DB (krok se serializuje do `StepsJson`, kategorie/účel jsou odvozené).
+zbývající P2/P3 kroky (CI brána, export výsledků, archivace, …). Vše aditivní — bez
+migrace DB (krok se serializuje do `StepsJson`, kategorie/účel jsou odvozené).
 
 > Pozn.: v tomto prostředí není .NET SDK, takže backend nešlo lokálně zkompilovat;
 > kód je psaný podle stávajících vzorů a switche nad `AutomationStepType` mají default arm.
