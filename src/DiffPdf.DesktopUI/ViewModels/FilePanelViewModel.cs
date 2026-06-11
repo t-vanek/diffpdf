@@ -1,7 +1,9 @@
 using System.Collections.ObjectModel;
+using System.Net;
 using Avalonia.Collections;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using DiffPdf.Client;
 using DiffPdf.DesktopUI.Services;
 
 namespace DiffPdf.DesktopUI.ViewModels;
@@ -63,6 +65,9 @@ public partial class FilePanelViewModel : ViewModelBase
     /// <summary>The list shows subtree-search results instead of the folder; any navigation exits it.</summary>
     [ObservableProperty] private bool _isSearchMode;
     [ObservableProperty] private string? _searchInfo;
+
+    /// <summary>Friendly onboarding shown instead of the list when the server storage is not configured (503).</summary>
+    [ObservableProperty] private string? _blockedMessage;
 
     [ObservableProperty] private BackendOption _selectedBackend;
 
@@ -131,6 +136,7 @@ public partial class FilePanelViewModel : ViewModelBase
             var list = await _backend.ListAsync(path, cts.Token);
             if (cts.IsCancellationRequested) return;
 
+            BlockedMessage = null;
             IsSearchMode = false;
             SearchInfo = null;
             CurrentPath = list.CurrentPath;
@@ -152,6 +158,19 @@ public partial class FilePanelViewModel : ViewModelBase
         catch (OperationCanceledException) when (cts.IsCancellationRequested)
         {
             // superseded by a newer navigation — not an error
+        }
+        catch (DiffPdfApiException ex) when (ex.StatusCode == HttpStatusCode.ServiceUnavailable)
+        {
+            // The server has no storage root configured — onboarding, not a red error + toast.
+            Items.Clear();
+            ItemsView.Refresh();
+            IsEmpty = false;
+            StatusText = "";
+            BlockedMessage =
+                "Server nemá nakonfigurované úložiště souborů.\n\n"
+                + "V souboru appsettings.json na serveru nastav FileManager:RootPath "
+                + "(nebo ScopeSync:RootPath) a restartuj službu DiffPdf API.\n\n"
+                + "Podrobný stav najdeš v Konfigurace → Správa souborů.";
         }
     });
 

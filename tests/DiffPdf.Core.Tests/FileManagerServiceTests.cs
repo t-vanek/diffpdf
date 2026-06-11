@@ -578,6 +578,52 @@ public sealed class FileManagerServiceTests : IDisposable
     public void Download_Traversal_ReportsInvalidPath() =>
         Assert.Equal(FileOpStatus.InvalidPath, _service.ResolveDownload("../outside.pdf").Status);
 
+    // ---------------- status diagnostics ----------------
+
+    [Fact]
+    public void GetStatus_Unconfigured_ReportsState()
+    {
+        var status = CreateService(rootPath: null, scopeSyncRoot: null).GetStatus();
+        Assert.False(status.Configured);
+        Assert.Null(status.ResolvedFrom);
+        Assert.Null(status.RootPath);
+        Assert.False(status.RootExists);
+        Assert.False(status.Writable);
+        Assert.Equal(256, status.MaxUploadSizeMB); // limits are reported even without a root
+    }
+
+    [Fact]
+    public void GetStatus_ConfiguredRoot_ReportsWritableAndSpace()
+    {
+        var status = _service.GetStatus();
+        Assert.True(status.Configured);
+        Assert.Equal("FileManager:RootPath", status.ResolvedFrom);
+        Assert.Equal(Path.GetFullPath(_root), status.RootPath);
+        Assert.True(status.RootExists);
+        Assert.True(status.Writable);
+        Assert.Null(status.Error);
+        Assert.NotNull(status.FreeSpaceBytes); // local volume exposes free space
+        Assert.NotNull(status.TotalSpaceBytes);
+        Assert.Empty(Directory.GetFiles(_root, "~probe-*.tmp")); // probe cleaned up
+    }
+
+    [Fact]
+    public void GetStatus_FallbackRoot_ReportsScopeSyncSource()
+    {
+        var status = CreateService(rootPath: "", scopeSyncRoot: _root).GetStatus();
+        Assert.Equal("ScopeSync:RootPath", status.ResolvedFrom);
+        Assert.True(status.Writable);
+    }
+
+    [Fact]
+    public void GetStatus_MissingRootFolder_IsCreatedLikeFirstUse()
+    {
+        string root = Path.Combine(_root, "lazy-status-root");
+        var status = CreateService(root).GetStatus();
+        Assert.True(status.RootExists); // the probe mirrors Resolve(): auto-created on demand
+        Assert.True(Directory.Exists(root));
+    }
+
     // ---------------- upload directory validation ----------------
 
     [Fact]

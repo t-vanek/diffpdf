@@ -110,10 +110,17 @@
           </DataGrid.Columns>
         </DataGrid>
 
-        <!-- Empty / loading overlays -->
+        <!-- Empty / blocked / loading overlays -->
         <TextBlock Text="Prázdná složka — přetáhni sem PDF, nebo použij „Nahrát“."
                    Foreground="{DynamicResource InkFaint}" HorizontalAlignment="Center" VerticalAlignment="Center"
                    IsVisible="{Binding IsEmpty}"/>
+        <StackPanel Spacing="12" MaxWidth="420" HorizontalAlignment="Center" VerticalAlignment="Center"
+                    IsVisible="{Binding BlockedMessage, Converter={x:Static ObjectConverters.IsNotNull}}">
+          <TextBlock Text="🛈" FontSize="26" HorizontalAlignment="Center" Foreground="{DynamicResource InkDim}"/>
+          <TextBlock Text="{Binding BlockedMessage}" TextWrapping="Wrap" TextAlignment="Center"
+                     Foreground="{DynamicResource InkDim}"/>
+          <Button Content="Zkusit znovu" Classes="ghost" HorizontalAlignment="Center" Command="{Binding RefreshCommand}"/>
+        </StackPanel>
         <ProgressBar IsIndeterminate="True" Width="120" Height="4"
                      HorizontalAlignment="Center" VerticalAlignment="Center"
                      IsVisible="{Binding IsBusy}"/>

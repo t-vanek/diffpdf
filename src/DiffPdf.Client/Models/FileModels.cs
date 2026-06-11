@@ -80,6 +80,28 @@ public sealed record UploadFilesResponse
     public required IReadOnlyList<UploadFileResponse> Files { get; init; }
 }
 
+/// <summary>
+/// Storage diagnostics from <c>GET /api/v1/files/status</c>. Always 200 — "not configured" is a
+/// state, not an error; configuration itself is admin-only in the server's appsettings.json.
+/// </summary>
+public sealed record FileManagerStatusResponse
+{
+    public required bool Configured { get; init; }
+
+    /// <summary>Which appsettings key supplied the root ("FileManager:RootPath" / "ScopeSync:RootPath"); null when unconfigured.</summary>
+    public string? ResolvedFrom { get; init; }
+
+    public string? RootPath { get; init; }
+    public bool RootExists { get; init; }
+    public bool Writable { get; init; }
+    public long? FreeSpaceBytes { get; init; }
+    public long? TotalSpaceBytes { get; init; }
+    public int MaxUploadSizeMB { get; init; }
+    public bool ValidatePdfMagicBytes { get; init; }
+    public int MaxSearchResults { get; init; }
+    public string? Error { get; init; }
+}
+
 /// <summary>Machine-readable <see cref="UploadFileResponse.ErrorCode"/> values.</summary>
 public static class FileUploadErrorCodes
 {

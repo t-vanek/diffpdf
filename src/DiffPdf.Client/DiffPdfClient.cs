@@ -680,6 +680,10 @@ public sealed class DiffPdfClient(HttpClient http)
             : throw new InvalidOperationException("The server returned no upload result.");
     }
 
+    /// <summary>Storage diagnostics for the configuration page (root + source, availability, free space, limits).</summary>
+    public Task<FileManagerStatusResponse> GetFileManagerStatusAsync(CancellationToken ct = default) =>
+        JsonAsync<FileManagerStatusResponse>(HttpMethod.Get, "/api/v1/files/status", null, ct);
+
     /// <summary>Creates a folder and returns it. Throws 409 when the name already exists, 404 for a missing parent.</summary>
     public Task<FileItemDto> CreateFolderAsync(CreateFolderRequest request, CancellationToken ct = default) =>
         JsonAsync<FileItemDto>(HttpMethod.Post, "/api/v1/files/folder", request, ct);

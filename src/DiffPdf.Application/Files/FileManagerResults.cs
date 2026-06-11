@@ -42,6 +42,38 @@ public sealed record FileSearchResult(
     IReadOnlyList<FileSystemEntry>? Items = null, bool Truncated = false, string? Detail = null);
 
 /// <summary>
+/// Diagnostics of the file-manager storage: whether a root is configured (and from which appsettings
+/// key it resolved), whether it is reachable and writable, the volume's free space and the effective
+/// limits. The root path itself is included — this is an authenticated admin diagnostic, same as the
+/// scope root endpoint.
+/// </summary>
+public sealed record FileManagerStatus
+{
+    public required bool Configured { get; init; }
+
+    /// <summary>Which configuration key supplied the root: "FileManager:RootPath" or "ScopeSync:RootPath"; null when unconfigured.</summary>
+    public string? ResolvedFrom { get; init; }
+
+    public string? RootPath { get; init; }
+
+    /// <summary>The root folder exists (it is auto-created on first use, so this probe creates it too).</summary>
+    public bool RootExists { get; init; }
+
+    /// <summary>A probe file could be created and deleted inside the root.</summary>
+    public bool Writable { get; init; }
+
+    public long? FreeSpaceBytes { get; init; }
+    public long? TotalSpaceBytes { get; init; }
+
+    public int MaxUploadSizeMB { get; init; }
+    public bool ValidatePdfMagicBytes { get; init; }
+    public int MaxSearchResults { get; init; }
+
+    /// <summary>Human-readable detail when the root is missing or not writable.</summary>
+    public string? Error { get; init; }
+}
+
+/// <summary>
 /// Per-file upload outcome. Soft — one bad file must not fail the batch, so failures are carried as
 /// <see cref="ErrorCode"/> (machine: drives the client's overwrite dialog) + <see cref="ErrorMessage"/> (human).
 /// </summary>

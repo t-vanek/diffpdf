@@ -1,4 +1,5 @@
 using DiffPdf.Application.Abstractions;
+using DiffPdf.Core.Comparison;
 using DiffPdf.Core.Storage;
 using Microsoft.Extensions.Options;
 
@@ -48,6 +49,9 @@ public interface IFileManagerService
     FileSearchResult Search(string? path, string? query, bool recursive, CancellationToken ct = default);
 
     FileDownloadResult ResolveDownload(string? path);
+
+    /// <summary>Storage diagnostics for the client's configuration page (root, availability, limits).</summary>
+    FileManagerStatus GetStatus();
 }
 
 public sealed class FileManagerService(
@@ -343,6 +347,78 @@ public sealed class FileManagerService(
         if (Directory.Exists(abs)) return new FileDownloadResult(FileOpStatus.NotAFile);
         if (!File.Exists(abs)) return new FileDownloadResult(FileOpStatus.NotFound);
         return new FileDownloadResult(FileOpStatus.Ok, abs, Path.GetFileName(abs!));
+    }
+
+    public FileManagerStatus GetStatus()
+    {
+        string? resolvedFrom =
+            !string.IsNullOrWhiteSpace(_options.RootPath) ? "FileManager:RootPath"
+            : !string.IsNullOrWhiteSpace(_scopeSync.RootPath) ? "ScopeSync:RootPath"
+            : null;
+
+        var status = new FileManagerStatus
+        {
+            Configured = resolvedFrom is not null,
+            ResolvedFrom = resolvedFrom,
+            MaxUploadSizeMB = _options.MaxUploadSizeMB,
+            ValidatePdfMagicBytes = _options.ValidatePdfMagicBytes,
+            MaxSearchResults = _options.MaxSearchResults,
+        };
+        if (Root is not { } root)
+            return status;
+
+        string rootFull;
+        try
+        {
+            // Mirror Resolve(): the root is auto-created on first use, so the status probe answers the
+            // real question — "will the first operation work?" — by doing the same.
+            rootFull = Path.GetFullPath(root);
+            Directory.CreateDirectory(rootFull);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            return status with { RootPath = root, Error = $"Root folder is not reachable: {ex.Message}" };
+        }
+
+        bool writable;
+        string? error = null;
+        string probePath = Path.Combine(rootFull, $"~probe-{Guid.NewGuid():N}.tmp");
+        try
+        {
+            File.WriteAllBytes(probePath, []);
+            File.Delete(probePath);
+            writable = true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            writable = false;
+            error = $"Root folder is not writable: {ex.Message}";
+        }
+
+        long? freeSpace = null, totalSpace = null;
+        try
+        {
+            if (Path.GetPathRoot(rootFull) is { Length: > 0 } volume && !UncPath.IsUnc(volume))
+            {
+                var drive = new DriveInfo(volume);
+                freeSpace = drive.AvailableFreeSpace;
+                totalSpace = drive.TotalSize;
+            }
+        }
+        catch (Exception ex) when (ex is IOException or ArgumentException or UnauthorizedAccessException)
+        {
+            // free-space info is best-effort (UNC shares and exotic volumes don't expose it)
+        }
+
+        return status with
+        {
+            RootPath = rootFull,
+            RootExists = true,
+            Writable = writable,
+            FreeSpaceBytes = freeSpace,
+            TotalSpaceBytes = totalSpace,
+            Error = error,
+        };
     }
 
     // ---------------- plumbing ----------------

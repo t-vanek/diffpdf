@@ -72,6 +72,41 @@ public sealed record FileSearchResponse
 }
 
 /// <summary>
+/// Storage diagnostics for the client's configuration page. Always 200 — "not configured" is a state,
+/// not an error. The root path is exposed deliberately (authenticated admin diagnostic, same as
+/// GET /scope/root); configuration itself stays admin-only in appsettings.json.
+/// </summary>
+public sealed record FileManagerStatusResponse
+{
+    public required bool Configured { get; init; }
+    public string? ResolvedFrom { get; init; }
+    public string? RootPath { get; init; }
+    public bool RootExists { get; init; }
+    public bool Writable { get; init; }
+    public long? FreeSpaceBytes { get; init; }
+    public long? TotalSpaceBytes { get; init; }
+    public int MaxUploadSizeMB { get; init; }
+    public bool ValidatePdfMagicBytes { get; init; }
+    public int MaxSearchResults { get; init; }
+    public string? Error { get; init; }
+
+    public static FileManagerStatusResponse From(FileManagerStatus s) => new()
+    {
+        Configured = s.Configured,
+        ResolvedFrom = s.ResolvedFrom,
+        RootPath = s.RootPath,
+        RootExists = s.RootExists,
+        Writable = s.Writable,
+        FreeSpaceBytes = s.FreeSpaceBytes,
+        TotalSpaceBytes = s.TotalSpaceBytes,
+        MaxUploadSizeMB = s.MaxUploadSizeMB,
+        ValidatePdfMagicBytes = s.ValidatePdfMagicBytes,
+        MaxSearchResults = s.MaxSearchResults,
+        Error = s.Error,
+    };
+}
+
+/// <summary>
 /// Per-file outcome of an upload batch. <see cref="ErrorCode"/> is machine-readable
 /// (<c>exists</c> | <c>invalid_name</c> | <c>not_pdf</c> | <c>too_large</c> | <c>io_error</c>) —
 /// the desktop's overwrite dialog branches on <c>exists</c>; <see cref="ErrorMessage"/> is for humans.
