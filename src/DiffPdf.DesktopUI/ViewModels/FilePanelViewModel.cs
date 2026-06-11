@@ -104,8 +104,8 @@ public partial class FilePanelViewModel : ViewModelBase
             BackendSwitchRequested?.Invoke(this, value.Kind);
     }
 
-    /// <summary>Swaps the backend (manager-owned instances) and opens its default location.</summary>
-    public Task SetBackendAsync(IFileBackend backend)
+    /// <summary>Swaps the backend (manager-owned instances) and opens <paramref name="startPath"/> (default location when null).</summary>
+    public Task SetBackendAsync(IFileBackend backend, string? startPath = null)
     {
         _backend = backend;
         _suppressBackendEvent = true;
@@ -115,7 +115,7 @@ public partial class FilePanelViewModel : ViewModelBase
         HasLoaded = false;
         FilterText = "";
         OnPropertyChanged(nameof(IsServer));
-        return LoadAsync(backend.DefaultPath);
+        return LoadAsync(startPath ?? backend.DefaultPath);
     }
 
     [RelayCommand]

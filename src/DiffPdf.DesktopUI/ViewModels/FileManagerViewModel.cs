@@ -7,7 +7,7 @@ using DiffPdf.DesktopUI.Services;
 namespace DiffPdf.DesktopUI.ViewModels;
 
 /// <summary>
-/// Soubory: two-panel file manager (simple Total Commander) bridging the user's computer and the
+/// Správa souborů: two-panel file manager (simple Total Commander) bridging the user's computer and the
 /// server's managed PDF storage. By default the LEFT panel shows the local machine (drive list →
 /// folders) and the RIGHT panel the server root; each panel's header can switch sides. F5/F6 copy/
 /// move the selection into the opposite panel whatever the combination — same-backend operations go
@@ -17,11 +17,13 @@ namespace DiffPdf.DesktopUI.ViewModels;
 public partial class FileManagerViewModel : PageViewModel
 {
     private readonly DialogService _dialogs;
+    private readonly ClientSettingsStore _settings;
     private readonly LocalFileBackend _localBackend = new();
     private readonly ServerFileBackend _serverBackend;
     private bool _initialised;
+    private bool _stateRestoreDone;
 
-    public override string Title => "Soubory";
+    public override string Title => "Správa souborů";
     public override string Icon => "🗂";
     public override int NavOrder => 5;
 
@@ -37,9 +39,10 @@ public partial class FileManagerViewModel : PageViewModel
     /// <summary>The transfer target: the panel that is not active.</summary>
     public FilePanelViewModel OppositePanel => ActivePanel == LeftPanel ? RightPanel : LeftPanel;
 
-    public FileManagerViewModel(ServerSession session, DialogService dialogs)
+    public FileManagerViewModel(ServerSession session, DialogService dialogs, ClientSettingsStore settings)
     {
         _dialogs = dialogs;
+        _settings = settings;
         _serverBackend = new ServerFileBackend(session);
 
         // Default layout per the spec: my computer on the left, the server on the right.
@@ -54,6 +57,12 @@ public partial class FileManagerViewModel : PageViewModel
             panel.SelectionChanged += RefreshCommandStates;
             panel.FilesDropped += (p, paths) => EnqueueLocalFiles(p, paths);
             panel.BackendSwitchRequested += (p, kind) => _ = SwitchPanelBackendAsync(p, kind);
+            // Persist the layout on every navigation/side switch, so the next start reopens both panels
+            // where the user left them.
+            panel.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(FilePanelViewModel.CurrentPath)) PersistPanelState();
+            };
         }
 
         TransferQueue = new TransferQueueViewModel
@@ -73,9 +82,52 @@ public partial class FileManagerViewModel : PageViewModel
     {
         if (_initialised) return;
         _initialised = true;
+        var saved = _settings.LoadFileManagerPanels();
         await Task.WhenAll(
-            LeftPanel.LoadAsync(LeftPanel.Backend.DefaultPath),
-            RightPanel.LoadAsync(RightPanel.Backend.DefaultPath));
+            RestorePanelAsync(LeftPanel, saved?.Left),
+            RestorePanelAsync(RightPanel, saved?.Right));
+        _stateRestoreDone = true; // only now start persisting, so the restore itself can't clobber the saved state
+        PersistPanelState();
+    }
+
+    /// <summary>Reopens a panel where it stood last time; a vanished location falls back to the backend's default, quietly.</summary>
+    private async Task RestorePanelAsync(FilePanelViewModel panel, FilePanelState? state)
+    {
+        if (state is null)
+        {
+            await panel.LoadAsync(panel.Backend.DefaultPath);
+            return;
+        }
+
+        IFileBackend backend = Enum.TryParse<BackendKind>(state.Backend, out var kind) && kind == BackendKind.Server
+            ? _serverBackend
+            : _localBackend;
+        string target = await CanListAsync(backend, state.Path) ? state.Path : backend.DefaultPath;
+
+        if (backend != panel.Backend) await panel.SetBackendAsync(backend, target);
+        else await panel.LoadAsync(target);
+    }
+
+    /// <summary>Probe before restoring — an unplugged drive or deleted folder must not greet the user with an error.</summary>
+    private static async Task<bool> CanListAsync(IFileBackend backend, string path)
+    {
+        try
+        {
+            await backend.ListAsync(path);
+            return true;
+        }
+        catch
+        {
+            return false; // missing / offline / unauthorized — any reason means "use the default"
+        }
+    }
+
+    private void PersistPanelState()
+    {
+        if (!_stateRestoreDone) return;
+        _settings.SaveFileManagerPanels(new FileManagerPanelsState(
+            new FilePanelState(LeftPanel.Backend.Kind.ToString(), LeftPanel.CurrentPath),
+            new FilePanelState(RightPanel.Backend.Kind.ToString(), RightPanel.CurrentPath)));
     }
 
     public override async Task ReloadAsync()
@@ -193,7 +245,7 @@ public partial class FileManagerViewModel : PageViewModel
         string what = selection.Count == 1
             ? $"„{selection[0].Name}“"
             : Format.Plural(selection.Count, "vybranou položku", "vybrané položky", "vybraných položek");
-        string where = ActivePanel.IsServer ? "na serveru" : "na tomto počítači (trvale, bez koše)";
+        string where = ActivePanel.IsServer ? "na serveru" : "na tomto počítači (do koše)";
         if (!await _dialogs.ConfirmAsync("Smazat", $"Opravdu smazat {what} {where}?"))
             return;
 
@@ -299,11 +351,17 @@ public partial class FileManagerViewModel : PageViewModel
     [RelayCommand(CanExecute = nameof(CanTransfer))]
     private Task MoveToOtherPanelAsync() => TransferAsync(move: true);
 
-    private Task TransferAsync(bool move) => RunAsync(async () =>
+    private Task TransferAsync(bool move) =>
+        RunAsync(() => TransferCoreAsync(ActivePanel, OppositePanel, ActivePanel.SelectedItems.ToList(), move));
+
+    /// <summary>Drag&amp;drop from the other panel: source/target come from the drag, not from the active panel.</summary>
+    public Task HandlePanelDropAsync(
+        FilePanelViewModel source, FilePanelViewModel target, IReadOnlyList<FileListItemViewModel> items, bool move) =>
+        RunAsync(() => TransferCoreAsync(source, target, items.ToList(), move));
+
+    private async Task TransferCoreAsync(
+        FilePanelViewModel source, FilePanelViewModel target, List<FileListItemViewModel> selection, bool move)
     {
-        var source = ActivePanel;
-        var target = OppositePanel;
-        var selection = source.SelectedItems.ToList();
         if (selection.Count == 0 || !target.HasLoaded) return;
         if (!target.Backend.CanWriteTo(target.CurrentPath))
         {
@@ -321,7 +379,7 @@ public partial class FileManagerViewModel : PageViewModel
             await SameBackendTransferAsync(source, target, selection, move);
         else
             await CrossBackendTransferAsync(source, target, selection, move);
-    });
+    }
 
     /// <summary>Server↔server / local↔local: single backend calls per item (no streaming needed).</summary>
     private async Task SameBackendTransferAsync(

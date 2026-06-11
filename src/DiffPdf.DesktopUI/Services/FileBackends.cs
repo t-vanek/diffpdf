@@ -125,9 +125,10 @@ public sealed class ServerFileBackend(ServerSession session) : IFileBackend
 /// <summary>
 /// The user's machine via System.IO. Paths are real absolute paths; "" is a synthetic drive list.
 /// Mirrors the server's semantics: listings/search/copy see folders + PDFs only, a folder MOVE
-/// relocates everything, deletes are permanent (no recycle bin).
+/// relocates everything. Deletes go to the Recycle Bin (volumes without one, e.g. network drives,
+/// fall back to a permanent delete — standard shell behaviour); tests turn the bin off.
 /// </summary>
-public sealed class LocalFileBackend : IFileBackend
+public sealed class LocalFileBackend(bool useRecycleBin = true) : IFileBackend
 {
     private const int MaxSearchResults = 500;
 
@@ -235,21 +236,30 @@ public sealed class LocalFileBackend : IFileBackend
     public Task DeleteAsync(string path, bool recursive, CancellationToken ct = default)
     {
         EnsureNotDriveLevel(path, "Disk nelze smazat.");
-        if (File.Exists(path))
+        bool isFile = File.Exists(path);
+        if (!isFile && !Directory.Exists(path))
+            throw new FileNotFoundException($"Položka neexistuje: {path}");
+
+        if (!isFile)
         {
-            File.Delete(path);
-        }
-        else if (Directory.Exists(path))
-        {
+            // The recycle operation is inherently recursive, so the not-empty guard runs FIRST either way.
             var dir = new DirectoryInfo(path);
             if (!recursive && dir.EnumerateFileSystemInfos().Any())
                 throw new FileBackendConflictException(
                     $"Složka není prázdná ({dir.EnumerateFileSystemInfos().Count()} položek).");
-            Directory.Delete(path, recursive: true);
+        }
+
+        if (useRecycleBin)
+        {
+            RecycleBin.Delete(Path.GetFullPath(path));
+        }
+        else if (isFile)
+        {
+            File.Delete(path);
         }
         else
         {
-            throw new FileNotFoundException($"Položka neexistuje: {path}");
+            Directory.Delete(path, recursive: true);
         }
         return Task.CompletedTask;
     }

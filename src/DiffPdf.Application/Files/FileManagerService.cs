@@ -5,7 +5,7 @@ using Microsoft.Extensions.Options;
 namespace DiffPdf.Application.Files;
 
 /// <summary>
-/// PDF file manager over a single configured filesystem subtree (the desktop "Soubory" page).
+/// PDF file manager over a single configured filesystem subtree (the desktop "Správa souborů" page).
 /// Pure file management — it knows nothing about comparisons; the tree is just folders and PDFs.
 /// All paths crossing this boundary are virtual ('/'-separated, root-relative) and are resolved via
 /// <see cref="VirtualPath"/>, so no operation can address anything outside the root. Listing shows

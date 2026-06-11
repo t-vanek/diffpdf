@@ -11,7 +11,8 @@ namespace DiffPdf.DesktopUI.Tests;
 public sealed class LocalFileBackendTests : IDisposable
 {
     private readonly string _root;
-    private readonly LocalFileBackend _backend = new();
+    // Recycle bin off: tests must not litter the user's bin with temp files (and stay deterministic).
+    private readonly LocalFileBackend _backend = new(useRecycleBin: false);
 
     public LocalFileBackendTests()
     {

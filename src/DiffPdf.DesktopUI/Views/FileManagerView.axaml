@@ -15,7 +15,7 @@
   </UserControl.KeyBindings>
 
   <DockPanel>
-    <TextBlock DockPanel.Dock="Top" Text="Soubory" Classes="pageTitle" Margin="2,0,0,10"/>
+    <TextBlock DockPanel.Dock="Top" Text="Správa souborů" Classes="pageTitle" Margin="2,0,0,10"/>
 
     <!-- Toolbar — every action targets the active (orange-framed) panel -->
     <WrapPanel DockPanel.Dock="Top" ItemSpacing="8" LineSpacing="8" Margin="0,0,0,10">

@@ -39,6 +39,9 @@ public class FileManagerViewModelTests
 
     private static FilePanelViewModel ServerPanel(FakeApi api) => new(ServerBackend(api));
 
+    private static FileManagerViewModel NewManager(FakeApi api, ClientSettingsStore? settings = null) =>
+        new(Session(api), null!, settings ?? new ClientSettingsStore(Path.Combine(TempDir(), "client-settings.json")));
+
     private static FakeApi FilesApi(Func<FileListResponse> listing) => new()
     {
         Custom = request =>
@@ -47,8 +50,8 @@ public class FileManagerViewModelTests
                 : null,
     };
 
-    /// <summary>Serves GET /files per requested ?path= and GET /files/search with a canned result.</summary>
-    private static FakeApi FilesApiByPath(Func<string, FileListResponse> listingByPath, FileSearchResponse? search = null) => new()
+    /// <summary>Serves GET /files per requested ?path= (null → 404) and GET /files/search with a canned result.</summary>
+    private static FakeApi FilesApiByPath(Func<string, FileListResponse?> listingByPath, FileSearchResponse? search = null) => new()
     {
         Custom = request =>
         {
@@ -147,7 +150,7 @@ public class FileManagerViewModelTests
         AsyncPump.Run(async () =>
         {
             var api = FilesApi(() => Listing("", null, Pdf("a.pdf")));
-            var vm = new FileManagerViewModel(Session(api), null!);
+            var vm = NewManager(api);
 
             // Default layout per the spec: the local computer on the left, the server on the right.
             Assert.Equal(BackendKind.Local, vm.LeftPanel.Backend.Kind);
@@ -175,6 +178,65 @@ public class FileManagerViewModelTests
             // Click-activation (panel event) also moves the toolbar target…
             vm.LeftPanel.MakeActive();
             Assert.Same(vm.LeftPanel, vm.ActivePanel);
+        });
+    }
+
+    [Fact]
+    public void Manager_restores_saved_panel_layout_and_persists_navigation()
+    {
+        AsyncPump.Run(async () =>
+        {
+            string localDir = TempDir(); // an existing local folder the left panel should reopen
+            var api = FilesApiByPath(path => path switch
+            {
+                "slozka" => Listing("slozka", "", Pdf("slozka/a.pdf")),
+                _ => Listing(path, null),
+            });
+            var settings = new ClientSettingsStore(Path.Combine(TempDir(), "client-settings.json"));
+            settings.SaveFileManagerPanels(new FileManagerPanelsState(
+                new FilePanelState("Local", localDir),
+                new FilePanelState("Server", "slozka")));
+
+            var vm = NewManager(api, settings);
+            await vm.ActivateAsync();
+
+            Assert.Equal(localDir, vm.LeftPanel.CurrentPath);
+            Assert.Equal(BackendKind.Local, vm.LeftPanel.Backend.Kind);
+            Assert.Equal("slozka", vm.RightPanel.CurrentPath);
+            Assert.Equal(BackendKind.Server, vm.RightPanel.Backend.Kind);
+
+            // Navigating writes the new layout back, so the next start reopens it.
+            await vm.RightPanel.LoadAsync("");
+            var persisted = settings.LoadFileManagerPanels();
+            Assert.NotNull(persisted);
+            Assert.Equal("", persisted!.Right!.Path);
+            Assert.Equal("Server", persisted.Right.Backend);
+            Assert.Equal(localDir, persisted.Left!.Path);
+            Assert.Equal("Local", persisted.Left.Backend);
+        });
+    }
+
+    [Fact]
+    public void Manager_restore_falls_back_to_defaults_when_saved_locations_are_gone()
+    {
+        AsyncPump.Run(async () =>
+        {
+            string vanished = Path.Combine(Path.GetTempPath(), "diffpdf-tests", "gone-" + Guid.NewGuid().ToString("N"));
+            var api = FilesApiByPath(path => path.Length == 0 ? Listing("", null, Pdf("a.pdf")) : null); // saved server folder 404s
+            var settings = new ClientSettingsStore(Path.Combine(TempDir(), "client-settings.json"));
+            settings.SaveFileManagerPanels(new FileManagerPanelsState(
+                new FilePanelState("Local", vanished),
+                new FilePanelState("Server", "smazana-slozka")));
+
+            var vm = NewManager(api, settings);
+            await vm.ActivateAsync();
+
+            Assert.Equal("", vm.LeftPanel.CurrentPath);  // the drive list — local default
+            Assert.True(vm.LeftPanel.HasLoaded);
+            Assert.Equal("", vm.RightPanel.CurrentPath); // the server root — server default
+            Assert.True(vm.RightPanel.HasLoaded);
+            Assert.Null(vm.LeftPanel.Error);             // the fallback is quiet, no error greeting
+            Assert.Null(vm.RightPanel.Error);
         });
     }
 
@@ -206,13 +268,13 @@ public class FileManagerViewModelTests
         Files = [new UploadFileResponse { FileName = name, Uploaded = false, ErrorCode = FileUploadErrorCodes.Exists }],
     };
 
-    /// <summary>A queue item heading from a local file into the fake server's folder.</summary>
+    /// <summary>A queue item heading from a local file into the fake server's folder (recycle bin off in tests).</summary>
     private static TransferRequest LocalToServer(IFileBackend server, string localPath, string targetDir, bool move = false) =>
-        new(new LocalFileBackend(), localPath, Path.GetFileName(localPath), new FileInfo(localPath).Length, server, targetDir, move);
+        new(new LocalFileBackend(useRecycleBin: false), localPath, Path.GetFileName(localPath), new FileInfo(localPath).Length, server, targetDir, move);
 
     private static TransferRequest LocalToLocal(string localPath, string targetDir, bool move = false)
     {
-        var local = new LocalFileBackend();
+        var local = new LocalFileBackend(useRecycleBin: false);
         return new TransferRequest(local, localPath, Path.GetFileName(localPath), new FileInfo(localPath).Length, local, targetDir, move);
     }
 
