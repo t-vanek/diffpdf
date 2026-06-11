@@ -29,6 +29,9 @@ internal sealed class FakeApi : HttpMessageHandler
     /// <summary>Requests whose path ends with this suffix block until <see cref="Release"/> is called.</summary>
     public string? GatedSuffix { get; init; }
 
+    /// <summary>Catch-all override checked first: return a payload to serve it (200), or null to fall through.</summary>
+    public Func<HttpRequestMessage, object?>? Custom { get; set; }
+
     private readonly TaskCompletionSource _gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public void Release() => _gate.TrySetResult();
 
@@ -37,6 +40,12 @@ internal sealed class FakeApi : HttpMessageHandler
         var path = request.RequestUri!.AbsolutePath;
         if (GatedSuffix is not null && path.EndsWith(GatedSuffix, StringComparison.Ordinal))
             await _gate.Task.ConfigureAwait(false);
+
+        if (Custom?.Invoke(request) is { } custom)
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(JsonSerializer.Serialize(custom, custom.GetType(), Json), Encoding.UTF8, "application/json"),
+            };
 
         // GET /jobs/{id}/tasks — the server owns the file-list filter (name search + "only differing") and paging,
         // returning the matching page plus the filtered total in X-Total-Count. Mirror that so a view-model test

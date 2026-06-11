@@ -9,6 +9,7 @@ using DiffPdf.Api.Hubs;
 using DiffPdf.Api.Operational;
 using DiffPdf.Application;
 using DiffPdf.Application.Abstractions;
+using DiffPdf.Application.Files;
 using DiffPdf.Core.Abstractions;
 using DiffPdf.Core.Network;
 using DiffPdf.Core.Storage;
@@ -122,6 +123,13 @@ builder.Services.AddRateLimiter(options =>
 });
 builder.Services.Configure<StorageOptions>(builder.Configuration.GetSection("Storage"));
 builder.Services.Configure<PdfWorkLimiterOptions>(builder.Configuration.GetSection("Pdf"));
+// PDF file manager (the desktop "Soubory" page). The multipart form cap must cover the configured
+// per-file upload limit — ReadFormAsync enforces FormOptions, while the per-request Kestrel body cap
+// is raised on the upload endpoint itself.
+builder.Services.Configure<FileManagerOptions>(builder.Configuration.GetSection(FileManagerOptions.SectionName));
+var fileManagerOptions = builder.Configuration.GetSection(FileManagerOptions.SectionName).Get<FileManagerOptions>() ?? new FileManagerOptions();
+builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(o =>
+    o.MultipartBodyLengthLimit = Math.Max(o.MultipartBodyLengthLimit, fileManagerOptions.MaxUploadSizeBytes + 1024 * 1024));
 // Renderer options were registered (AddDiffPdf) but never bound — without these lines every
 // Ghostscript:*/Pdfium:* key (timeouts, block size, caches) was silently ignored.
 builder.Services.Configure<GhostscriptOptions>(builder.Configuration.GetSection("Ghostscript"));
@@ -279,6 +287,7 @@ api.MapStatusEndpoints();
 api.MapAutomationEndpoints();
 api.MapScopeConfigurationEndpoints();
 api.MapBranchQueueEndpoints();
+api.MapFileEndpoints();
 
 app.MapHub<JobsHub>("/hubs/jobs");
 

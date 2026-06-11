@@ -19,4 +19,16 @@ public static class Format
         string word = n == 1 ? one : n is >= 2 and <= 4 ? few : many;
         return $"{n} {word}";
     }
+
+    /// <summary>Bytes as a compact human-readable size ("845 B", "1,2 kB", "3,4 MB"); null → "—" (folders).</summary>
+    public static string Bytes(long? bytes)
+    {
+        if (bytes is not { } b) return "—";
+        if (b < 1024) return $"{b} B";
+        double v = b / 1024.0;
+        if (v < 1024) return string.Create(CultureInfo.CurrentCulture, $"{v:0.#} kB");
+        v /= 1024.0;
+        if (v < 1024) return string.Create(CultureInfo.CurrentCulture, $"{v:0.#} MB");
+        return string.Create(CultureInfo.CurrentCulture, $"{v / 1024.0:0.##} GB");
+    }
 }

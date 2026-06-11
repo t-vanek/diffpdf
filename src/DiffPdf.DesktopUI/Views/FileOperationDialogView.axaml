@@ -1,0 +1,28 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:DiffPdf.DesktopUI.ViewModels"
+             x:Class="DiffPdf.DesktopUI.Views.FileOperationDialogView"
+             x:DataType="vm:FileOperationDialogViewModel">
+
+  <StackPanel Margin="18" Spacing="12">
+    <TextBlock Text="{Binding Prompt}" TextWrapping="Wrap"/>
+
+    <TextBox x:Name="NameBox" Text="{Binding Name}" IsVisible="{Binding ShowNameInput}">
+      <TextBox.KeyBindings>
+        <KeyBinding Gesture="Enter" Command="{Binding ConfirmCommand}"/>
+      </TextBox.KeyBindings>
+    </TextBox>
+
+    <TextBlock Text="{Binding ValidationError}" Foreground="{DynamicResource Bad}"
+               TextWrapping="Wrap" IsVisible="{Binding HasValidationError}"/>
+
+    <CheckBox Content="Použít pro všechny další konflikty" IsChecked="{Binding ApplyToAll}"
+              IsVisible="{Binding ShowApplyToAll}"
+              ToolTip.Tip="Stejná odpověď (přepsat / přeskočit) se použije i na zbývající soubory dávky"/>
+
+    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+      <Button Content="{Binding ConfirmText}" Classes="accent" MinWidth="100" IsDefault="True" Command="{Binding ConfirmCommand}"/>
+      <Button Content="Zrušit" MinWidth="80" IsCancel="True" Command="{Binding CancelCommand}"/>
+    </StackPanel>
+  </StackPanel>
+</UserControl>
