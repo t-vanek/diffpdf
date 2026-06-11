@@ -1,227 +1,222 @@
-# Návrh přepisu automatizací — kategorie, účel a uživatelská přívětivost
+# Návrh přepisu automatizací — kategorie, šablony, účel
 
-> **Status:** návrh k odsouhlasení. Tento dokument nemění chování — popisuje cílový stav
-> a postup, jak se k němu dostat zpětně kompatibilně.
+> **Status:** návrh k odsouhlasení. Velký přepis — rozdělený do vrstev a fází, aby šel
+> nasazovat postupně a zpětně kompatibilně (klíče a REST cesty zůstávají stabilní).
 
 ## 1. Proč to měnit
 
 Dnes je „automatizace" vystavená uživateli jako **syrová pipeline kroků**. V editoru
-(`AutomationDefinitionsViewModel`) vybíráš z technického enumu
-`AutomationStepType` — `Readiness`, `Health`, `StructureSync`, `Retention`,
-`DbRowRetention`, `ScheduledComparison` — a parametry zadáváš jako volný text
-`klíč=hodnota`. To má tři problémy:
+vybíráš z technického enumu `AutomationStepType` (`Readiness`, `Health`,
+`StructureSync`, `Retention`, `DbRowRetention`, `ScheduledComparison`) a parametry píšeš
+jako volný text `klíč=hodnota`. Problémy: není to srozumitelné, není to kategorizované
+a parametry jsou neřízené (bez popisků, defaultů, validace).
 
-1. **Není to srozumitelné.** `DbRowRetention` nebo `StructureSync` nikomu neřeknou,
-   *k čemu to je* ani *kdy to zapnout*. Účel je schovaný v XML-doc komentářích ve zdrojáku.
-2. **Není to kategorizované.** Šest kroků leží v jednom plochém seznamu. Uživatel
-   nepozná, co *hlídá* (a má jen upozorňovat), co *uklízí* a co *vykonává práci*.
-3. **Parametry jsou neřízené.** `retentionDays`, `maxPerTick`, `enqueueOnly` se píšou
-   ručně do textového pole — bez popisků, výchozích hodnot, validace a nápovědy.
+Cíl: **každá automatizace patří do kategorie, má lidský název a jasný účel, a vytváří se
+z editovatelné šablony — ne skládáním syrových kroků.**
 
-Cíl přepisu: **každá automatizace patří do kategorie, má jasný účel vyjádřený lidsky,
-a vytváří se z připravené šablony, ne skládáním syrových kroků.**
+## 2. Čtyři kategorie
 
-## 2. Kategorie automatizací
+| Kategorie | Co dělá | Vedlejší efekty |
+|---|---|---|
+| 🔍 **Monitorovací** | Sleduje stav (server, zdroje, data, fronty) a **upozorní**, když něco není v pořádku. | Žádné — jen čte a notifikuje. |
+| ⚙️ **Provozní** | Vykonává vlastní práci produktu — **spouští a řídí porovnání**. | Zakládá joby, generuje reporty. |
+| 🧹 **Údržbové** | Drží systém štíhlý — **uklízí artefakty, řádky, dočasné soubory, logy**. | Maže / archivuje data. |
+| 🔗 **Synchronizační** | Srovnává a přenáší data **mezi systémem a okolím** (disk ↔ DB, sdílené složky, export). | Mění strukturu/scope, přenáší soubory. |
 
-Šest dnešních kroků se přirozeně dělí do tří (volitelně čtyř) kategorií podle toho,
-**co automatizace dělá se systémem**:
+`StructureSync` se z údržby přesouvá do **Synchronizační** kategorie (srovnává disk ↔ DB).
 
-| Kategorie | Co dělá | Vedlejší efekty | Dnešní kroky |
+## 3. Model šablon (editovatelných)
+
+**Šablona = pojmenovaný předpis automatizace** v katalogu: kategorie, lidský název, věta
+účelu, ikona, doporučená kadence/rozsah, předvyplněné kroky a parametry.
+
+Klíčové: **šablona je jen výchozí bod.** Když ji vybereš, vznikne **normální automatizace
+předvyplněná ze šablony**, kterou pak **libovolně upravíš** běžným CRUD — kadenci,
+parametry, rozsah, notifikace, název i účel. Šablona nic „nezamyká"; po vytvoření je to
+samostatná automatizace. (Volitelně si lze zapamatovat `TemplateKey`, ze které vznikla,
+jen pro informaci v UI.)
+
+```
+Galerie šablon  ──vyber──▶  předvyplněná automatizace  ──uprav & ulož──▶  běžící automatizace
+   (katalog)                  (editor, vše měnitelné)         (CRUD)
+```
+
+Vytváření v UI:
+1. **Nová automatizace** → galerie šablon **seskupená do 4 kategorií** (dlaždice: ikona,
+   název, věta účelu, doporučená kadence).
+2. Výběr šablony → otevře se **editor předvyplněný** hodnotami šablony.
+3. Uživatel **cokoli upraví** a uloží. Pokročilý režim navíc umožní složit vlastní
+   víceкrokovou pipeline od nuly.
+
+## 4. Katalog automatizací
+
+Legenda: **✅ existuje dnes** · **🆕 nová (navrhovaná)** · priorita **P1** (jádro) /
+**P2** (vysoká hodnota) / **P3** (rozšíření).
+
+### 🔍 Monitorovací
+
+| Šablona | Účel | Stav | Pri |
 |---|---|---|---|
-| 🔍 **Monitorovací** | Sleduje stav a **upozorní**, když něco není v pořádku. | Žádné — jen čte a notifikuje. | `Health`, `Readiness` |
-| ⚙️ **Provozní** (porovnávací) | Vykonává vlastní práci produktu — **spouští porovnání**. | Zakládá joby, generuje reporty. | `ScheduledComparison` |
-| 🧹 **Údržbové** | Drží systém zdravý — **uklízí a srovnává strukturu**. | Maže artefakty/řádky, mění scope. | `Retention`, `DbRowRetention`, `StructureSync` |
+| **Zdraví serveru** | Hlídá DB, renderer a zápis do úložiště; upozorní při výpadku. | ✅ `Health` | P1 |
+| **Připravenost dat** | Hlídá, že instance v rozsahu mají v `old/` i `new/` co porovnávat. | ✅ `Readiness` | P1 |
+| **Diskové úložiště** | Hlídá volné místo na svazku artefaktů/DB; upozorní pod prahem (např. < 10 %). | 🆕 `SystemResource(disk)` | P1 |
+| **Vytížení CPU** | Hlídá trvale vysoké vytížení CPU nad prahem po dané okno. | 🆕 `SystemResource(cpu)` | P1 |
+| **Paměť RAM** | Hlídá dostupnou RAM / working set procesu; upozorní pod prahem. | 🆕 `SystemResource(ram)` | P1 |
+| **Fronta a zaseknuté joby** | Hlídá hloubku fronty a joby běžící podezřele dlouho (využije event `JobStalled`). | 🆕 `QueueHealth` | P2 |
+| **Čerstvost porovnání** | Upozorní, když instance nevyprodukovala úspěšné porovnání déle než N hodin (tichý výpadek pipeline). | 🆕 `ComparisonFreshness` | P2 |
+| **Míra chyb** | Hlídá podíl dvojic končících `Error` přes časové okno; upozorní nad prahem. | 🆕 `ErrorRate` | P3 |
+| **Dostupnost úložiště** | Hlídá dosažitelnost a latenci síťových/UNC složek (`share:`). | 🆕 `StorageReachability` | P3 |
+| **Stav dead-letter** | Upozorní, když v dead-letter frontě (Wolverine) přibývají zprávy. | 🆕 `DeadLetterHealth` | P3 |
 
-> **Volitelné jemnější dělení.** `StructureSync` lze vyčlenit do samostatné kategorie
-> **🔗 Synchronizační**, pokud chceme „mění strukturu/scope" oddělit od „maže staré
-> věci". Doporučuji začít se třemi kategoriemi a čtvrtou přidat, až jich přibude víc
-> (např. budoucí import/export, archivace, replikace).
+> **Disk / CPU / RAM** stojí na jednom kroku `SystemResource` parametrizovaném polem
+> `resource` (`disk` / `cpu` / `ram`) + prahy. Navenek jsou to **tři samostatné šablony**
+> s lidskými názvy — přesně ukázka, proč vrstva šablon dává smysl: jeden krok, tři
+> srozumitelné automatizace.
 
-### Mapování krok → kategorie + lidský název + účel
+### ⚙️ Provozní
 
-| Krok (`AutomationStepType`) | Kategorie | Lidský název | Účel (jedna věta) |
+| Šablona | Účel | Stav | Pri |
 |---|---|---|---|
-| `Health` | Monitorovací | **Zdraví serveru** | Hlídá, že databáze, renderer a úložiště fungují — a upozorní, když ne. |
-| `Readiness` | Monitorovací | **Připravenost dat** | Hlídá, že instance v rozsahu mají v `old/` i `new/` čím porovnávat. |
-| `ScheduledComparison` | Provozní | **Plánované porovnání** | Pravidelně spustí porovnání pro každou zapnutou instanci v rozsahu. |
-| `Retention` | Údržbové | **Úklid reportů** | Maže diff-PDF a JSON reporty dokončených jobů starší než daná lhůta. |
-| `DbRowRetention` | Údržbové | **Úklid databáze** | Maže staré řádky (joby, historii) z databáze, aby nerostla bez hranic. |
-| `StructureSync` | Údržbové | **Synchronizace struktury** | Srovná složky na disku se scope stromem (větve/instance) v databázi. |
+| **Plánované porovnání** | Pravidelně spustí porovnání pro každou zapnutou instanci v rozsahu. | ✅ `ScheduledComparison` | P1 |
+| **CI brána** | Vyhodnotí poslední výsledek proti bráně a vystaví pass/fail pro CI. | 🆕 `GateCheck` | P2 |
+| **Přegenerování chyb** | Znovu zařadí dvojice, které skončily `Error` (transientní selhání). | 🆕 `ReRunFailed` | P2 |
+| **Souhrnný přehled** | Vytvoří denní/týdenní souhrn změn za větev a pošle notifikaci/digest. | 🆕 `Digest` | P3 |
+| **Předehřátí rendereru** | Drží renderer „teplý", aby první porovnání po pauze nebylo pomalé. | 🆕 `RendererWarmup` | P3 |
 
-## 3. Co se uživateli změní
+### 🧹 Údržbové
 
-### 3.1 Místo „dropdown s krokem" → galerie šablon podle kategorií
-
-Tlačítko **Nová automatizace** otevře **galerii šablon seskupenou do kategorií**.
-Každá dlaždice nese ikonu, lidský název, **jednu větu účelu** a doporučenou kadenci/rozsah:
-
-```
-🔍 MONITOROVACÍ
-   ┌─────────────────────────┐  ┌─────────────────────────┐
-   │ ❤️  Zdraví serveru       │  │ ✅  Připravenost dat     │
-   │ Hlídá DB, renderer,      │  │ Hlídá, že instance mají  │
-   │ úložiště. Upozorní při    │  │ v old/ i new/ co         │
-   │ výpadku.                 │  │ porovnávat.              │
-   │ Doporučeno: každou 1 min │  │ Doporučeno: každých 5 min│
-   └─────────────────────────┘  └─────────────────────────┘
-
-⚙️ PROVOZNÍ
-   ┌─────────────────────────┐
-   │ 🔁  Plánované porovnání   │
-   │ Spustí porovnání pro     │
-   │ každou instanci v rozsahu.│
-   │ Doporučeno: cron 0 2 * * *│
-   └─────────────────────────┘
-
-🧹 ÚDRŽBOVÉ
-   ┌─────────────────────────┐  ┌─────────────────────────┐  ┌─────────────────────────┐
-   │ 🗂️  Úklid reportů        │  │ 🗄️  Úklid databáze       │  │ 🔗  Synchronizace struktury│
-   │ …                        │  │ …                        │  │ …                        │
-   └─────────────────────────┘  └─────────────────────────┘  └─────────────────────────┘
-```
-
-Po výběru šablony se předvyplní rozumné výchozí hodnoty (kadence, parametry, notifikace).
-**Pokročilý režim** ponechává možnost složit vlastní víceкrokovou pipeline jako dnes.
-
-### 3.2 Seznam automatizací seskupený podle kategorie
-
-Sekce **Automatizace** se z plochého seznamu změní na seznam **seskupený do kategorií**
-(skládací sekce s ikonou, názvem a počtem + souhrnem stavu OK/Varování/Selhané v záhlaví):
-
-```
-🔍 Monitorovací (2)              ● 2 OK
-   Zdraví serveru ………………………………… OK   před 30 s
-   Připravenost: Alfa ……………………… ⚠ Varování  před 2 min
-
-⚙️ Provozní (1)                  ● 1 OK
-   Plánované porovnání ………………………… OK   02:00
-
-🧹 Údržbové (3)                  ● 3 OK
-   Úklid reportů …………………………………… OK   03:00
-   Úklid databáze ………………………………… OK   03:30
-   Synchronizace struktury …………… OK   před 5 min
-```
-
-### 3.3 Parametry jako pojmenovaná pole, ne `klíč=hodnota`
-
-Textové pole parametrů nahradí **typovaná pole řízená katalogem** — s popiskem,
-nápovědou, výchozí hodnotou a validací. Např. pro **Úklid reportů**:
-
-| Pole | Typ | Výchozí | Nápověda |
+| Šablona | Účel | Stav | Pri |
 |---|---|---|---|
-| Doba uchování (dny) | číslo ≥ 0 | 30 | Reporty starší než tolik dní se smažou. |
-| Max. mazání na běh | číslo ≥ 1 | 100 | Strop, aby jeden běh nezahltil disk I/O. |
+| **Úklid reportů** | Maže diff-PDF a JSON reporty dokončených jobů starší než lhůta. | ✅ `Retention` | P1 |
+| **Úklid databáze** | Maže staré řádky (joby, historii), aby DB nerostla bez hranic. | ✅ `DbRowRetention` | P1 |
+| **Úklid dočasných souborů** | Maže osiřelé dočasné render-soubory a polovičaté výstupy. | 🆕 `TempCleanup` | P2 |
+| **Archivace reportů** | Staré reporty místo smazání zazipuje/přesune do studeného úložiště. | 🆕 `Archive` | P3 |
+| **Rotace logů** | Ořeže logy nad rámec Serilog okna a ověří velikost log adresáře. | 🆕 `LogRotation` | P3 |
+| **Údržba databáze** | Reorganizace indexů / aktualizace statistik (mimo špičku). | 🆕 `DbMaintenance` | P3 |
 
-## 4. Změny v doménovém modelu a API
+### 🔗 Synchronizační
 
-### 4.1 Nový enum kategorií
+| Šablona | Účel | Stav | Pri |
+|---|---|---|---|
+| **Synchronizace struktury** | Srovná složky na disku se scope stromem (větve/instance) v DB. | ✅ `StructureSync` | P1 |
+| **Synchronizace složek** | Stáhne/zrcadlí `new/` ze zdrojové sdílené složky nebo SFTP. | 🆕 `FolderSync` | P2 |
+| **Export výsledků** | Pošle reporty/verdikty do externího systému (webhook, S3, sdílená složka). | 🆕 `ResultExport` | P2 |
+| **Záloha databáze** | Vytvoří zálohu DB / snapshot scope konfigurace. | 🆕 `Backup` | P3 |
+| **Synchronizace konfigurace** | Načte scope konfiguraci ze souboru/gitu a srovná ji se serverem. | 🆕 `ConfigSync` | P3 |
+
+## 5. Změny v doménovém modelu a API
+
+### 5.1 Kategorie
 
 ```csharp
-// DiffPdf.Core/Models/AutomationModels.cs
 public enum AutomationCategory
 {
-    Monitoring,    // sleduje a upozorňuje, bez vedlejších efektů
-    Operations,    // vykonává vlastní práci (porovnání)
-    Maintenance,   // uklízí a srovnává strukturu
-    // (volitelně) Synchronization
+    Monitoring,        // sleduje a upozorňuje, bez vedlejších efektů
+    Operations,        // vykonává vlastní práci (porovnání)
+    Maintenance,       // uklízí (artefakty, řádky, temp, logy)
+    Synchronization,   // srovnává/přenáší mezi systémem a okolím
 }
 ```
 
-### 4.2 Katalog kroků — jediný zdroj pravdy o metadatech
+### 5.2 Nové kroky (`AutomationStepType`)
 
-Centrální statický katalog mapuje každý `AutomationStepType` na kategorii, lidský
-název, účel, ikonu, doporučenou kadenci a **schéma parametrů** (typovaná pole).
-Pohání UI (galerie + seznam + editor), API endpoint i dokumentaci — žádné duplicitní
-texty.
+Stávajících 6 zůstává (klíče stabilní). Přibývají podle priority:
+
+```
+P1: SystemResource              // disk / cpu / ram (param `resource`)
+P2: QueueHealth, ComparisonFreshness, GateCheck, ReRunFailed,
+    TempCleanup, FolderSync, ResultExport
+P3: ErrorRate, StorageReachability, DeadLetterHealth, Digest, RendererWarmup,
+    Archive, LogRotation, DbMaintenance, Backup, ConfigSync
+```
+
+Každý nový krok = jeden `IAutomationStepExecutor` (stejný vzor jako dnešní). To je
+„velký přepis" — ale aditivní: každý executor jde přidat samostatně.
+
+### 5.3 Katalog — jediný zdroj pravdy
+
+Centrální statický katalog mapuje krok i šablonu na metadata (kategorie, lidský název,
+účel, ikona, doporučená kadence, **schéma parametrů**). Pohání galerii, seskupený seznam,
+typovaná pole v editoru, API endpoint i dokumentaci.
 
 ```csharp
-public sealed record AutomationStepDescriptor(
-    AutomationStepType Type,
+public sealed record AutomationTemplate(
+    string Key,                       // "disk-space"
     AutomationCategory Category,
-    string DisplayName,          // "Úklid reportů"
-    string Purpose,              // "Maže diff-PDF a JSON reporty starší než lhůta."
-    string Icon,                 // glyph / emoji klíč
+    string DisplayName,               // "Diskové úložiště"
+    string Purpose,                   // jedna věta
+    string Icon,
     string? RecommendedCron,
     int?    RecommendedIntervalSeconds,
-    IReadOnlyList<AutomationParameterSpec> Parameters);
+    AutomationScopeKind DefaultScope,
+    IReadOnlyList<AutomationStep> Steps,          // předvyplněné kroky + parametry
+    IReadOnlyList<NotificationEvent> DefaultEvents);
 
 public sealed record AutomationParameterSpec(
-    string Key,                  // "retentionDays"
-    string Label,                // "Doba uchování (dny)"
-    string Help,
-    AutomationParameterType Type,// Int / Bool / String / Enum
-    string? Default,
-    int? Min, int? Max);
+    string Key, string Label, string Help,
+    AutomationParameterType Type,     // Int / Bool / String / Enum
+    string? Default, int? Min, int? Max,
+    IReadOnlyList<string>? EnumValues);
 
 public static class AutomationCatalog
 {
-    public static IReadOnlyList<AutomationStepDescriptor> All { get; } = [ /* 6 položek */ ];
-    public static AutomationStepDescriptor For(AutomationStepType type) => …;
-    public static AutomationCategory CategoryOf(AutomationStepType type) => For(type).Category;
+    public static IReadOnlyList<AutomationTemplate> Templates { get; }
+    public static IReadOnlyList<AutomationParameterSpec> ParametersFor(AutomationStepType type);
+    public static AutomationCategory CategoryOf(AutomationStepType type);
+    public static string DisplayNameFor(AutomationStepType type);
 }
 ```
 
-### 4.3 `Automation` dostane kategorii (odvozenou) + volitelný účel
+### 5.4 `Automation` — aditivní pole
 
-- **`Category`** — odvozená z „dominantního" kroku (u jednokrokové automatizace je to
-  ten krok; u víceкrokové se zvolí podle priority Provozní > Údržbové > Monitorovací,
-  nebo se uloží explicitně). Vystavená v `AutomationResponse` jako `category`.
-- **`Purpose` / `Description`** — volitelný text, předvyplněný z katalogu, uživatelsky
-  editovatelný. Ukáže se v seznamu i v detailu.
+- **`Category`** — odvozená z dominantního kroku (jednokroková = ten krok; víceкroková
+  podle priority Provozní > Synchronizační > Údržbové > Monitorovací, nebo uložená).
+- **`Purpose`** — volitelný text, předvyplněný ze šablony, uživatelsky editovatelný.
+- **`TemplateKey`** *(volitelné)* — ze které šablony vznikla (jen informativní).
 
-Klíče (`Key`) zůstávají stabilní → **žádná migrace dat ani změna REST cest.** Kategorie
-je čistě odvozená/aditivní vlastnost.
+Vystaveno v `AutomationResponse` jako `category`, `purpose`, `templateKey` + u kroků
+dopočítané `displayName` / `icon`.
 
-### 4.4 Nové/rozšířené endpointy
+### 5.5 Endpointy
 
 | Endpoint | Účel |
 |---|---|
-| `GET /api/v1/automations/catalog` | Vrátí katalog: kategorie + kroky s metadaty a schématem parametrů. Pohání galerii a typovaná pole v UI. |
+| `GET /api/v1/automations/templates` | Katalog šablon seskupený do kategorií (pohání galerii). |
+| `GET /api/v1/automations/catalog` | Schéma parametrů a metadata kroků (pohání typovaná pole). |
+| `POST /api/v1/automations?fromTemplate={key}` | Vytvoří automatizaci předvyplněnou ze šablony (tělo přepíše defaulty). |
 | `GET /api/v1/automations?category=Monitoring` | Filtr seznamu podle kategorie. |
-| `AutomationResponse.category` | Kategorie automatizace (odvozená). |
-| `AutomationResponse.steps[].displayName / purpose / icon` | Lidská metadata z katalogu (read-only, dopočítaná). |
 
-## 5. Auto-provisioning v kategoriích
+## 6. Desktop UI
 
-`AutomationProvisioner` dnes zakládá baseline automatizace s technickými názvy
-(`"Server health"`, `"Report retention"`…). Přepíšeme názvy a doplníme účel
-z katalogu — pojmenování bude konzistentní s galerií:
+- **Galerie šablon** seskupená do 4 kategorií (dlaždice s ikonou, názvem, účelem).
+- **Seznam automatizací** seskupený do kategorií se souhrnem stavu OK/Varování/Selhané.
+- **Typovaná pole parametrů** řízená katalogem místo `klíč=hodnota`.
+- **Pokročilý režim** pro vlastní pipeline ponechat.
 
-| Klíč | Dnešní název | Nový název | Kategorie |
-|---|---|---|---|
-| `health` | Server health | **Zdraví serveru** | Monitorovací |
-| `readiness-{branch}` | Readiness: {branch} | **Připravenost: {branch}** | Monitorovací |
-| `retention` | Report retention | **Úklid reportů** | Údržbové |
-| `db-row-retention` | Database row retention | **Úklid databáze** | Údržbové |
-| `structure-sync` | Scope structure sync | **Synchronizace struktury** | Údržbové |
-| *(žádný baseline)* | — | **Plánované porovnání** (zakládá uživatel) | Provozní |
+## 7. Postup implementace (fáze)
 
-Provisioning zůstává idempotentní a nedestruktivní (zakládá jen chybějící klíče), takže
-přejmenování se projeví jen u nově zakládaných instalací; existující ručně upravené
-automatizace se nepřepíšou.
+**Fáze 0 — základ (P1):**
+1. Doména: `AutomationCategory`, `AutomationCatalog`, `AutomationParameterSpec`,
+   `AutomationTemplate`. Žádná změna stávajících `AutomationStepType`.
+2. `SystemResource` executor + tři šablony (disk/cpu/ram).
+3. API: `category`/`purpose` v response, `GET …/templates`, `GET …/catalog`,
+   `?fromTemplate=`, `?category=`.
+4. Provisioning: přejmenovat baseline na lidské názvy, navázat kategorii a účel.
+5. UI: galerie šablon + seskupený seznam + typovaná pole.
+6. Dokumentace: přepsat sekci o automatizacích v `README.md` a `docs/DEVELOPMENT.md`.
 
-## 6. Postup implementace (zpětně kompatibilní, po vrstvách)
+**Fáze 1 (P2):** `QueueHealth`, `ComparisonFreshness`, `GateCheck`, `ReRunFailed`,
+`TempCleanup`, `FolderSync`, `ResultExport` — každý jako samostatný executor + šablona.
 
-1. **Doména** — přidat `AutomationCategory`, `AutomationCatalog`,
-   `AutomationParameterSpec`. Žádná změna `AutomationStepType` (klíče stabilní).
-2. **API** — `AutomationResponse` rozšířit o `category` + lidská metadata kroků;
-   přidat `GET /automations/catalog` a `?category=` filtr.
-3. **Provisioning** — přejmenovat baseline automatizace a navázat účel z katalogu.
-4. **Desktop UI** — galerie šablon podle kategorií, seskupený seznam, typovaná pole
-   parametrů řízená katalogem; pokročilý režim pro vlastní pipeline ponechat.
-5. **Dokumentace** — sekci o automatizacích v `README.md` a `docs/DEVELOPMENT.md`
-   přepsat do jazyka kategorií a účelů.
+**Fáze 2 (P3):** zbylá rozšíření podle poptávky.
 
-Každý krok je samostatně nasaditelný; uživatelská přívětivost roste postupně a nic
-se nerozbije po cestě.
+Každá fáze je samostatně nasaditelná a nic nerozbije po cestě.
 
-## 7. Shrnutí
+## 8. Shrnutí
 
-- Automatizace dostanou **tři kategorie**: 🔍 Monitorovací, ⚙️ Provozní, 🧹 Údržbové
-  (s prostorem pro 🔗 Synchronizační).
-- Každý druh automatizace má **lidský název a jednu větu účelu**, vedené z jednoho
-  **katalogu**, který pohání UI i API.
-- Vytváření jde přes **galerii šablon podle kategorií** s rozumnými výchozími hodnotami;
-  parametry jsou **pojmenovaná typovaná pole**, ne volný text.
-- Vše **aditivní a zpětně kompatibilní** — klíče a REST cesty se nemění, kategorie je
-  odvozená.
+- **4 kategorie:** 🔍 Monitorovací · ⚙️ Provozní · 🧹 Údržbové · 🔗 Synchronizační.
+- **Editovatelné šablony** s lidskými názvy — výběr ze galerie předvyplní automatizaci,
+  kterou pak libovolně upravíš.
+- Monitoring rozšířen o **disk, CPU, RAM** (+ fronty, čerstvost, míra chyb…).
+- Navržena **sada nových automatizací** do každé kategorie s prioritami P1–P3.
+- Vše **aditivní a zpětně kompatibilní** — klíče i REST cesty stabilní, kategorie odvozená.
