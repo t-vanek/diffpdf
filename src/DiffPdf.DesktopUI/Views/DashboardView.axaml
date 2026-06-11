@@ -64,8 +64,8 @@
         </Border>
         <Border Classes="card" Width="165" Margin="0,0,12,12">
           <StackPanel Spacing="6">
-            <TextBlock Classes="kpiLabel" Text="AKTIVNÍ KONTROLY"/>
-            <controls:RollingNumber Classes="kpiValue" Value="{Binding EnabledChecks}"/>
+            <TextBlock Classes="kpiLabel" Text="AKTIVNÍ AUTOMATIZACE"/>
+            <controls:RollingNumber Classes="kpiValue" Value="{Binding EnabledAutomations}"/>
           </StackPanel>
         </Border>
       </WrapPanel>

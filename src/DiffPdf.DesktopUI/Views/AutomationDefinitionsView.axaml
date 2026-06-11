@@ -1,0 +1,220 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:DiffPdf.DesktopUI.ViewModels"
+             x:Class="DiffPdf.DesktopUI.Views.AutomationDefinitionsView"
+             x:DataType="vm:AutomationDefinitionsViewModel">
+
+  <UserControl.KeyBindings>
+    <KeyBinding Gesture="F5" Command="{Binding RefreshCommand}"/>
+  </UserControl.KeyBindings>
+
+  <DockPanel>
+    <TextBlock DockPanel.Dock="Top" Text="Automatizace" Classes="pageTitle" Margin="2,0,0,10"/>
+
+    <WrapPanel DockPanel.Dock="Top" ItemSpacing="8" LineSpacing="8" Margin="0,0,0,10">
+      <Button Content="Nová" Classes="accent" Command="{Binding NewCommand}"/>
+      <Button Content="Obnovit" Classes="ghost" Command="{Binding RefreshCommand}" ToolTip.Tip="Obnovit (F5)"/>
+      <Button Content="Upravit" Classes="ghost" Command="{Binding EditSelectedCommand}"
+              IsEnabled="{Binding Selected, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+      <Button Content="Spustit teď" Classes="ghost" Command="{Binding RunNowCommand}"
+              IsEnabled="{Binding Selected, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+      <Button Content="Smazat" Classes="destructive" Command="{Binding DeleteCommand}"
+              IsEnabled="{Binding Selected, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+      <TextBlock Text="{Binding Info}" Foreground="{DynamicResource Info}" VerticalAlignment="Center"/>
+      <TextBlock Text="{Binding Error}" Foreground="{DynamicResource Bad}" VerticalAlignment="Center"/>
+      <ProgressBar IsIndeterminate="True" Width="100" Height="4" VerticalAlignment="Center" IsVisible="{Binding IsBusy}"/>
+    </WrapPanel>
+
+    <!-- Souhrn automatizací (zdraví na první pohled) -->
+    <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding Summary}" Margin="0,0,0,8">
+      <ItemsControl.ItemsPanel>
+        <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="16"/></ItemsPanelTemplate>
+      </ItemsControl.ItemsPanel>
+      <ItemsControl.ItemTemplate>
+        <DataTemplate x:DataType="vm:StatLine">
+          <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+            <TextBlock Text="{Binding Icon}" Foreground="{Binding Foreground}"/>
+            <TextBlock Text="{Binding Label}" Foreground="{Binding Foreground}"/>
+            <TextBlock Text="{Binding Count}" Foreground="{Binding Foreground}" FontWeight="{Binding Weight}"/>
+          </StackPanel>
+        </DataTemplate>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
+
+    <Grid ColumnDefinitions="3*,2*">
+      <DockPanel Grid.Column="0" Margin="0,0,12,0">
+        <Panel DockPanel.Dock="Top" Height="260">
+          <DataGrid x:CompileBindings="False" ItemsSource="{Binding Automations}"
+                    SelectedItem="{Binding Selected}" IsReadOnly="True" AutoGenerateColumns="False" CanUserResizeColumns="True">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Klíč" Binding="{Binding Key}" Width="140"/>
+              <DataGridTextColumn Header="Plán" Binding="{Binding ., Converter={x:Static vm:AutomationCadenceLabelConverter.Instance}}" Width="110"/>
+              <DataGridTextColumn Header="Kroky" Binding="{Binding Steps.Count}" Width="60"/>
+              <DataGridTemplateColumn Header="Povoleno" Width="95" SortMemberPath="Enabled">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate>
+                    <Panel VerticalAlignment="Center" HorizontalAlignment="Left">
+                      <Border Classes="badge good" IsVisible="{Binding Enabled}">
+                        <TextBlock Text="Povoleno"/>
+                      </Border>
+                      <Border Classes="badge" IsVisible="{Binding !Enabled}">
+                        <TextBlock Text="Zakázáno"/>
+                      </Border>
+                    </Panel>
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+              <DataGridTemplateColumn Header="Výsledek" Width="95" SortMemberPath="LastOutcome">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate>
+                    <TextBlock VerticalAlignment="Center" FontWeight="SemiBold"
+                               Text="{Binding LastOutcome, Converter={x:Static vm:AutomationOutcomeLabelConverter.Instance}}"
+                               Foreground="{Binding LastOutcome, Converter={x:Static vm:AutomationOutcomeBrushConverter.Instance}}"/>
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+              <DataGridTextColumn Header="Selhání" Binding="{Binding ConsecutiveFailures}" Width="65"/>
+              <DataGridTextColumn Header="Verze" Binding="{Binding Version}" Width="55"/>
+            </DataGrid.Columns>
+          </DataGrid>
+          <TextBlock Text="Zatím žádné automatizace. Vytvoř první tlačítkem Nová." Foreground="{DynamicResource InkFaint}"
+                     HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding HasNoAutomations}"/>
+        </Panel>
+
+        <TextBlock DockPanel.Dock="Top" Text="Historie běhů" Classes="headline" Margin="0,10,0,6"/>
+        <Grid RowDefinitions="*,Auto">
+          <Panel Grid.Row="0">
+            <DataGrid x:CompileBindings="False" ItemsSource="{Binding Runs}" SelectedItem="{Binding SelectedRun}"
+                      IsReadOnly="True" AutoGenerateColumns="False" CanUserResizeColumns="True">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="Začátek" Binding="{Binding StartedAt, Converter={x:Static vm:LocalTimeConverter.Instance}}" Width="160"/>
+                <DataGridTextColumn Header="Spouštěč" Binding="{Binding Trigger, Converter={x:Static vm:AutomationTriggerLabelConverter.Instance}}" Width="90"/>
+                <DataGridTextColumn Header="Pokus" Binding="{Binding Attempt}" Width="55"/>
+                <DataGridTextColumn Header="Výsledek" Binding="{Binding Outcome}" Width="90"/>
+                <DataGridTextColumn Header="Detail" Binding="{Binding Detail}" Width="*"/>
+              </DataGrid.Columns>
+            </DataGrid>
+            <TextBlock Text="Vyber automatizaci pro zobrazení historie běhů." Foreground="{DynamicResource InkFaint}"
+                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                       IsVisible="{Binding Selected, Converter={x:Static ObjectConverters.IsNull}}"/>
+            <TextBlock Text="Tato automatizace zatím neproběhla." Foreground="{DynamicResource InkFaint}"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding HasNoRuns}"/>
+          </Panel>
+
+          <!-- Výsledky kroků vybraného běhu -->
+          <Border Grid.Row="1" Classes="card" Margin="0,6,0,0" Padding="8" MaxHeight="160"
+                  IsVisible="{Binding SelectedRun, Converter={x:Static ObjectConverters.IsNotNull}}">
+            <ScrollViewer>
+              <StackPanel Spacing="2">
+                <TextBlock Text="Kroky vybraného běhu" Classes="headline" Margin="0,0,0,4"/>
+                <ItemsControl x:CompileBindings="False" ItemsSource="{Binding SelectedRun.StepResults}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <Grid ColumnDefinitions="22,130,80,*,70" Margin="0,1">
+                        <TextBlock Grid.Column="0" Text="{Binding Index}" Foreground="{DynamicResource InkFaint}"/>
+                        <TextBlock Grid.Column="1" Text="{Binding Type}"/>
+                        <TextBlock Grid.Column="2" Text="{Binding Outcome}" FontWeight="SemiBold"
+                                   Foreground="{Binding Outcome, Converter={x:Static vm:AutomationOutcomeBrushConverter.Instance}}"/>
+                        <TextBlock Grid.Column="3" Text="{Binding Detail}" TextTrimming="CharacterEllipsis"
+                                   ToolTip.Tip="{Binding Detail}"/>
+                        <TextBlock Grid.Column="4" Text="{Binding DurationSeconds, StringFormat='{}{0:0.00} s'}"
+                                   Foreground="{DynamicResource InkFaint}" HorizontalAlignment="Right"/>
+                      </Grid>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </ScrollViewer>
+          </Border>
+        </Grid>
+      </DockPanel>
+
+      <ScrollViewer Grid.Column="1">
+        <StackPanel Spacing="6">
+          <TextBlock Text="Automatizace" Classes="headline"/>
+          <TextBox Text="{Binding Key}" PlaceholderText="Klíč (unikátní)"/>
+          <TextBox Text="{Binding Name}" PlaceholderText="Název"/>
+
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <TextBlock Text="Rozsah"/>
+            <TextBlock Text="ⓘ" Foreground="{DynamicResource InkFaint}" FontSize="11" VerticalAlignment="Center"
+                       ToolTip.Tip="Rozsah automatizace: Global = celý server, Branch = jedna větev, Instance = jedna instance. Určuje, na co se kroky vztahují a které události ji spouští."/>
+          </StackPanel>
+          <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Scopes}" SelectedItem="{Binding ScopeKind}"/>
+          <TextBox Text="{Binding BranchKey}" PlaceholderText="Klíč větve (pro rozsah Větev/Instance)"/>
+          <TextBox Text="{Binding InstanceKey}" PlaceholderText="Klíč instance (pro rozsah Instance)"/>
+
+          <TextBlock Text="Plán (čas)" Classes="headline" Margin="0,8,0,0"/>
+          <TextBox Text="{Binding Cron}" PlaceholderText="Cron (UTC, 5 polí) — má přednost"
+                   ToolTip.Tip="Cron výraz, 5 polí v UTC: minuta hodina den-v-měsíci měsíc den-v-týdnu. Příklad: 0 6 * * * = každý den v 06:00 UTC; */15 * * * * = každých 15 minut. Když je vyplněn, má přednost před intervalem. Prázdný plán = automatizace jen na události / ručně."/>
+          <TextBlock Text="nebo interval (s); 0 = bez plánu"/>
+          <NumericUpDown Value="{Binding IntervalSeconds}" Minimum="0" Increment="30"/>
+
+          <TextBlock Text="Spouštěcí události" Classes="headline" Margin="0,8,0,0"
+                     ToolTip.Tip="Automatizace se spustí, když v jejím rozsahu nastane zaškrtnutá událost (s ochrannou prodlevou níže). Vlastní události automatizace ji nikdy nespustí znovu."/>
+          <ItemsControl ItemsSource="{Binding EventTriggerOptions}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:EventTriggerOptionViewModel">
+                <CheckBox Content="{Binding Label}" IsChecked="{Binding IsChecked}"/>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <TextBlock Text="Prodleva mezi událostmi (s)"/>
+          <NumericUpDown Value="{Binding EventDebounceSeconds}" Minimum="0" Increment="10"
+                         ToolTip.Tip="Minimální odstup dvou běhů spuštěných událostí (debounce) — chrání před lavinou běhů při opakovaných událostech."/>
+
+          <TextBlock Text="Kroky (pipeline)" Classes="headline" Margin="0,8,0,0"
+                     ToolTip.Tip="Kroky běží v pořadí. Selhání kroku zastaví pipeline (fail-fast); varování pokračuje."/>
+          <ItemsControl ItemsSource="{Binding Steps}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:AutomationStepRowViewModel">
+                <Border Classes="card" Margin="0,0,0,6" Padding="8">
+                  <StackPanel Spacing="4">
+                    <Grid ColumnDefinitions="*,Auto,Auto,Auto">
+                      <ComboBox Grid.Column="0" HorizontalAlignment="Stretch"
+                                ItemsSource="{Binding Types}" SelectedItem="{Binding Type}"/>
+                      <Button Grid.Column="1" Content="↑" Classes="ghost" Margin="4,0,0,0"
+                              Command="{Binding $parent[ItemsControl].((vm:AutomationDefinitionsViewModel)DataContext).MoveStepUpCommand}"
+                              CommandParameter="{Binding}"/>
+                      <Button Grid.Column="2" Content="↓" Classes="ghost" Margin="4,0,0,0"
+                              Command="{Binding $parent[ItemsControl].((vm:AutomationDefinitionsViewModel)DataContext).MoveStepDownCommand}"
+                              CommandParameter="{Binding}"/>
+                      <Button Grid.Column="3" Content="✕" Classes="ghost" Margin="4,0,0,0"
+                              Command="{Binding $parent[ItemsControl].((vm:AutomationDefinitionsViewModel)DataContext).RemoveStepCommand}"
+                              CommandParameter="{Binding}"/>
+                    </Grid>
+                    <TextBox Text="{Binding Name}" PlaceholderText="Popisek kroku (volitelný)"/>
+                    <TextBox Text="{Binding ParametersText}" AcceptsReturn="True" Height="46"
+                             PlaceholderText="Parametry: klíč=hodnota na řádek (např. retentionDays=30)"/>
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <Button Content="Přidat krok" Classes="ghost" Command="{Binding AddStepCommand}" HorizontalAlignment="Left"/>
+
+          <TextBlock Text="Politika běhu" Classes="headline" Margin="0,8,0,0"/>
+          <TextBlock Text="Timeout pokusu (s)"/>
+          <NumericUpDown Value="{Binding TimeoutSeconds}" Minimum="1" Maximum="86400" Increment="60"
+                         ToolTip.Tip="Tvrdý strop jednoho pokusu; po překročení pokus selže s výsledkem timeout."/>
+          <TextBlock Text="Počet pokusů"/>
+          <NumericUpDown Value="{Binding MaxAttempts}" Minimum="1" Maximum="10" Increment="1"
+                         ToolTip.Tip="Kolikrát se selhaná pipeline zopakuje v rámci jednoho běhu (1 = bez opakování)."/>
+          <TextBlock Text="Prodleva mezi pokusy (s)"/>
+          <NumericUpDown Value="{Binding RetryDelaySeconds}" Minimum="0" Maximum="3600" Increment="10"/>
+          <TextBlock Text="Práh eskalace (po sobě jdoucí selhání)"/>
+          <NumericUpDown Value="{Binding FailureThreshold}" Minimum="1" Increment="1"
+                         ToolTip.Tip="Po tolika selháních v řadě se jednorázově ohlásí událost „Automatizace opakovaně selhává“."/>
+
+          <TextBlock Text="Notifikační události při selhání" Margin="0,8,0,0"/>
+          <CheckBox Content="Kontrola připravenosti selhala" IsChecked="{Binding EventReadinessFailed}"/>
+          <CheckBox Content="Zhoršené zdraví serveru" IsChecked="{Binding EventHealthDegraded}"/>
+          <CheckBox Content="Nesoulad struktury" IsChecked="{Binding EventStructureDrift}"/>
+          <CheckBox Content="Automatizace obnovena" IsChecked="{Binding EventAutomationRecovered}"/>
+          <CheckBox Content="Povoleno" IsChecked="{Binding Enabled}"/>
+          <Button Content="Uložit automatizaci" Classes="accent" Command="{Binding SaveCommand}" HorizontalAlignment="Left"/>
+        </StackPanel>
+      </ScrollViewer>
+    </Grid>
+  </DockPanel>
+</UserControl>

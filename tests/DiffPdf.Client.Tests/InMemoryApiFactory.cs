@@ -24,9 +24,9 @@ public sealed class InMemoryApiFactory : WebApplicationFactory<Program>
             ["ScopeSync:RootPath"] = "",
             ["ScopeSync:Enabled"] = "false",
             ["Auth:Enabled"] = "false",
-            // Push the control-plane's first tick far out so background baseline auto-provisioning never races
-            // these deterministic endpoint tests. The branch-create hook runs on the request path regardless.
-            ["ControlPlane:TickSeconds"] = "3600",
+            // Push the automation engine's first tick far out so background baseline auto-provisioning never
+            // races these deterministic endpoint tests. The branch-create hook runs on the request path regardless.
+            ["Automation:TickSeconds"] = "3600",
         }));
     }
 }

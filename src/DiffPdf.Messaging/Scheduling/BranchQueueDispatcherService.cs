@@ -14,7 +14,7 @@ namespace DiffPdf.Messaging.Scheduling;
 /// leader releases the next pending job for any branch that is idle and not held, so the queue keeps moving
 /// even if a completion event was missed, and resumes automatically after a process restart. Reactive
 /// dispatch (on enqueue / completion / cancel) keeps latency low; this timer guarantees eventual progress.
-/// Mirrors <see cref="ControlPlane.ControlPlaneService"/>'s leader-gating (same <see cref="AutomationLeader"/> lease).
+/// Mirrors <see cref="Automations.AutomationEngineService"/>'s leader-gating (same <see cref="AutomationLeader"/> lease).
 /// </summary>
 public sealed class BranchQueueDispatcherService(
     IServiceScopeFactory scopeFactory,
