@@ -21,8 +21,11 @@ diffpdf-artifacts/
 # Serilog output
 logs/
 
-# Job storage (artifacts/reports/logs per scope)
+# Job storage (artifacts/reports/logs per scope). On Windows (core.ignorecase) this also
+# matches the SOURCE folder src/DiffPdf.Core/Storage/ — re-include it so new code there is
+# not silently left out of commits.
 storage/
+!src/DiffPdf.Core/Storage/
 
 # Sample / local instance data — not versioned
 samples/
