@@ -1,6 +1,6 @@
 namespace DiffPdf.Client;
 
-// ---------------- PDF file manager (Soubory) ----------------
+// ---------------- PDF file manager (Správa souborů) ----------------
 // Wire mirrors of the server's FileContracts. All paths are virtual: '/'-separated, relative to the
 // server's FileManager root ("" = the root); absolute server paths never cross the API boundary.
 

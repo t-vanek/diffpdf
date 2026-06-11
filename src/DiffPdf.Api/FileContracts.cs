@@ -2,7 +2,7 @@ using DiffPdf.Application.Files;
 
 namespace DiffPdf.Api;
 
-// ---------------- PDF file manager (Soubory) ----------------
+// ---------------- PDF file manager (Správa souborů) ----------------
 // All paths on this wire are virtual: '/'-separated, relative to the configured FileManager root
 // ("" = the root). Absolute server paths never cross this boundary.
 

@@ -2,21 +2,34 @@ using System.Collections.ObjectModel;
 using Avalonia.Collections;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using DiffPdf.Client;
 using DiffPdf.DesktopUI.Services;
 
 namespace DiffPdf.DesktopUI.ViewModels;
 
+/// <summary>The backend choice shown in the panel header.</summary>
+public sealed record BackendOption(BackendKind Kind, string Label)
+{
+    public override string ToString() => Label;
+}
+
 /// <summary>
-/// One panel of the two-panel file manager: its own path, item list, selection and local filter.
-/// Navigation cancels any in-flight load (fast folder-hopping never races the list); rows are
-/// reconciled by path so selection and scroll survive refreshes. File operations live on
-/// <see cref="FileManagerViewModel"/> — the panel only navigates, lists and tracks selection.
+/// One panel of the two-panel file manager: its own backend (local computer / server), path, item
+/// list, selection and local filter. Navigation cancels any in-flight load (fast folder-hopping
+/// never races the list); rows are reconciled by path so selection and scroll survive refreshes.
+/// File operations live on <see cref="FileManagerViewModel"/> — the panel only navigates, lists
+/// and tracks selection.
 /// </summary>
 public partial class FilePanelViewModel : ViewModelBase
 {
-    private readonly ServerSession _session;
+    public static IReadOnlyList<BackendOption> BackendOptions { get; } =
+    [
+        new(BackendKind.Local, "Počítač"),
+        new(BackendKind.Server, "Server"),
+    ];
+
+    private IFileBackend _backend;
     private CancellationTokenSource? _loadCts;
+    private bool _suppressBackendEvent;
 
     /// <summary>The user clicked/focused this panel — the manager makes it the active one.</summary>
     public event Action<FilePanelViewModel>? Activated;
@@ -24,8 +37,11 @@ public partial class FilePanelViewModel : ViewModelBase
     /// <summary>Selection changed — the manager refreshes toolbar CanExecute states.</summary>
     public event Action? SelectionChanged;
 
-    /// <summary>PDFs dropped from the OS onto this panel (local paths) — the manager enqueues the upload.</summary>
+    /// <summary>PDFs dropped from the OS onto this panel (local paths) — the manager enqueues the transfer.</summary>
     public event Action<FilePanelViewModel, IReadOnlyList<string>>? FilesDropped;
+
+    /// <summary>The user picked the other backend in the header — the manager swaps it in.</summary>
+    public event Action<FilePanelViewModel, BackendKind>? BackendSwitchRequested;
 
     public ObservableCollection<FileListItemViewModel> Items { get; } = [];
 
@@ -48,19 +64,24 @@ public partial class FilePanelViewModel : ViewModelBase
     [ObservableProperty] private bool _isSearchMode;
     [ObservableProperty] private string? _searchInfo;
 
-    /// <summary>Current multi-selection, pushed from the view (DataGrid.SelectedItems is not bindable).</summary>
-    public IReadOnlyList<FileListItemViewModel> SelectedItems { get; private set; } = [];
+    [ObservableProperty] private BackendOption _selectedBackend;
 
-    public FilePanelViewModel(ServerSession session)
+    public FilePanelViewModel(IFileBackend backend)
     {
-        _session = session;
+        _backend = backend;
+        _selectedBackend = BackendOptions.First(o => o.Kind == backend.Kind);
         ItemsView = new DataGridCollectionView(Items) { Filter = MatchesFilter };
     }
 
+    public IFileBackend Backend => _backend;
+    public bool IsServer => _backend.Kind == BackendKind.Server;
     public bool HasLoaded { get; private set; }
 
     /// <summary>Single-item ops (rename/download) target the focused row; fall back to the lone selected one.</summary>
     public FileListItemViewModel? PrimaryItem => SelectedItem ?? (SelectedItems.Count == 1 ? SelectedItems[0] : null);
+
+    /// <summary>Current multi-selection, pushed from the view (DataGrid.SelectedItems is not bindable).</summary>
+    public IReadOnlyList<FileListItemViewModel> SelectedItems { get; private set; } = [];
 
     public void MakeActive() => Activated?.Invoke(this);
 
@@ -77,6 +98,26 @@ public partial class FilePanelViewModel : ViewModelBase
         if (localPaths.Count > 0) FilesDropped?.Invoke(this, localPaths);
     }
 
+    partial void OnSelectedBackendChanged(BackendOption value)
+    {
+        if (!_suppressBackendEvent)
+            BackendSwitchRequested?.Invoke(this, value.Kind);
+    }
+
+    /// <summary>Swaps the backend (manager-owned instances) and opens <paramref name="startPath"/> (default location when null).</summary>
+    public Task SetBackendAsync(IFileBackend backend, string? startPath = null)
+    {
+        _backend = backend;
+        _suppressBackendEvent = true;
+        try { SelectedBackend = BackendOptions.First(o => o.Kind == backend.Kind); }
+        finally { _suppressBackendEvent = false; }
+
+        HasLoaded = false;
+        FilterText = "";
+        OnPropertyChanged(nameof(IsServer));
+        return LoadAsync(startPath ?? backend.DefaultPath);
+    }
+
     [RelayCommand]
     public Task LoadAsync(string? path) => RunAsync(async () =>
     {
@@ -87,7 +128,7 @@ public partial class FilePanelViewModel : ViewModelBase
 
         try
         {
-            var list = await _session.Require().ListFilesAsync(path, cts.Token);
+            var list = await _backend.ListAsync(path, cts.Token);
             if (cts.IsCancellationRequested) return;
 
             IsSearchMode = false;
@@ -115,7 +156,7 @@ public partial class FilePanelViewModel : ViewModelBase
     });
 
     [RelayCommand]
-    public Task RefreshAsync() => HasLoaded ? LoadAsync(CurrentPath) : LoadAsync("");
+    public Task RefreshAsync() => HasLoaded ? LoadAsync(CurrentPath) : LoadAsync(_backend.DefaultPath);
 
     [RelayCommand]
     private Task NavigateUpAsync() => ParentPath is { } parent ? LoadAsync(parent) : Task.CompletedTask;
@@ -133,7 +174,7 @@ public partial class FilePanelViewModel : ViewModelBase
         else if (IsSearchMode)
         {
             string path = item.Path;
-            await LoadAsync(ParentOf(path));
+            await LoadAsync(_backend.GetParent(path));
             SelectByPath(path);
         }
     }
@@ -141,7 +182,7 @@ public partial class FilePanelViewModel : ViewModelBase
     [RelayCommand]
     private Task NavigateToInputAsync() => LoadAsync(PathInput);
 
-    /// <summary>Searches the current folder's subtree on the server; the query is the filter box text.</summary>
+    /// <summary>Searches the current folder's subtree on this panel's backend; the query is the filter box text.</summary>
     [RelayCommand]
     private Task SearchSubtreeAsync() => RunAsync(async () =>
     {
@@ -154,7 +195,7 @@ public partial class FilePanelViewModel : ViewModelBase
 
         try
         {
-            var result = await _session.Require().SearchFilesAsync(CurrentPath, query, recursive: true, cts.Token);
+            var result = await _backend.SearchAsync(CurrentPath, query, recursive: true, cts.Token);
             if (cts.IsCancellationRequested) return;
 
             ListReconciler.Reconcile(
@@ -167,7 +208,7 @@ public partial class FilePanelViewModel : ViewModelBase
 
             IsSearchMode = true;
             SearchInfo = $"{Format.Plural(result.Items.Count, "výsledek", "výsledky", "výsledků")} pro „{result.Query}“"
-                + (result.Truncated ? " — zkráceno serverovým limitem" : "")
+                + (result.Truncated ? " — zkráceno limitem" : "")
                 + "   ·   Enter = přejít k souboru, Esc = zavřít";
             ItemsView.Refresh();
             UpdateStatusText();
@@ -186,17 +227,11 @@ public partial class FilePanelViewModel : ViewModelBase
         return LoadAsync(CurrentPath);
     }
 
-    private static string ParentOf(string path)
-    {
-        int lastSlash = path.LastIndexOf('/');
-        return lastSlash < 0 ? "" : path[..lastSlash];
-    }
-
     /// <summary>After a mutation, true when this panel displays <paramref name="directory"/> (and should refresh).</summary>
     public bool Shows(string directory) =>
         HasLoaded && string.Equals(CurrentPath, directory, StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>Selects the row with the given virtual path (e.g. a freshly created folder or renamed file).</summary>
+    /// <summary>Selects the row with the given path (e.g. a freshly created folder or renamed file).</summary>
     public void SelectByPath(string path) =>
         SelectedItem = Items.FirstOrDefault(i => string.Equals(i.Path, path, StringComparison.OrdinalIgnoreCase));
 

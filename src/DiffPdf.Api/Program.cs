@@ -123,7 +123,7 @@ builder.Services.AddRateLimiter(options =>
 });
 builder.Services.Configure<StorageOptions>(builder.Configuration.GetSection("Storage"));
 builder.Services.Configure<PdfWorkLimiterOptions>(builder.Configuration.GetSection("Pdf"));
-// PDF file manager (the desktop "Soubory" page). The multipart form cap must cover the configured
+// PDF file manager (the desktop "Správa souborů" page). The multipart form cap must cover the configured
 // per-file upload limit — ReadFormAsync enforces FormOptions, while the per-request Kestrel body cap
 // is raised on the upload endpoint itself.
 builder.Services.Configure<FileManagerOptions>(builder.Configuration.GetSection(FileManagerOptions.SectionName));

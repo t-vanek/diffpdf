@@ -732,6 +732,23 @@ public sealed class DiffPdfClient(HttpClient http)
         await resp.Content.CopyToAsync(destination, ct);
     }
 
+    /// <summary>
+    /// Opens a managed PDF as a readable stream (pull model — for piping into another sink, e.g. the
+    /// desktop's server→local transfers). Disposing the returned stream releases the HTTP response.
+    /// </summary>
+    public async Task<Stream> OpenFileReadAsync(string path, CancellationToken ct = default)
+    {
+        var req = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/files/download?path={Esc(path)}");
+        var resp = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            var ex = await ApiException(resp, ct);
+            resp.Dispose();
+            throw ex;
+        }
+        return await resp.Content.ReadAsStreamAsync(ct); // disposing the stream disposes the response content
+    }
+
     // ---------------- plumbing ----------------
 
     private sealed record JobActionResult(int Resumed, int Retried, JobSummary Job);

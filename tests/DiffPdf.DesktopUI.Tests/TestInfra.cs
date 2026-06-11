@@ -29,7 +29,8 @@ internal sealed class FakeApi : HttpMessageHandler
     /// <summary>Requests whose path ends with this suffix block until <see cref="Release"/> is called.</summary>
     public string? GatedSuffix { get; init; }
 
-    /// <summary>Catch-all override checked first: return a payload to serve it (200), or null to fall through.</summary>
+    /// <summary>Catch-all override checked first: return a payload to serve it as 200 JSON, an
+    /// <see cref="HttpResponseMessage"/> to serve verbatim (binary / non-200), or null to fall through.</summary>
     public Func<HttpRequestMessage, object?>? Custom { get; set; }
 
     private readonly TaskCompletionSource _gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -42,7 +43,7 @@ internal sealed class FakeApi : HttpMessageHandler
             await _gate.Task.ConfigureAwait(false);
 
         if (Custom?.Invoke(request) is { } custom)
-            return new HttpResponseMessage(HttpStatusCode.OK)
+            return custom as HttpResponseMessage ?? new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent(JsonSerializer.Serialize(custom, custom.GetType(), Json), Encoding.UTF8, "application/json"),
             };

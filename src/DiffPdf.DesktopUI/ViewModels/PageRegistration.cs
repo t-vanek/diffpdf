@@ -17,7 +17,7 @@ internal static class PageRegistration
         // Úlohy sit directly under Instance in the nav rail (jobs belong to instances).
         Add<JobsViewModel>(services);
         Add<AutomationsViewModel>(services);
-        // Soubory: two-panel PDF file manager over the server's FileManager root (pure file management).
+        // Správa souborů: two-panel PDF file manager (local computer ↔ server storage; pure file management).
         Add<FileManagerViewModel>(services);
         // "Spustit porovnání" page removed — comparisons are now launched from the per-row run-queue
         // controls on the Branches / Instances pages, so the standalone trigger page is redundant.

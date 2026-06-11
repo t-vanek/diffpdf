@@ -1,7 +1,7 @@
 namespace DiffPdf.Application.Files;
 
 /// <summary>
-/// Configures the PDF file manager (the desktop "Soubory" page). The manager exposes a single
+/// Configures the PDF file manager (the desktop "Správa souborů" page). The manager exposes a single
 /// filesystem subtree to clients via virtual relative paths; nothing outside <see cref="RootPath"/>
 /// is ever reachable.
 /// </summary>

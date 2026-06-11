@@ -50,4 +50,57 @@ public class ClientSettingsStoreTests
             try { Directory.Delete(dir, recursive: true); } catch (IOException) { }
         }
     }
+
+    [Fact]
+    public void Writers_MergeIntoTheSameFile_WithoutWipingEachOther()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "diffpdf-settings-" + Guid.NewGuid().ToString("N"));
+        var path = Path.Combine(dir, "client-settings.json");
+        try
+        {
+            var store = new ClientSettingsStore(path);
+            var panels = new FileManagerPanelsState(new FilePanelState("Local", @"C:\data"), new FilePanelState("Server", "slozka"));
+
+            // The file-manager state survives the connection gear's save, and vice versa.
+            store.SaveFileManagerPanels(panels);
+            store.Save("http://srv:5275", autoConnect: true, clientId: "cid", clientSecret: "secret");
+
+            Assert.Equal(panels, store.LoadFileManagerPanels());
+            var cfg = JsonSerializer.Deserialize<ClientConfig>(File.ReadAllText(path))!;
+            Assert.Equal("http://srv:5275", cfg.Server.Url);
+
+            store.SaveFileManagerPanels(panels with { Right = new FilePanelState("Server", "jinde") });
+            cfg = JsonSerializer.Deserialize<ClientConfig>(File.ReadAllText(path))!;
+            Assert.Equal("http://srv:5275", cfg.Server.Url); // connection settings untouched
+            Assert.Equal("jinde", store.LoadFileManagerPanels()!.Right!.Path);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, recursive: true); } catch (IOException) { }
+        }
+    }
+
+    [Fact]
+    public void LoadFileManagerPanels_MissingOrCorruptFile_ReturnsNull_AndSaveRecovers()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "diffpdf-settings-" + Guid.NewGuid().ToString("N"));
+        var path = Path.Combine(dir, "client-settings.json");
+        try
+        {
+            var store = new ClientSettingsStore(path);
+            Assert.Null(store.LoadFileManagerPanels()); // no file yet
+
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(path, "{ not json ");
+            Assert.Null(store.LoadFileManagerPanels()); // corrupt file must not block startup
+
+            var panels = new FileManagerPanelsState(new FilePanelState("Local", ""), null);
+            store.SaveFileManagerPanels(panels);        // …and a save heals it
+            Assert.Equal(panels, store.LoadFileManagerPanels());
+        }
+        finally
+        {
+            try { Directory.Delete(dir, recursive: true); } catch (IOException) { }
+        }
+    }
 }
