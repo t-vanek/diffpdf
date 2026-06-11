@@ -142,6 +142,89 @@ public class FileManagerViewModelTests
         });
     }
 
+    [Fact]
+    public void Panel_unconfigured_server_storage_shows_onboarding_instead_of_error()
+    {
+        AsyncPump.Run(async () =>
+        {
+            bool configured = false;
+            var api = new FakeApi
+            {
+                Custom = req => req.RequestUri!.AbsolutePath == "/api/v1/files"
+                    ? configured
+                        ? Listing("", null, Pdf("a.pdf"))
+                        : new HttpResponseMessage(System.Net.HttpStatusCode.ServiceUnavailable)
+                        {
+                            Content = new StringContent("{\"detail\":\"File manager root is not configured\"}",
+                                System.Text.Encoding.UTF8, "application/json"),
+                        }
+                    : null,
+            };
+            var panel = ServerPanel(api);
+
+            await panel.LoadAsync("");
+
+            Assert.NotNull(panel.BlockedMessage);                  // friendly onboarding…
+            Assert.Contains("appsettings.json", panel.BlockedMessage);
+            Assert.Null(panel.Error);                              // …not a red error
+            Assert.False(panel.HasLoaded);
+            Assert.Empty(panel.Items);
+
+            // The admin configures the server, the user hits "Zkusit znovu" — the panel recovers.
+            configured = true;
+            await panel.RefreshAsync();
+
+            Assert.Null(panel.BlockedMessage);
+            Assert.True(panel.HasLoaded);
+            Assert.Single(panel.Items);
+        });
+    }
+
+    // ---------------- storage diagnostics card ----------------
+
+    private static FileManagerStatusResponse Status(
+        bool configured = true, string? resolvedFrom = "FileManager:RootPath", string? root = @"D:\diffpdf",
+        bool exists = true, bool writable = true, string? error = null) => new()
+    {
+        Configured = configured,
+        ResolvedFrom = configured ? resolvedFrom : null,
+        RootPath = configured ? root : null,
+        RootExists = configured && exists,
+        Writable = configured && exists && writable,
+        FreeSpaceBytes = configured ? 100L * 1024 * 1024 * 1024 : null,
+        TotalSpaceBytes = configured ? 500L * 1024 * 1024 * 1024 : null,
+        MaxUploadSizeMB = 256,
+        ValidatePdfMagicBytes = true,
+        MaxSearchResults = 500,
+        Error = error,
+    };
+
+    [Fact]
+    public void StorageStatus_maps_states_to_readable_card()
+    {
+        var vm = new FileStorageStatusViewModel(null!); // Apply() never touches the session
+
+        vm.Apply(Status());
+        Assert.Contains("připravené", vm.StateText);
+        Assert.Contains(@"D:\diffpdf", vm.RootText);
+        Assert.Contains("FileManager:RootPath", vm.RootText);
+        Assert.Contains("100 GB", vm.SpaceText);
+        Assert.Contains("256 MB", vm.LimitsText);
+        Assert.Null(vm.DetailText);
+
+        vm.Apply(Status(configured: false));
+        Assert.Contains("není nakonfigurováno", vm.StateText);
+        Assert.Null(vm.RootText);
+        Assert.Null(vm.SpaceText);
+
+        vm.Apply(Status(exists: false, error: "Root folder is not reachable: ..."));
+        Assert.Contains("není dostupná", vm.StateText);
+        Assert.NotNull(vm.DetailText);
+
+        vm.Apply(Status(writable: false, error: "Root folder is not writable: ..."));
+        Assert.Contains("nelze do ní zapisovat", vm.StateText);
+    }
+
     // ---------------- manager (active panel) ----------------
 
     [Fact]

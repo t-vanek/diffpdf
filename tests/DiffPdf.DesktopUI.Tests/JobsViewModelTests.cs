@@ -140,6 +140,71 @@ public class JobsViewModelTests
     }
 
     [Fact]
+    public void Delete_selection_counts_only_deletable_rows_and_unticks_a_row_that_stops_being_deletable()
+    {
+        AsyncPump.Run(async () =>
+        {
+            Guid a = Guid.NewGuid(), b = Guid.NewGuid(), c = Guid.NewGuid();
+            var api = new FakeApi { Jobs = new[] { Job(a, JobStatus.Completed), Job(b, JobStatus.Running), Job(c, JobStatus.Cancelled) } };
+            var vm = NewVm(api);
+            await VmTest.InvokeAsync(vm, "LoadJobsAsync");
+
+            var rowA = vm.Jobs.First(r => r.Id == a);
+            var rowB = vm.Jobs.First(r => r.Id == b);
+            var rowC = vm.Jobs.First(r => r.Id == c);
+            Assert.True(rowA.CanDelete);   // Hotovo
+            Assert.False(rowB.CanDelete);  // běží — nelze smazat
+            Assert.True(rowC.CanDelete);   // Zrušeno
+
+            // Header "select all" ticks only the deletable rows; the count follows.
+            vm.AllSelected = true;
+            Assert.True(rowA.IsSelected);
+            Assert.False(rowB.IsSelected);
+            Assert.True(rowC.IsSelected);
+            Assert.Equal(2, vm.SelectedDeleteCount);
+            Assert.True(vm.CanDeleteSelected);
+            Assert.True(vm.AllSelected);
+
+            // A ticked row that stops being deletable (e.g. retry reopened it) unticks itself and leaves the count.
+            rowA.Apply(rowA.Job with { Status = JobStatus.Running });
+            Assert.False(rowA.IsSelected);
+            Assert.Equal(1, vm.SelectedDeleteCount);
+        });
+    }
+
+    [Fact]
+    public void Deleting_rows_calls_the_api_drops_them_from_the_list_and_closes_their_open_detail()
+    {
+        AsyncPump.Run(async () =>
+        {
+            Guid a = Guid.NewGuid(), b = Guid.NewGuid();
+            var deleted = new List<string>();
+            var api = new FakeApi { Jobs = new[] { Job(a, JobStatus.Completed), Job(b, JobStatus.Completed) } };
+            api.Custom = req =>
+            {
+                if (req.Method == HttpMethod.Delete && req.RequestUri!.AbsolutePath.StartsWith("/api/v1/jobs/", StringComparison.Ordinal))
+                {
+                    deleted.Add(req.RequestUri.AbsolutePath.Split('/').Last());
+                    return new HttpResponseMessage(System.Net.HttpStatusCode.NoContent);
+                }
+                return null;
+            };
+            var vm = NewVm(api);
+            await VmTest.InvokeAsync(vm, "LoadJobsAsync");
+            var rowA = vm.Jobs.First(r => r.Id == a);
+            // Select without the property setter (its fire-and-forget detail load would race the assertions).
+            VmTest.SetField(vm, "_selectedJob", rowA);
+
+            await VmTest.InvokeAsync(vm, "DeleteRowsAsync", new List<JobRowViewModel> { rowA });
+
+            Assert.Equal(a.ToString(), Assert.Single(deleted)); // DELETE /jobs/{id} went out for the right job
+            Assert.DoesNotContain(vm.Jobs, r => r.Id == a);     // row dropped without a reload
+            Assert.Contains(vm.Jobs, r => r.Id == b);
+            Assert.Null(vm.SelectedJob);                        // the deleted job's open detail closed
+        });
+    }
+
+    [Fact]
     public void Transient_null_branch_filter_does_not_hit_the_api_with_a_null_key()
     {
         AsyncPump.Run(() =>

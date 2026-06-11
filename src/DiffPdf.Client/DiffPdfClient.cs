@@ -162,6 +162,13 @@ public sealed class DiffPdfClient(HttpClient http)
     public async Task<JobSummary> RetryJobAsync(Guid id, CancellationToken ct = default) =>
         (await JsonAsync<JobActionResult>(HttpMethod.Post, $"/api/v1/jobs/{id}/retry", null, ct)).Job;
 
+    /// <summary>Permanently deletes a finished (Completed/Cancelled) job incl. its tasks, report and diff
+    /// artifacts. Throws DiffPdfApiException 409 while the job is still active (cancel it first); 404 if unknown.</summary>
+    public async Task DeleteJobAsync(Guid id, CancellationToken ct = default)
+    {
+        using var resp = await SendRawAsync(HttpMethod.Delete, $"/api/v1/jobs/{id}", null, ct);
+    }
+
     // Finished reports are immutable and the server tags them (ETag derived from the job version): remember
     // the last few per job and revalidate with If-None-Match — a 304 skips re-downloading a multi-MB body.
     private readonly ConcurrentDictionary<Guid, (string ETag, BatchComparisonReport Report)> _reportCache = new();
@@ -679,6 +686,10 @@ public sealed class DiffPdfClient(HttpClient http)
             ? batch.Files[0]
             : throw new InvalidOperationException("The server returned no upload result.");
     }
+
+    /// <summary>Storage diagnostics for the configuration page (root + source, availability, free space, limits).</summary>
+    public Task<FileManagerStatusResponse> GetFileManagerStatusAsync(CancellationToken ct = default) =>
+        JsonAsync<FileManagerStatusResponse>(HttpMethod.Get, "/api/v1/files/status", null, ct);
 
     /// <summary>Creates a folder and returns it. Throws 409 when the name already exists, 404 for a missing parent.</summary>
     public Task<FileItemDto> CreateFolderAsync(CreateFolderRequest request, CancellationToken ct = default) =>

@@ -178,6 +178,12 @@ public static class FileEndpoints
         .ProducesProblem(StatusCodes.Status400BadRequest)
         .ProducesProblem(StatusCodes.Status404NotFound);
 
+        // Diagnostics for the client's configuration page — always 200; "not configured" is a state, not an error.
+        group.MapGet("/status", (IFileManagerService files) =>
+            Results.Ok(FileManagerStatusResponse.From(files.GetStatus())))
+        .WithSummary("Storage diagnostics: effective root + its source, availability, writability, free space and limits")
+        .Produces<FileManagerStatusResponse>();
+
         group.MapGet("/download", (string? path, IFileManagerService files) =>
         {
             var result = files.ResolveDownload(path);

@@ -12,5 +12,33 @@
     <TabItem Header="E-mail (SMTP)">
       <views:EmailSettingsView DataContext="{Binding Email}"/>
     </TabItem>
+    <TabItem Header="Správa souborů">
+      <!-- Read-only diagnostika: kořen je záměrně admin-only v appsettings.json na serveru. -->
+      <StackPanel DataContext="{Binding Storage}" x:DataType="vm:FileStorageStatusViewModel"
+                  Spacing="12" Margin="4,14,4,4" MaxWidth="680" HorizontalAlignment="Left">
+        <TextBlock Text="Úložiště souborů na serveru" Classes="headline"/>
+        <TextBlock Text="{x:Static vm:FileStorageStatusViewModel.Hint}" TextWrapping="Wrap"
+                   Foreground="{DynamicResource InkDim}"/>
+
+        <Border Classes="cardStatic" Padding="14">
+          <StackPanel Spacing="8">
+            <TextBlock Text="{Binding StateText}" Foreground="{Binding StateBrush}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+            <TextBlock Text="{Binding DetailText}" Foreground="{DynamicResource Bad}" TextWrapping="Wrap"
+                       IsVisible="{Binding DetailText, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+            <TextBlock Text="{Binding RootText}" TextWrapping="Wrap"
+                       IsVisible="{Binding RootText, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+            <TextBlock Text="{Binding SpaceText}" Foreground="{DynamicResource InkDim}"
+                       IsVisible="{Binding SpaceText, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+            <TextBlock Text="{Binding LimitsText}" Foreground="{DynamicResource InkDim}" TextWrapping="Wrap"/>
+            <TextBlock Text="{Binding Error}" Foreground="{DynamicResource Bad}" TextWrapping="Wrap"
+                       IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+            <StackPanel Orientation="Horizontal" Spacing="10">
+              <Button Content="Obnovit" Classes="ghost" Command="{Binding RefreshCommand}"/>
+              <ProgressBar IsIndeterminate="True" Width="90" Height="4" VerticalAlignment="Center" IsVisible="{Binding IsBusy}"/>
+            </StackPanel>
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </TabItem>
   </TabControl>
 </UserControl>

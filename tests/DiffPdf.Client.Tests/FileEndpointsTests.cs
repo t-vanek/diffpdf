@@ -270,6 +270,18 @@ public sealed class FileEndpointsTests : IClassFixture<FileManagerApiFactory>
         var ex = await Assert.ThrowsAsync<DiffPdfApiException>(() => _client.DeleteFileAsync(""));
         Assert.Equal(HttpStatusCode.BadRequest, ex.StatusCode);
     }
+
+    [Fact]
+    public async Task Status_ReportsConfiguredWritableRoot()
+    {
+        var status = await _client.GetFileManagerStatusAsync();
+        Assert.True(status.Configured);
+        Assert.Equal("FileManager:RootPath", status.ResolvedFrom);
+        Assert.Equal(Path.GetFullPath(_factory.Root), status.RootPath);
+        Assert.True(status.RootExists);
+        Assert.True(status.Writable);
+        Assert.Equal(8, status.MaxUploadSizeMB); // the factory's configured limit round-trips
+    }
 }
 
 /// <summary>Without FileManager:RootPath (and with ScopeSync:RootPath cleared) the file endpoints answer 503.</summary>
@@ -285,5 +297,15 @@ public sealed class FileEndpointsUnconfiguredTests : IClassFixture<InMemoryApiFa
     {
         var ex = await Assert.ThrowsAsync<DiffPdfApiException>(() => _client.ListFilesAsync());
         Assert.Equal(HttpStatusCode.ServiceUnavailable, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task Status_WithoutConfiguredRoot_Is200_WithConfiguredFalse()
+    {
+        // Unlike the file operations, the diagnostics endpoint treats "not configured" as a state, not an error.
+        var status = await _client.GetFileManagerStatusAsync();
+        Assert.False(status.Configured);
+        Assert.Null(status.ResolvedFrom);
+        Assert.Null(status.RootPath);
     }
 }

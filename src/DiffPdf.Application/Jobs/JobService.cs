@@ -47,6 +47,14 @@ public interface IJobService
     Task<ComparisonJob?> PauseAsync(Guid id, CancellationToken ct = default);
     Task<JobResumeOutcome?> ResumeAsync(Guid id, CancellationToken ct = default);
     Task<JobRetryOutcome?> RetryAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>
+    /// Permanently deletes a finished job: its on-disk folder (report + diff artifacts + logs), its file-pair
+    /// tasks and the job row itself. False when the job is unknown; a job that is not Completed/Cancelled
+    /// raises <see cref="JobConflictException"/> (cancel it first).
+    /// </summary>
+    Task<bool> DeleteAsync(Guid id, CancellationToken ct = default);
+
     Task<ArtifactResult> ResolveArtifactAsync(Guid id, string relativePath, CancellationToken ct = default);
 }
 
@@ -155,6 +163,27 @@ public sealed class JobService(
             await requeue.RequeueAsync(id, t.Id, ct);
 
         return new JobRetryOutcome(failed.Count, reopened);
+    }
+
+    public async Task<bool> DeleteAsync(Guid id, CancellationToken ct = default)
+    {
+        var job = await jobStore.GetAsync(id, ct);
+        if (job is null) return false;
+        if (job.Status is not (JobStatus.Completed or JobStatus.Cancelled))
+            throw new JobConflictException("Only a finished (Completed/Cancelled) job can be deleted.");
+
+        // Disk first — a failed folder delete (e.g. a diff PDF held open) keeps the job listed and surfaces
+        // the error instead of orphaning the folder. Then rows in FK order: tasks → job (mirrors the branch
+        // cascade delete and the retention prune).
+        string? root = null;
+        try { root = paths.GetJobRoot(job); }
+        catch (InvalidOperationException) { /* storage never resolved (legacy row) → nothing on disk to remove */ }
+        if (root is not null && Directory.Exists(root))
+            Directory.Delete(root, recursive: true);
+
+        await taskStore.DeleteForJobsAsync([id], ct);
+        await jobStore.DeleteByIdsAsync([id], ct);
+        return true;
     }
 
     public async Task<ArtifactResult> ResolveArtifactAsync(Guid id, string relativePath, CancellationToken ct = default)

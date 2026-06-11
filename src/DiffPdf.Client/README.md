@@ -53,7 +53,8 @@ Manage the automation: `CreateScheduleAsync` / `ListSchedulesAsync` /
 / `DeleteWatchAsync` (folder-watch), plus `CreateSubscriptionAsync` … for notification
 subscriptions. Observe jobs: `GetJobAsync` (poll `Status`/`Progress`) → `PauseJobAsync` /
 `ResumeJobAsync` / `CancelJobAsync` / `RetryJobAsync` → `GetReportAsync` /
-`GetResultAsync` / `DownloadArtifactAsync`.
+`GetResultAsync` / `DownloadArtifactAsync`; `DeleteJobAsync` permanently removes a
+finished (Completed/Cancelled) job incl. its report and artifacts.
 
 Non-success responses throw `DiffPdfApiException` (with the HTTP status and the
 `problem+json` detail).
