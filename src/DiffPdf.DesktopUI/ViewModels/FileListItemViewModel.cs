@@ -27,6 +27,8 @@ public partial class FileListItemViewModel : ObservableObject
     public bool IsFolder => Item.Kind == FileItemKind.Folder;
     public string Icon => IsFolder ? "📁" : "📄";
     public string SizeText => Format.Bytes(Item.SizeBytes);
-    public string ModifiedText => Item.LastModified.ToLocalTime().ToString("dd.MM.yyyy HH:mm");
+    public string ModifiedText => Item.LastModified == default
+        ? "—" // synthetic rows (the local drive list) have no timestamp
+        : Item.LastModified.ToLocalTime().ToString("dd.MM.yyyy HH:mm");
     public string TypeText => IsFolder ? "Složka" : "PDF";
 }

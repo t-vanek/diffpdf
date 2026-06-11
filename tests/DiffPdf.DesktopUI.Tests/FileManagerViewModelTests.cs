@@ -35,6 +35,10 @@ public class FileManagerViewModelTests
     private static ServerSession Session(FakeApi api) =>
         new() { Client = new DiffPdfClient(new HttpClient(api) { BaseAddress = new Uri("http://localhost") }) };
 
+    private static ServerFileBackend ServerBackend(FakeApi api) => new(Session(api));
+
+    private static FilePanelViewModel ServerPanel(FakeApi api) => new(ServerBackend(api));
+
     private static FakeApi FilesApi(Func<FileListResponse> listing) => new()
     {
         Custom = request =>
@@ -69,7 +73,7 @@ public class FileManagerViewModelTests
         AsyncPump.Run(async () =>
         {
             var api = FilesApi(() => Listing("faktury", "", Folder("faktury/2026"), Pdf("faktury/a.pdf"), Pdf("faktury/b.pdf")));
-            var panel = new FilePanelViewModel(Session(api));
+            var panel = ServerPanel(api);
 
             await panel.LoadAsync("faktury");
 
@@ -91,7 +95,7 @@ public class FileManagerViewModelTests
         {
             var items = new[] { Pdf("a.pdf"), Pdf("b.pdf") };
             var api = FilesApi(() => Listing("", null, items));
-            var panel = new FilePanelViewModel(Session(api));
+            var panel = ServerPanel(api);
 
             await panel.LoadAsync("");
             var first = panel.Items[0];
@@ -112,7 +116,7 @@ public class FileManagerViewModelTests
         AsyncPump.Run(async () =>
         {
             var api = FilesApi(() => Listing("", null, Pdf("smlouva.pdf"), Pdf("faktura.pdf")));
-            var panel = new FilePanelViewModel(Session(api));
+            var panel = ServerPanel(api);
             await panel.LoadAsync("");
 
             panel.FilterText = "SMLOU"; // case-insensitive
@@ -129,7 +133,7 @@ public class FileManagerViewModelTests
     {
         AsyncPump.Run(async () =>
         {
-            var panel = new FilePanelViewModel(Session(FilesApi(() => Listing("prazdna", "", []))));
+            var panel = ServerPanel(FilesApi(() => Listing("prazdna", "", [])));
             await panel.LoadAsync("prazdna");
             Assert.True(panel.IsEmpty);
         });
@@ -145,10 +149,16 @@ public class FileManagerViewModelTests
             var api = FilesApi(() => Listing("", null, Pdf("a.pdf")));
             var vm = new FileManagerViewModel(Session(api), null!);
 
+            // Default layout per the spec: the local computer on the left, the server on the right.
+            Assert.Equal(BackendKind.Local, vm.LeftPanel.Backend.Kind);
+            Assert.Equal(BackendKind.Server, vm.RightPanel.Backend.Kind);
+
             await vm.ActivateAsync();
 
             Assert.True(vm.LeftPanel.HasLoaded);
             Assert.True(vm.RightPanel.HasLoaded);
+            Assert.NotEmpty(vm.LeftPanel.Items); // the drive list of this machine
+            Assert.All(vm.LeftPanel.Items, i => Assert.True(i.IsFolder));
             Assert.Same(vm.LeftPanel, vm.ActivePanel);
             Assert.True(vm.LeftPanel.IsActive);
             Assert.False(vm.RightPanel.IsActive);
@@ -168,14 +178,21 @@ public class FileManagerViewModelTests
         });
     }
 
-    // ---------------- upload queue ----------------
+    // ---------------- transfer queue ----------------
 
-    private static string TempPdf(string name)
+    private const string PdfContent = "%PDF-1.4 test";
+
+    private static string TempDir()
     {
         string dir = Path.Combine(Path.GetTempPath(), "diffpdf-tests", "ui-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
-        string path = Path.Combine(dir, name);
-        File.WriteAllText(path, "%PDF-1.4 test");
+        return dir;
+    }
+
+    private static string TempPdf(string name, string? dir = null)
+    {
+        string path = Path.Combine(dir ?? TempDir(), name);
+        File.WriteAllText(path, PdfContent);
         return path;
     }
 
@@ -189,11 +206,21 @@ public class FileManagerViewModelTests
         Files = [new UploadFileResponse { FileName = name, Uploaded = false, ErrorCode = FileUploadErrorCodes.Exists }],
     };
 
+    /// <summary>A queue item heading from a local file into the fake server's folder.</summary>
+    private static TransferRequest LocalToServer(IFileBackend server, string localPath, string targetDir, bool move = false) =>
+        new(new LocalFileBackend(), localPath, Path.GetFileName(localPath), new FileInfo(localPath).Length, server, targetDir, move);
+
+    private static TransferRequest LocalToLocal(string localPath, string targetDir, bool move = false)
+    {
+        var local = new LocalFileBackend();
+        return new TransferRequest(local, localPath, Path.GetFileName(localPath), new FileInfo(localPath).Length, local, targetDir, move);
+    }
+
     // NOTE: every queue test zeroes CleanupDelay and drains HasItems before returning — a pending
     // self-clear Task.Delay must never outlive the AsyncPump (a late Post would hit a completed pump).
 
     [Fact]
-    public void Queue_uploads_sequentially_and_reports_batch_completion()
+    public void Queue_uploads_local_files_to_server_and_reports_changed_folders()
     {
         AsyncPump.Run(async () =>
         {
@@ -204,11 +231,12 @@ public class FileManagerViewModelTests
                     ? UploadOk($"f{++uploads}.pdf")
                     : null,
             };
-            var queue = new UploadQueueViewModel(Session(api)) { CleanupDelay = TimeSpan.Zero };
-            IReadOnlyCollection<string>? completedDirs = null;
-            queue.BatchCompleted += dirs => completedDirs = dirs;
+            var server = ServerBackend(api);
+            var queue = new TransferQueueViewModel { CleanupDelay = TimeSpan.Zero };
+            IReadOnlyCollection<(IFileBackend Backend, string Directory)>? changed = null;
+            queue.BatchCompleted += c => changed = c;
 
-            queue.Enqueue("cil", [TempPdf("one.pdf"), TempPdf("two.pdf")]);
+            queue.Enqueue([LocalToServer(server, TempPdf("one.pdf"), "cil"), LocalToServer(server, TempPdf("two.pdf"), "cil")]);
             var items = queue.Items.ToList(); // capture before the clean batch self-clears
             Assert.Equal(2, items.Count);
 
@@ -216,9 +244,11 @@ public class FileManagerViewModelTests
                 await Task.Delay(10);
 
             Assert.Equal(2, uploads);
-            Assert.All(items, i => Assert.Equal(UploadState.Done, i.State));
-            Assert.NotNull(completedDirs);
-            Assert.Equal("cil", Assert.Single(completedDirs!));
+            Assert.All(items, i => Assert.Equal(TransferState.Done, i.State));
+            Assert.NotNull(changed);
+            var touched = Assert.Single(changed!);
+            Assert.Same(server, touched.Backend);
+            Assert.Equal("cil", touched.Directory);
 
             while (queue.HasItems) // fully successful batch self-clears
                 await Task.Delay(10);
@@ -237,11 +267,11 @@ public class FileManagerViewModelTests
                     ? (++calls == 1 ? UploadExists("doc.pdf") : UploadOk("doc.pdf"))
                     : null,
             };
-            var queue = new UploadQueueViewModel(Session(api)) { CleanupDelay = TimeSpan.Zero };
+            var queue = new TransferQueueViewModel { CleanupDelay = TimeSpan.Zero };
             int asked = 0;
             queue.OverwriteResolver = _ => { asked++; return Task.FromResult(OverwriteDecision.Overwrite); };
 
-            queue.Enqueue("", [TempPdf("doc.pdf")]);
+            queue.Enqueue([LocalToServer(ServerBackend(api), TempPdf("doc.pdf"), "")]);
             var item = queue.Items.Single();
 
             while (item.IsRunning)
@@ -249,7 +279,7 @@ public class FileManagerViewModelTests
 
             Assert.Equal(1, asked);
             Assert.Equal(2, calls); // initial attempt + overwrite retry
-            Assert.Equal(UploadState.Done, item.State);
+            Assert.Equal(TransferState.Done, item.State);
             Assert.True(item.Overwrite);
 
             while (queue.HasItems)
@@ -268,16 +298,16 @@ public class FileManagerViewModelTests
                     ? UploadExists("doc.pdf")
                     : null,
             };
-            var queue = new UploadQueueViewModel(Session(api)) { CleanupDelay = TimeSpan.Zero };
+            var queue = new TransferQueueViewModel { CleanupDelay = TimeSpan.Zero };
             queue.OverwriteResolver = _ => Task.FromResult(OverwriteDecision.Skip);
 
-            queue.Enqueue("", [TempPdf("doc.pdf")]);
+            queue.Enqueue([LocalToServer(ServerBackend(api), TempPdf("doc.pdf"), "")]);
             var item = queue.Items.Single();
 
             while (item.IsRunning)
                 await Task.Delay(10);
 
-            Assert.Equal(UploadState.Skipped, item.State);
+            Assert.Equal(TransferState.Skipped, item.State);
 
             while (queue.HasItems) // skipped counts as clean → the batch self-clears too
                 await Task.Delay(10);
@@ -298,11 +328,16 @@ public class FileManagerViewModelTests
                     ? (++calls % 2 == 1 ? UploadExists("doc.pdf") : UploadOk("doc.pdf"))
                     : null,
             };
-            var queue = new UploadQueueViewModel(Session(api)) { CleanupDelay = TimeSpan.Zero };
+            var server = ServerBackend(api);
+            var queue = new TransferQueueViewModel { CleanupDelay = TimeSpan.Zero };
             int asked = 0;
             queue.OverwriteResolver = _ => { asked++; return Task.FromResult(OverwriteDecision.OverwriteAll); };
 
-            queue.Enqueue("", [TempPdf("a.pdf"), TempPdf("b.pdf"), TempPdf("c.pdf")]);
+            queue.Enqueue([
+                LocalToServer(server, TempPdf("a.pdf"), ""),
+                LocalToServer(server, TempPdf("b.pdf"), ""),
+                LocalToServer(server, TempPdf("c.pdf"), ""),
+            ]);
             var items = queue.Items.ToList();
 
             while (items.Any(i => i.IsRunning))
@@ -310,7 +345,93 @@ public class FileManagerViewModelTests
 
             Assert.Equal(1, asked); // one answer settled the whole batch
             Assert.Equal(6, calls); // 3 × (attempt + overwrite retry)
-            Assert.All(items, i => Assert.Equal(UploadState.Done, i.State));
+            Assert.All(items, i => Assert.Equal(TransferState.Done, i.State));
+
+            while (queue.HasItems)
+                await Task.Delay(10);
+        });
+    }
+
+    [Fact]
+    public void Queue_copies_local_to_local()
+    {
+        AsyncPump.Run(async () =>
+        {
+            string sourceDir = TempDir();
+            string targetDir = TempDir();
+            string source = TempPdf("doc.pdf", sourceDir);
+
+            var queue = new TransferQueueViewModel { CleanupDelay = TimeSpan.Zero };
+            queue.Enqueue([LocalToLocal(source, targetDir)]);
+            var item = queue.Items.Single();
+
+            while (item.IsRunning)
+                await Task.Delay(10);
+
+            Assert.Equal(TransferState.Done, item.State);
+            Assert.True(File.Exists(source)); // copy keeps the original
+            Assert.Equal(PdfContent, File.ReadAllText(Path.Combine(targetDir, "doc.pdf")));
+
+            while (queue.HasItems)
+                await Task.Delay(10);
+        });
+    }
+
+    [Fact]
+    public void Queue_move_deletes_the_source_and_reports_both_folders()
+    {
+        AsyncPump.Run(async () =>
+        {
+            string sourceDir = TempDir();
+            string targetDir = TempDir();
+            string source = TempPdf("doc.pdf", sourceDir);
+
+            var queue = new TransferQueueViewModel { CleanupDelay = TimeSpan.Zero };
+            IReadOnlyCollection<(IFileBackend Backend, string Directory)>? changed = null;
+            queue.BatchCompleted += c => changed = c;
+
+            queue.Enqueue([LocalToLocal(source, targetDir, move: true)]);
+            var item = queue.Items.Single();
+
+            while (item.IsRunning)
+                await Task.Delay(10);
+
+            Assert.Equal(TransferState.Done, item.State);
+            Assert.False(File.Exists(source)); // a move removes the original
+            Assert.True(File.Exists(Path.Combine(targetDir, "doc.pdf")));
+            Assert.NotNull(changed);
+            Assert.Contains(changed!, c => c.Directory.Equals(targetDir, StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(changed!, c => c.Directory.Equals(sourceDir, StringComparison.OrdinalIgnoreCase));
+
+            while (queue.HasItems)
+                await Task.Delay(10);
+        });
+    }
+
+    [Fact]
+    public void Queue_downloads_server_file_to_local_folder()
+    {
+        AsyncPump.Run(async () =>
+        {
+            byte[] payload = System.Text.Encoding.ASCII.GetBytes(PdfContent);
+            var api = new FakeApi
+            {
+                Custom = req => req.RequestUri!.AbsolutePath == "/api/v1/files/download"
+                    ? new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new ByteArrayContent(payload) }
+                    : null,
+            };
+            var server = ServerBackend(api);
+            string targetDir = TempDir();
+
+            var queue = new TransferQueueViewModel { CleanupDelay = TimeSpan.Zero };
+            queue.Enqueue([new TransferRequest(server, "slozka/doc.pdf", "doc.pdf", payload.Length, new LocalFileBackend(), targetDir, Move: false)]);
+            var item = queue.Items.Single();
+
+            while (item.IsRunning)
+                await Task.Delay(10);
+
+            Assert.Equal(TransferState.Done, item.State);
+            Assert.Equal(payload, File.ReadAllBytes(Path.Combine(targetDir, "doc.pdf")));
 
             while (queue.HasItems)
                 await Task.Delay(10);
@@ -338,7 +459,7 @@ public class FileManagerViewModelTests
                     Items = [Pdf("faktury/2026/smlouva.pdf")],
                     Truncated = false,
                 });
-            var panel = new FilePanelViewModel(Session(api));
+            var panel = ServerPanel(api);
             await panel.LoadAsync("faktury");
 
             panel.FilterText = "smlou";
@@ -370,7 +491,7 @@ public class FileManagerViewModelTests
             var api = FilesApiByPath(
                 listingByPath: _ => Listing("slozka", "", Pdf("slozka/a.pdf"), Pdf("slozka/b.pdf")),
                 search: new FileSearchResponse { Query = "a", SearchPath = "slozka", Items = [Pdf("slozka/a.pdf")] });
-            var panel = new FilePanelViewModel(Session(api));
+            var panel = ServerPanel(api);
             await panel.LoadAsync("slozka");
 
             panel.FilterText = "a";
@@ -390,7 +511,7 @@ public class FileManagerViewModelTests
     {
         AsyncPump.Run(async () =>
         {
-            var panel = new FilePanelViewModel(Session(FilesApi(() => Listing("", null, Pdf("a.pdf")))));
+            var panel = ServerPanel(FilesApi(() => Listing("", null, Pdf("a.pdf"))));
             await panel.LoadAsync("");
 
             panel.FilterText = "   ";

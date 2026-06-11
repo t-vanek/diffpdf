@@ -19,8 +19,8 @@
 
     <!-- Toolbar — every action targets the active (orange-framed) panel -->
     <WrapPanel DockPanel.Dock="Top" ItemSpacing="8" LineSpacing="8" Margin="0,0,0,10">
-      <Button Content="⬆ Nahrát PDF" Classes="accent" Command="{Binding UploadFilesCommand}"
-              ToolTip.Tip="Nahraje jedno či více PDF do složky aktivního panelu (jde i přetáhnout z Průzkumníka)"/>
+      <Button Content="⬆ Přidat PDF" Classes="accent" Command="{Binding UploadFilesCommand}"
+              ToolTip.Tip="Vloží jedno či více PDF z počítače do složky aktivního panelu (jde i přetáhnout z Průzkumníka); na serverový panel = nahrání"/>
       <Button Content="Nová složka" Classes="ghost" Command="{Binding CreateFolderCommand}" ToolTip.Tip="Vytvoří složku v aktivním panelu (F7)"/>
 
       <Border Width="1" Background="{DynamicResource Line}" Margin="4,3"/>
@@ -41,25 +41,25 @@
       <ProgressBar IsIndeterminate="True" Width="100" Height="4" VerticalAlignment="Center" IsVisible="{Binding IsBusy}"/>
     </WrapPanel>
 
-    <!-- Upload queue: visible while a batch is queued/running, self-clears after a clean finish -->
+    <!-- Transfer queue (uploads, downloads, local copies): visible while a batch runs, self-clears when clean -->
     <Border DockPanel.Dock="Bottom" Classes="cardStatic" Padding="10" Margin="0,8,0,0"
-            IsVisible="{Binding UploadQueue.HasItems}">
+            IsVisible="{Binding TransferQueue.HasItems}">
       <DockPanel>
         <Grid DockPanel.Dock="Top" ColumnDefinitions="*,160" Margin="0,0,0,6">
-          <TextBlock Grid.Column="0" Text="{Binding UploadQueue.SummaryText}" FontWeight="SemiBold" VerticalAlignment="Center"/>
-          <ProgressBar Grid.Column="1" Minimum="0" Maximum="1" Value="{Binding UploadQueue.TotalProgress}" Height="6" VerticalAlignment="Center"/>
+          <TextBlock Grid.Column="0" Text="{Binding TransferQueue.SummaryText}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+          <ProgressBar Grid.Column="1" Minimum="0" Maximum="1" Value="{Binding TransferQueue.TotalProgress}" Height="6" VerticalAlignment="Center"/>
         </Grid>
         <ScrollViewer MaxHeight="140" VerticalScrollBarVisibility="Auto">
-          <ItemsControl ItemsSource="{Binding UploadQueue.Items}">
+          <ItemsControl ItemsSource="{Binding TransferQueue.Items}">
             <ItemsControl.ItemTemplate>
-              <DataTemplate x:DataType="vm:UploadItemViewModel">
+              <DataTemplate x:DataType="vm:TransferItemViewModel">
                 <Grid ColumnDefinitions="*,120,70,Auto" Margin="0,2" ToolTip.Tip="{Binding Error}">
                   <TextBlock Grid.Column="0" Text="{Binding FileName}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
                   <ProgressBar Grid.Column="1" Minimum="0" Maximum="1" Value="{Binding Progress}" Height="6" VerticalAlignment="Center"/>
                   <TextBlock Grid.Column="2" Text="{Binding StateText}" FontSize="12" Margin="8,0,0,0"
                              Foreground="{DynamicResource InkDim}" VerticalAlignment="Center"/>
                   <Button Grid.Column="3" Content="✕" Classes="iconBtn ghost" Command="{Binding CancelCommand}"
-                          IsVisible="{Binding IsRunning}" ToolTip.Tip="Zrušit nahrávání"/>
+                          IsVisible="{Binding IsRunning}" ToolTip.Tip="Zrušit přenos"/>
                 </Grid>
               </DataTemplate>
             </ItemsControl.ItemTemplate>
