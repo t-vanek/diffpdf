@@ -35,7 +35,7 @@ public partial class AutomationsViewModel : PageViewModel
         [
             new AutomationType(
                 "Automatizace",
-                "Spouštěče (plán, události, ručně) + pipeline kroků: kontroly, retence, plánovaná porovnání.",
+                "Šablony podle kategorií (monitorovací, provozní, údržbové, synchronizační) — vyber, uprav a spusť.",
                 automations),
         ];
         _selectedType = Types.FirstOrDefault();

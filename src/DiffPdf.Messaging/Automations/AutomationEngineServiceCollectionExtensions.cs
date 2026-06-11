@@ -27,6 +27,11 @@ public static class AutomationEngineServiceCollectionExtensions
         services.AddScoped<IAutomationStepExecutor, RetentionStepExecutor>();
         services.AddScoped<IAutomationStepExecutor, DbRowRetentionStepExecutor>();
         services.AddScoped<IAutomationStepExecutor, ScheduledComparisonStepExecutor>();
+        services.AddScoped<IAutomationStepExecutor, SystemResourceStepExecutor>();
+        services.AddScoped<IAutomationStepExecutor, QueueHealthStepExecutor>();
+        services.AddScoped<IAutomationStepExecutor, ComparisonFreshnessStepExecutor>();
+        services.AddScoped<IAutomationStepExecutor, ReRunFailedStepExecutor>();
+        services.AddScoped<IAutomationStepExecutor, FolderSyncStepExecutor>();
 
         services.AddScoped<IAutomationRunner, AutomationRunner>();
         services.AddScoped<IAutomationProvisioner, AutomationProvisioner>();

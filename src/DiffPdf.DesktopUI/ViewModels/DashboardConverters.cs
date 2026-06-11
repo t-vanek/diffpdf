@@ -123,6 +123,53 @@ public sealed class AutomationCadenceLabelConverter : IValueConverter
         BindingOperations.DoNothing;
 }
 
+/// <summary>Maps an <see cref="AutomationStepType"/> to its human Czech display name (mirrors the server catalog).</summary>
+public sealed class AutomationStepTypeLabelConverter : IValueConverter
+{
+    public static readonly AutomationStepTypeLabelConverter Instance = new();
+
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => value switch
+    {
+        AutomationStepType.Health => "Zdraví serveru",
+        AutomationStepType.Readiness => "Připravenost dat",
+        AutomationStepType.SystemResource => "Systémový zdroj (disk/CPU/RAM)",
+        AutomationStepType.QueueHealth => "Fronta a zaseknuté joby",
+        AutomationStepType.ComparisonFreshness => "Čerstvost porovnání",
+        AutomationStepType.ScheduledComparison => "Plánované porovnání",
+        AutomationStepType.ReRunFailed => "Přegenerování chyb",
+        AutomationStepType.Retention => "Úklid reportů",
+        AutomationStepType.DbRowRetention => "Úklid databáze",
+        AutomationStepType.StructureSync => "Synchronizace struktury",
+        AutomationStepType.FolderSync => "Synchronizace složek",
+        AutomationStepType s => s.ToString(),
+        _ => "—",
+    };
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        BindingOperations.DoNothing;
+}
+
+/// <summary>Maps an <see cref="AutomationCategory"/> to a Czech label with its icon (e.g. "🔍 Monitorovací").</summary>
+public sealed class AutomationCategoryLabelConverter : IValueConverter
+{
+    public static readonly AutomationCategoryLabelConverter Instance = new();
+
+    public static string Label(AutomationCategory category) => category switch
+    {
+        AutomationCategory.Monitoring => "🔍 Monitorovací",
+        AutomationCategory.Operations => "⚙️ Provozní",
+        AutomationCategory.Maintenance => "🧹 Údržbové",
+        AutomationCategory.Synchronization => "🔗 Synchronizační",
+        _ => category.ToString(),
+    };
+
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        value is AutomationCategory c ? Label(c) : "—";
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        BindingOperations.DoNothing;
+}
+
 /// <summary>Maps an <see cref="AutomationTriggerKind"/> to a Czech label.</summary>
 public sealed class AutomationTriggerLabelConverter : IValueConverter
 {

@@ -26,9 +26,27 @@ public static class AutomationEndpoints
             .Produces<AutomationResponse>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status400BadRequest).ProducesProblem(StatusCodes.Status409Conflict);
 
-        group.MapGet("/", async (IAutomationService automations, CancellationToken ct) =>
-            Results.Ok((await automations.ListAsync(ct)).Select(AutomationResponse.From)))
-            .WithSummary("List automations").Produces<IEnumerable<AutomationResponse>>();
+        group.MapGet("/", async (AutomationCategory? category, IAutomationService automations, CancellationToken ct) =>
+            {
+                var all = (await automations.ListAsync(ct)).Select(AutomationResponse.From);
+                if (category is { } c) all = all.Where(a => a.Category == c);
+                return Results.Ok(all);
+            })
+            .WithSummary("List automations (optional ?category= filter)").Produces<IEnumerable<AutomationResponse>>();
+
+        group.MapGet("/templates", (AutomationCategory? category) =>
+            {
+                var templates = AutomationCatalog.Templates.AsEnumerable();
+                if (category is { } c) templates = templates.Where(t => t.Category == c);
+                return Results.Ok(templates.Select(AutomationTemplateDto.From));
+            })
+            .WithSummary("List ready-to-edit automation templates, grouped by category (optional ?category= filter)")
+            .Produces<IEnumerable<AutomationTemplateDto>>();
+
+        group.MapGet("/catalog", () =>
+                Results.Ok(Enum.GetValues<AutomationStepType>().Select(AutomationStepCatalogDto.From)))
+            .WithSummary("Step catalog: each step type's category, display name, purpose and parameter schema")
+            .Produces<IEnumerable<AutomationStepCatalogDto>>();
 
         group.MapGet("/{id:guid}", async (Guid id, IAutomationService automations, CancellationToken ct) =>
             await automations.GetAsync(id, ct) is { } automation ? Results.Ok(AutomationResponse.From(automation)) : Results.NotFound())
@@ -83,6 +101,54 @@ public static class AutomationEndpoints
         catch (DuplicateKeyException ex) { return Results.Problem(ex.Message, statusCode: StatusCodes.Status409Conflict); }
         catch (ConcurrencyConflictException ex) { return Results.Problem(ex.Message, statusCode: StatusCodes.Status409Conflict); }
     }
+}
+
+/// <summary>One parameter a step accepts, as documented by the catalog (drives a typed UI field).</summary>
+public sealed record AutomationParameterSpecDto(
+    string Key,
+    string Label,
+    string Help,
+    AutomationParameterType Type,
+    string? Default,
+    int? Min,
+    int? Max,
+    IReadOnlyList<string>? EnumValues)
+{
+    public static AutomationParameterSpecDto From(AutomationParameterSpec p) =>
+        new(p.Key, p.Label, p.Help, p.Type, p.Default, p.Min, p.Max, p.EnumValues);
+}
+
+/// <summary>Catalog entry for one step type: its category, human metadata and parameter schema.</summary>
+public sealed record AutomationStepCatalogDto(
+    AutomationStepType Type,
+    AutomationCategory Category,
+    string DisplayName,
+    string Purpose,
+    IReadOnlyList<AutomationParameterSpecDto> Parameters)
+{
+    public static AutomationStepCatalogDto From(AutomationStepType type) => new(
+        type, AutomationCatalog.CategoryOf(type), AutomationCatalog.DisplayNameFor(type),
+        AutomationCatalog.PurposeFor(type),
+        AutomationCatalog.ParametersFor(type).Select(AutomationParameterSpecDto.From).ToList());
+}
+
+/// <summary>A ready-to-edit automation template as returned by the API.</summary>
+public sealed record AutomationTemplateDto(
+    string Key,
+    AutomationCategory Category,
+    string DisplayName,
+    string Purpose,
+    string Icon,
+    AutomationScopeKind DefaultScope,
+    IReadOnlyList<AutomationStepDto> Steps,
+    string? RecommendedCron,
+    int? RecommendedIntervalSeconds,
+    IReadOnlyList<NotificationEvent> DefaultEvents)
+{
+    public static AutomationTemplateDto From(AutomationTemplate t) => new(
+        t.Key, t.Category, t.DisplayName, t.Purpose, t.Icon, t.DefaultScope,
+        t.Steps.Select(AutomationStepDto.From).ToList(),
+        t.RecommendedCron, t.RecommendedIntervalSeconds, t.DefaultEvents ?? []);
 }
 
 /// <summary>One step of an automation's pipeline as accepted/returned by the API.</summary>
@@ -161,14 +227,17 @@ public sealed record AutomationResponse(
     DateTimeOffset? UpdatedAt,
     DateTimeOffset? LastRunAt,
     AutomationRunOutcome? LastOutcome,
-    long Version)
+    long Version,
+    AutomationCategory Category,
+    string Purpose)
 {
     public static AutomationResponse From(Automation a) => new(
         a.Id, a.Key, a.Name, a.ScopeKind, a.BranchKey, a.InstanceKey, a.Cron, a.IntervalSeconds,
         a.EventTriggers, a.EventDebounceSeconds, a.Steps.Select(AutomationStepDto.From).ToList(),
         a.TimeoutSeconds, a.MaxAttempts, a.RetryDelaySeconds, a.FailureThreshold, a.Events, a.Enabled,
         a.NextRunAt, a.RunningSince, a.ConsecutiveFailures,
-        a.CreatedAt, a.UpdatedAt, a.LastRunAt, a.LastOutcome, a.Version);
+        a.CreatedAt, a.UpdatedAt, a.LastRunAt, a.LastOutcome, a.Version,
+        AutomationCatalog.CategoryOf(a), AutomationCatalog.PurposeFor(a));
 }
 
 /// <summary>One step result within an automation run as returned by the API.</summary>

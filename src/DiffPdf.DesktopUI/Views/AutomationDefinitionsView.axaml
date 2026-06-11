@@ -48,6 +48,7 @@
                     SelectedItem="{Binding Selected}" IsReadOnly="True" AutoGenerateColumns="False" CanUserResizeColumns="True">
             <DataGrid.Columns>
               <DataGridTextColumn Header="Klíč" Binding="{Binding Key}" Width="140"/>
+              <DataGridTextColumn Header="Kategorie" Binding="{Binding Category, Converter={x:Static vm:AutomationCategoryLabelConverter.Instance}}" Width="130"/>
               <DataGridTextColumn Header="Plán" Binding="{Binding ., Converter={x:Static vm:AutomationCadenceLabelConverter.Instance}}" Width="110"/>
               <DataGridTextColumn Header="Kroky" Binding="{Binding Steps.Count}" Width="60"/>
               <DataGridTemplateColumn Header="Povoleno" Width="95" SortMemberPath="Enabled">
@@ -112,7 +113,7 @@
                     <DataTemplate>
                       <Grid ColumnDefinitions="22,130,80,*,70" Margin="0,1">
                         <TextBlock Grid.Column="0" Text="{Binding Index}" Foreground="{DynamicResource InkFaint}"/>
-                        <TextBlock Grid.Column="1" Text="{Binding Type}"/>
+                        <TextBlock Grid.Column="1" Text="{Binding Type, Converter={x:Static vm:AutomationStepTypeLabelConverter.Instance}}"/>
                         <TextBlock Grid.Column="2" Text="{Binding Outcome}" FontWeight="SemiBold"
                                    Foreground="{Binding Outcome, Converter={x:Static vm:AutomationOutcomeBrushConverter.Instance}}"/>
                         <TextBlock Grid.Column="3" Text="{Binding Detail}" TextTrimming="CharacterEllipsis"
@@ -131,6 +132,42 @@
 
       <ScrollViewer Grid.Column="1">
         <StackPanel Spacing="6">
+          <!-- Galerie šablon (seskupená do kategorií). Výběr předvyplní editor níže — vše zůstane editovatelné. -->
+          <Expander Header="Šablony — vyber a uprav" IsExpanded="True" Margin="0,0,0,4">
+            <ItemsControl x:CompileBindings="False" ItemsSource="{Binding TemplateGroups}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <StackPanel Spacing="3" Margin="0,0,0,8">
+                    <TextBlock Text="{Binding Title}" FontWeight="Bold"/>
+                    <ItemsControl ItemsSource="{Binding Templates}">
+                      <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                      </ItemsControl.ItemsPanel>
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                          <Button Classes="ghost" Width="208" Margin="0,0,6,6" Padding="8"
+                                  HorizontalContentAlignment="Left" HorizontalAlignment="Left"
+                                  ToolTip.Tip="{Binding Purpose}"
+                                  CommandParameter="{Binding}"
+                                  Command="{Binding DataContext.UseTemplateCommand, RelativeSource={RelativeSource AncestorType=UserControl}}">
+                            <StackPanel Spacing="2">
+                              <StackPanel Orientation="Horizontal" Spacing="6">
+                                <TextBlock Text="{Binding Icon}"/>
+                                <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                              </StackPanel>
+                              <TextBlock Text="{Binding Purpose}" Foreground="{DynamicResource InkFaint}"
+                                         FontSize="11" TextWrapping="Wrap"/>
+                            </StackPanel>
+                          </Button>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </StackPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </Expander>
+
           <TextBlock Text="Automatizace" Classes="headline"/>
           <TextBox Text="{Binding Key}" PlaceholderText="Klíč (unikátní)"/>
           <TextBox Text="{Binding Name}" PlaceholderText="Název"/>
@@ -171,8 +208,14 @@
                 <Border Classes="card" Margin="0,0,0,6" Padding="8">
                   <StackPanel Spacing="4">
                     <Grid ColumnDefinitions="*,Auto,Auto,Auto">
-                      <ComboBox Grid.Column="0" HorizontalAlignment="Stretch"
-                                ItemsSource="{Binding Types}" SelectedItem="{Binding Type}"/>
+                      <ComboBox Grid.Column="0" HorizontalAlignment="Stretch" x:CompileBindings="False"
+                                ItemsSource="{Binding Types}" SelectedItem="{Binding Type}">
+                        <ComboBox.ItemTemplate>
+                          <DataTemplate>
+                            <TextBlock Text="{Binding Converter={x:Static vm:AutomationStepTypeLabelConverter.Instance}}"/>
+                          </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                      </ComboBox>
                       <Button Grid.Column="1" Content="↑" Classes="ghost" Margin="4,0,0,0"
                               Command="{Binding $parent[ItemsControl].((vm:AutomationDefinitionsViewModel)DataContext).MoveStepUpCommand}"
                               CommandParameter="{Binding}"/>

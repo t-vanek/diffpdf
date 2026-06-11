@@ -58,11 +58,13 @@ public class InstanceFormViewModelTests
     [Fact]
     public void Create_previews_the_derived_base_path_from_root_branch_and_key()
     {
-        var form = InstanceFormViewModel.ForCreate(NoSession, "alfa", scopeRoot: @"D:\diffpdf", existingKeys: [], existingNames: []);
+        // A UNC root keeps backslash separators on every OS (the VM joins UNC paths explicitly),
+        // so the derived preview is deterministic regardless of the host platform.
+        var form = InstanceFormViewModel.ForCreate(NoSession, "alfa", scopeRoot: @"\\fileserver\diffpdf", existingKeys: [], existingNames: []);
         Assert.False(form.RootInputVisible);   // server root present → no manual root box
         form.Key = "LamaEnergy";
 
-        Assert.Equal(@"D:\diffpdf\alfa\LamaEnergy", form.BasePathPreview);
+        Assert.Equal(@"\\fileserver\diffpdf\alfa\LamaEnergy", form.BasePathPreview);
     }
 
     [Fact]

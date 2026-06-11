@@ -312,6 +312,14 @@ public sealed class DiffPdfClient(HttpClient http)
     public Task<IReadOnlyList<AutomationResponse>> ListAutomationsAsync(CancellationToken ct = default) =>
         JsonAsync<IReadOnlyList<AutomationResponse>>(HttpMethod.Get, "/api/v1/automations", null, ct);
 
+    /// <summary>The ready-to-edit automation templates (gallery), grouped in the UI by category.</summary>
+    public Task<IReadOnlyList<AutomationTemplateResponse>> ListAutomationTemplatesAsync(CancellationToken ct = default) =>
+        JsonAsync<IReadOnlyList<AutomationTemplateResponse>>(HttpMethod.Get, "/api/v1/automations/templates", null, ct);
+
+    /// <summary>The step catalog: each step type's category, display name, purpose and parameter schema.</summary>
+    public Task<IReadOnlyList<AutomationStepCatalogResponse>> GetAutomationCatalogAsync(CancellationToken ct = default) =>
+        JsonAsync<IReadOnlyList<AutomationStepCatalogResponse>>(HttpMethod.Get, "/api/v1/automations/catalog", null, ct);
+
     public Task<AutomationResponse?> GetAutomationAsync(Guid id, CancellationToken ct = default) =>
         GetOrNullAsync<AutomationResponse>($"/api/v1/automations/{id}", ct);
 
