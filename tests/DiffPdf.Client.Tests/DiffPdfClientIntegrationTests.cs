@@ -115,6 +115,44 @@ public class DiffPdfClientIntegrationTests(InMemoryApiFactory factory)
     }
 
     [Fact]
+    public async Task DeleteJob_RemovesAFinishedJob_AndRefusesUnknownIds()
+    {
+        var diff = NewClient();
+        var (bk, ik) = FreshKeys();
+        await diff.CreateBranchAsync(new(bk, bk));
+
+        string basePath = Path.Combine(Path.GetTempPath(), "diffpdf-sdk-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            await diff.CreateInstanceAsync(bk, new(ik, "Inst", basePath));
+
+            // Same stub-pair recipe as the trigger happy-path: the job runs the full pipeline to Completed
+            // (the stub files just compare as errors), which is exactly the state delete requires.
+            await File.WriteAllTextAsync(Path.Combine(basePath, "old", "doc.pdf"), "%PDF-1.4 stub");
+            await File.WriteAllTextAsync(Path.Combine(basePath, "new", "doc.pdf"), "%PDF-1.4 stub");
+
+            var trig = await diff.TriggerBatchAsync(bk, ik);
+            Assert.NotNull(trig.JobId);
+            Guid jobId = trig.JobId!.Value;
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            await diff.WaitForReportAsync(jobId, TimeSpan.FromMilliseconds(200), cts.Token);
+
+            await diff.DeleteJobAsync(jobId);
+
+            Assert.Null(await diff.GetJobAsync(jobId));                       // the job row is gone
+            var tasksGone = await Assert.ThrowsAsync<DiffPdfApiException>(() => diff.GetTasksAsync(jobId));
+            Assert.Equal(HttpStatusCode.NotFound, tasksGone.StatusCode);      // …its tasks are unreachable too
+            var again = await Assert.ThrowsAsync<DiffPdfApiException>(() => diff.DeleteJobAsync(jobId));
+            Assert.Equal(HttpStatusCode.NotFound, again.StatusCode);          // a second delete reports 404
+        }
+        finally
+        {
+            try { Directory.Delete(basePath, recursive: true); } catch (IOException) { }
+        }
+    }
+
+    [Fact]
     public async Task Subscription_Crud_RoundTrip()
     {
         var diff = NewClient();

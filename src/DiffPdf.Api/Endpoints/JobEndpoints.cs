@@ -5,7 +5,7 @@ using DiffPdf.Persistence;
 namespace DiffPdf.Api.Endpoints;
 
 /// <summary>
-/// Job status, tasks, report, CI-gate result, artifacts, cancel and retry. The handlers bind the request,
+/// Job status, tasks, report, CI-gate result, artifacts, cancel, retry and delete. The handlers bind the request,
 /// call <see cref="IJobService"/> and map the outcome to HTTP — the lifecycle orchestration (cancel → skip
 /// pending + dispatch; pause → publish; resume; retry → requeue + reopen + re-enqueue) lives in DiffPdf.Application.
 /// </summary>
@@ -124,6 +124,11 @@ public static class JobEndpoints
                     : Results.Ok(new { retried = outcome.Retried, job = JobSummary.From(outcome.Job) });
             }))
             .WithSummary("Re-run the failed file-pairs of a finished job").ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
+
+        group.MapDelete("/{id:guid}", (Guid id, IJobService jobs, CancellationToken ct) =>
+            Run(async () => await jobs.DeleteAsync(id, ct) ? Results.NoContent() : Results.NotFound()))
+            .WithSummary("Permanently delete a finished (Completed/Cancelled) job incl. its tasks, report and artifacts")
+            .Produces(StatusCodes.Status204NoContent).ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapGet("/{id:guid}/artifacts/{**relativePath}", async (
             Guid id, string relativePath, IJobService jobs, CancellationToken ct) =>

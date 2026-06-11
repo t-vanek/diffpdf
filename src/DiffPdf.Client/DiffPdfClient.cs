@@ -162,6 +162,13 @@ public sealed class DiffPdfClient(HttpClient http)
     public async Task<JobSummary> RetryJobAsync(Guid id, CancellationToken ct = default) =>
         (await JsonAsync<JobActionResult>(HttpMethod.Post, $"/api/v1/jobs/{id}/retry", null, ct)).Job;
 
+    /// <summary>Permanently deletes a finished (Completed/Cancelled) job incl. its tasks, report and diff
+    /// artifacts. Throws DiffPdfApiException 409 while the job is still active (cancel it first); 404 if unknown.</summary>
+    public async Task DeleteJobAsync(Guid id, CancellationToken ct = default)
+    {
+        using var resp = await SendRawAsync(HttpMethod.Delete, $"/api/v1/jobs/{id}", null, ct);
+    }
+
     // Finished reports are immutable and the server tags them (ETag derived from the job version): remember
     // the last few per job and revalidate with If-None-Match — a 304 skips re-downloading a multi-MB body.
     private readonly ConcurrentDictionary<Guid, (string ETag, BatchComparisonReport Report)> _reportCache = new();

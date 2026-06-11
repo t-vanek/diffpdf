@@ -71,6 +71,47 @@ public class JobServiceTests
     }
 
     [Fact]
+    public async Task Delete_UnknownJob_ReturnsFalse() => Assert.False(await Build().Svc.DeleteAsync(Guid.NewGuid()));
+
+    [Theory]
+    [InlineData(JobStatus.Draft)]
+    [InlineData(JobStatus.Queued)]
+    [InlineData(JobStatus.Running)]
+    [InlineData(JobStatus.Paused)]
+    [InlineData(JobStatus.Failed)] // per spec only Hotovo/Zrušeno is deletable — a Failed job is retried or cancelled first
+    public async Task Delete_NotDeletableStatus_ThrowsConflict_AndKeepsTheJob(JobStatus status)
+    {
+        var c = Build();
+        var job = MakeJob(status);
+        await c.Jobs.CreateAsync(job);
+
+        await Assert.ThrowsAsync<JobConflictException>(() => c.Svc.DeleteAsync(job.Id));
+        Assert.NotNull(await c.Jobs.GetAsync(job.Id));
+    }
+
+    [Theory]
+    [InlineData(JobStatus.Completed)]
+    [InlineData(JobStatus.Cancelled)]
+    public async Task Delete_FinishedJob_RemovesRowTasksAndDiskFolder(JobStatus status)
+    {
+        var root = Directory.CreateTempSubdirectory().FullName;
+        await File.WriteAllTextAsync(Path.Combine(root, "diff.pdf"), "%PDF-1.4");
+        var c = Build(root);
+        var job = MakeJob(status);
+        await c.Jobs.CreateAsync(job);
+        await c.Tasks.CreateManyAsync([new FilePairTask
+        {
+            Id = Guid.NewGuid(), JobId = job.Id, RelativePath = "doc.pdf", Status = FilePairTaskStatus.Completed,
+        }]);
+
+        Assert.True(await c.Svc.DeleteAsync(job.Id));
+
+        Assert.Null(await c.Jobs.GetAsync(job.Id));
+        Assert.Empty(await c.Tasks.ListByJobAsync(job.Id));
+        Assert.False(Directory.Exists(root)); // the on-disk job folder (report + artifacts) went with it
+    }
+
+    [Fact]
     public async Task ResolveArtifact_UnknownJob_ReturnsJobNotFound()
     {
         var r = await Build().Svc.ResolveArtifactAsync(Guid.NewGuid(), "file.pdf");

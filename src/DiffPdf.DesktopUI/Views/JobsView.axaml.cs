@@ -61,10 +61,13 @@ public partial class JobsView : UserControl
 
     // Clicking into a job row reloads the list (the explicit "Obnovit" button is gone). Reconcile keeps the
     // selection; the open detail is left to the selection handler + live progress (no flicker). Ignore taps that
-    // miss a row (header / scrollbar / empty area) so only a real row click triggers a refresh.
+    // miss a row (header / scrollbar / empty area) and taps on the row's controls (the multi-select CheckBox —
+    // a Button subclass — and the delete button), so ticking rows doesn't fire a refresh per click.
     private void OnJobRowTapped(object? sender, TappedEventArgs e)
     {
-        if ((e.Source as Control)?.FindAncestorOfType<DataGridRow>(includeSelf: true) is null) return;
+        var source = e.Source as Control;
+        if (source?.FindAncestorOfType<DataGridRow>(includeSelf: true) is null) return;
+        if (source?.FindAncestorOfType<Button>(includeSelf: true) is not null) return;
         _ = (DataContext as PageViewModel)?.ReloadAsync();
     }
 }

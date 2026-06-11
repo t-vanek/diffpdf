@@ -10,209 +10,234 @@
     <KeyBinding Gesture="F5" Command="{Binding ReloadCommand}"/>
   </UserControl.KeyBindings>
 
-  <DockPanel>
-    <TextBlock DockPanel.Dock="Top" Text="Úlohy" Classes="pageTitle" Margin="2,0,0,10"/>
+  <!-- Dva sloupce na celou výšku stránky: vlevo titulek + filtry + seznam, vpravo detail úlohy od horního
+       okraje (nesedí pod prázdným místem vedle filtrů). -->
+  <Grid ColumnDefinitions="3*,2*">
 
-    <!-- Filtry · stav. Obnovení je implicitní: znovu-klik na položku navigace, kliknutí do řádku úlohy, F5, nebo
-         periodicky na pozadí (vedle živého průběhu). -->
-    <WrapPanel DockPanel.Dock="Top" ItemSpacing="8" LineSpacing="8" Margin="0,0,0,10">
-      <ComboBox Width="140" ItemsSource="{Binding BranchOptions}" SelectedItem="{Binding FilterBranch}"/>
-      <ComboBox Width="150" ItemsSource="{Binding InstanceOptions}" SelectedItem="{Binding FilterInstance}"/>
-      <ComboBox Width="120" ItemsSource="{Binding StatusFilters}" SelectedItem="{Binding FilterStatus}"/>
-      <TextBlock Text="{Binding Info}" Foreground="{DynamicResource Info}" VerticalAlignment="Center"/>
-      <TextBlock Text="{Binding Error}" Foreground="{DynamicResource Bad}" VerticalAlignment="Center"/>
-      <ProgressBar IsIndeterminate="True" Width="100" Height="4" VerticalAlignment="Center" IsVisible="{Binding IsBusy}"/>
-    </WrapPanel>
+    <DockPanel Grid.Column="0" Margin="0,0,12,0">
+      <TextBlock DockPanel.Dock="Top" Text="Úlohy" Classes="pageTitle" Margin="2,0,0,10"/>
 
-    <Grid ColumnDefinitions="3*,2*">
+      <!-- Filtry · stav · hromadné mazání. Obnovení je implicitní: znovu-klik na položku navigace, kliknutí do
+           řádku úlohy, F5, nebo periodicky na pozadí (vedle živého průběhu). -->
+      <WrapPanel DockPanel.Dock="Top" ItemSpacing="8" LineSpacing="8" Margin="0,0,0,10">
+        <ComboBox Width="140" ItemsSource="{Binding BranchOptions}" SelectedItem="{Binding FilterBranch}"/>
+        <ComboBox Width="150" ItemsSource="{Binding InstanceOptions}" SelectedItem="{Binding FilterInstance}"/>
+        <ComboBox Width="120" ItemsSource="{Binding StatusFilters}" SelectedItem="{Binding FilterStatus}"/>
+        <Button Content="{Binding SelectedDeleteCount, StringFormat='Smazat vybrané ({0})'}" Classes="destructive"
+                Command="{Binding DeleteSelectedCommand}" IsEnabled="{Binding CanDeleteSelected}"
+                ToolTip.Tip="Trvale smaže všechny zaškrtnuté úlohy (jen Hotovo / Zrušeno)"/>
+        <TextBlock Text="{Binding Info}" Foreground="{DynamicResource Info}" VerticalAlignment="Center"/>
+        <TextBlock Text="{Binding Error}" Foreground="{DynamicResource Bad}" VerticalAlignment="Center"/>
+        <ProgressBar IsIndeterminate="True" Width="100" Height="4" VerticalAlignment="Center" IsVisible="{Binding IsBusy}"/>
+      </WrapPanel>
+
       <!-- Seznam úloh; "Načíst další úlohy" je footer pod seznamem (nepřekrývá řádky). -->
-      <DockPanel Grid.Column="0" Margin="0,0,12,0">
-        <Button DockPanel.Dock="Bottom" Content="Načíst další úlohy" Classes="ghost" HorizontalAlignment="Center" Margin="0,6,0,0"
-                IsVisible="{Binding MoreJobsAvailable}" Command="{Binding LoadMoreJobsCommand}"/>
-        <Panel>
-      <DataGrid x:Name="JobsGrid" x:CompileBindings="False" Tapped="OnJobRowTapped" ItemsSource="{Binding Jobs}"
-                SelectedItem="{Binding SelectedJob}" IsReadOnly="True" AutoGenerateColumns="False" CanUserResizeColumns="True">
-        <DataGrid.Columns>
-          <DataGridTemplateColumn Header="Stav" Width="140">
-            <DataGridTemplateColumn.CellTemplate>
-              <DataTemplate>
-                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
-                  <TextBlock Text="{Binding StatusIcon}" Foreground="{Binding StatusBrush}"/>
-                  <TextBlock Text="{Binding StatusText}" Foreground="{Binding StatusBrush}"/>
-                  <TextBlock Text="⟳" Foreground="{DynamicResource Info}" FontWeight="Bold"
-                             IsVisible="{Binding WasRecovered}"
-                             ToolTip.Tip="Obnoveno po přerušení (pád / restart serveru)."/>
-                </StackPanel>
-              </DataTemplate>
-            </DataGridTemplateColumn.CellTemplate>
-          </DataGridTemplateColumn>
-          <DataGridTextColumn Header="Instance" Binding="{Binding Job.InstanceKey}" Width="130"/>
-          <DataGridTextColumn Header="Větev" Binding="{Binding Job.BranchKey}" Width="100"/>
-          <DataGridTemplateColumn Header="Průběh" Width="130">
-            <DataGridTemplateColumn.CellTemplate>
-              <DataTemplate>
-                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                  <ProgressBar Width="60" Height="6" Minimum="0" Maximum="1" Value="{Binding Progress}" VerticalAlignment="Center"/>
-                  <TextBlock Text="{Binding ProgressText}" VerticalAlignment="Center" FontSize="12"/>
-                </StackPanel>
-              </DataTemplate>
-            </DataGridTemplateColumn.CellTemplate>
-          </DataGridTemplateColumn>
-          <DataGridTemplateColumn Header="Výsledek" Width="150">
-            <DataGridTemplateColumn.CellTemplate>
-              <DataTemplate>
-                <TextBlock Text="{Binding VerdictText}" Foreground="{Binding VerdictBrush}" IsVisible="{Binding HasVerdict}" VerticalAlignment="Center"/>
-              </DataTemplate>
-            </DataGridTemplateColumn.CellTemplate>
-          </DataGridTemplateColumn>
-          <DataGridTextColumn Header="Vytvořeno" Binding="{Binding Job.CreatedAt, Converter={x:Static vm:LocalTimeConverter.Instance}, ConverterParameter='dd.MM HH:mm'}" Width="*"/>
-        </DataGrid.Columns>
-      </DataGrid>
-          <!-- Prázdný stav přes seznam úloh -->
-          <TextBlock Text="Žádné úlohy odpovídající filtru." Foreground="{DynamicResource InkFaint}"
-                     HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding HasNoJobs}"/>
-        </Panel>
-      </DockPanel>
+      <Button DockPanel.Dock="Bottom" Content="Načíst další úlohy" Classes="ghost" HorizontalAlignment="Center" Margin="0,6,0,0"
+              IsVisible="{Binding MoreJobsAvailable}" Command="{Binding LoadMoreJobsCommand}"/>
+      <Panel>
+        <DataGrid x:Name="JobsGrid" x:CompileBindings="False" Tapped="OnJobRowTapped" ItemsSource="{Binding Jobs}"
+                  SelectedItem="{Binding SelectedJob}" IsReadOnly="True" AutoGenerateColumns="False" CanUserResizeColumns="True">
+          <DataGrid.Columns>
+            <DataGridTemplateColumn Width="40" CanUserSort="False">
+              <DataGridTemplateColumn.Header>
+                <CheckBox IsChecked="{Binding #Root.DataContext.AllSelected, Mode=TwoWay}"
+                          ToolTip.Tip="Vybrat / odznačit vše smazatelné (Hotovo / Zrušeno)"/>
+              </DataGridTemplateColumn.Header>
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate>
+                  <CheckBox IsChecked="{Binding IsSelected}" IsEnabled="{Binding CanDelete}" Margin="10,0,0,0" VerticalAlignment="Center"
+                            ToolTip.Tip="Vybrat pro hromadné smazání (smazat lze jen dokončené / zrušené úlohy)"/>
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTemplateColumn Header="" Width="44">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate>
+                  <Button Content="🗑&#xFE0E;" Classes="iconBtn ghost destructive" IsEnabled="{Binding CanDelete}"
+                          Command="{Binding #Root.DataContext.DeleteJobCommand}" CommandParameter="{Binding}"
+                          ToolTip.Tip="Smazat úlohu — trvale, včetně výsledků a diff PDF (jen Hotovo / Zrušeno)"/>
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTemplateColumn Header="Stav" Width="140">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate>
+                  <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding StatusIcon}" Foreground="{Binding StatusBrush}"/>
+                    <TextBlock Text="{Binding StatusText}" Foreground="{Binding StatusBrush}"/>
+                    <TextBlock Text="⟳" Foreground="{DynamicResource Info}" FontWeight="Bold"
+                               IsVisible="{Binding WasRecovered}"
+                               ToolTip.Tip="Obnoveno po přerušení (pád / restart serveru)."/>
+                  </StackPanel>
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTextColumn Header="Instance" Binding="{Binding Job.InstanceKey}" Width="130"/>
+            <DataGridTextColumn Header="Větev" Binding="{Binding Job.BranchKey}" Width="100"/>
+            <DataGridTemplateColumn Header="Průběh" Width="130">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate>
+                  <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <ProgressBar Width="60" Height="6" Minimum="0" Maximum="1" Value="{Binding Progress}" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding ProgressText}" VerticalAlignment="Center" FontSize="12"/>
+                  </StackPanel>
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTemplateColumn Header="Výsledek" Width="150">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate>
+                  <TextBlock Text="{Binding VerdictText}" Foreground="{Binding VerdictBrush}" IsVisible="{Binding HasVerdict}" VerticalAlignment="Center"/>
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTextColumn Header="Vytvořeno" Binding="{Binding Job.CreatedAt, Converter={x:Static vm:LocalTimeConverter.Instance}, ConverterParameter='dd.MM HH:mm'}" Width="*"/>
+          </DataGrid.Columns>
+        </DataGrid>
+        <!-- Prázdný stav přes seznam úloh -->
+        <TextBlock Text="Žádné úlohy odpovídající filtru." Foreground="{DynamicResource InkFaint}"
+                   HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding HasNoJobs}"/>
+      </Panel>
+    </DockPanel>
 
-      <DockPanel Grid.Column="1"
-                 IsVisible="{Binding SelectedSummary, Converter={x:Static ObjectConverters.IsNotNull}}">
-        <!-- Horní část: kompaktní metadata úlohy; seznam souborů níže vyplní zbytek výšky. -->
-        <StackPanel DockPanel.Dock="Top" Spacing="6">
-          <!-- Hlavička: instance · větev + stav -->
-          <StackPanel Spacing="2">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <ContentControl Content="{Binding SelectedSummary}">
-                <ContentControl.ContentTemplate>
-                  <DataTemplate x:DataType="models:JobSummary">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                      <TextBlock Text="{Binding InstanceKey}" Classes="headline"/>
-                      <TextBlock Text="{Binding BranchKey, StringFormat='· {0}'}" Foreground="{DynamicResource InkDim}" VerticalAlignment="Center"/>
-                    </StackPanel>
-                  </DataTemplate>
-                </ContentControl.ContentTemplate>
-              </ContentControl>
-              <ContentControl Content="{Binding SelectedJob}" VerticalAlignment="Center">
-                <ContentControl.ContentTemplate>
-                  <DataTemplate x:DataType="vm:JobRowViewModel">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                      <TextBlock Text="{Binding StatusIcon}" Foreground="{Binding StatusBrush}" VerticalAlignment="Center"/>
-                      <TextBlock Text="{Binding StatusText}" Foreground="{Binding StatusBrush}" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                      <TextBlock Text="⟳ Obnoveno" Foreground="{DynamicResource Info}" FontWeight="SemiBold" VerticalAlignment="Center"
-                                 IsVisible="{Binding WasRecovered}"
-                                 ToolTip.Tip="Toto porovnání bylo po přerušení (pád / restart serveru) automaticky obnoveno."/>
-                    </StackPanel>
-                  </DataTemplate>
-                </ContentControl.ContentTemplate>
-              </ContentControl>
-            </StackPanel>
+    <DockPanel Grid.Column="1"
+               IsVisible="{Binding SelectedSummary, Converter={x:Static ObjectConverters.IsNotNull}}">
+      <!-- Horní část: kompaktní metadata úlohy; seznam souborů níže vyplní zbytek výšky. -->
+      <StackPanel DockPanel.Dock="Top" Spacing="6">
+        <!-- Hlavička: instance · větev + stav -->
+        <StackPanel Spacing="2">
+          <StackPanel Orientation="Horizontal" Spacing="8">
             <ContentControl Content="{Binding SelectedSummary}">
               <ContentControl.ContentTemplate>
                 <DataTemplate x:DataType="models:JobSummary">
-                  <StackPanel Orientation="Horizontal" Spacing="14"><!-- timestamps on one line to save vertical space -->
-                    <TextBlock Foreground="{DynamicResource InkFaint}" FontSize="12"
-                               Text="{Binding CreatedAt, Converter={x:Static vm:LocalTimeConverter.Instance}, ConverterParameter='Vytvořeno|dd.MM.yyyy HH:mm'}"/>
-                    <TextBlock Foreground="{DynamicResource InkFaint}" FontSize="12"
-                               IsVisible="{Binding CompletedAt, Converter={x:Static ObjectConverters.IsNotNull}}"
-                               Text="{Binding CompletedAt, Converter={x:Static vm:LocalTimeConverter.Instance}, ConverterParameter='Dokončeno|dd.MM.yyyy HH:mm'}"/>
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="{Binding InstanceKey}" Classes="headline"/>
+                    <TextBlock Text="{Binding BranchKey, StringFormat='· {0}'}" Foreground="{DynamicResource InkDim}" VerticalAlignment="Center"/>
                   </StackPanel>
                 </DataTemplate>
               </ContentControl.ContentTemplate>
             </ContentControl>
-            <!-- Correlation id (job id) — visible + copyable for support / log lookups. -->
-            <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock Text="{Binding SelectedSummary.Id, StringFormat='ID úlohy: {0}'}" Foreground="{DynamicResource InkFaint}"
-                         FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="320"/>
-              <Button Content="Kopírovat" Classes="ghost" FontSize="11" Padding="6,1" Command="{Binding CopyJobIdCommand}"/>
-            </StackPanel>
-          </StackPanel>
-
-          <!-- Živý průběh -->
-          <StackPanel Spacing="3">
-            <ProgressBar Minimum="0" Maximum="1" Value="{Binding LiveProgress}"/>
-            <ContentControl Content="{Binding SelectedSummary}">
+            <ContentControl Content="{Binding SelectedJob}" VerticalAlignment="Center">
               <ContentControl.ContentTemplate>
-                <DataTemplate x:DataType="models:JobSummary">
-                  <StackPanel Spacing="3">
-                    <TextBlock FontSize="12" Foreground="{DynamicResource InkDim}"
-                               Text="{Binding ProcessedCount, StringFormat='{}{0} porovnáno'}"/>
-                    <TextBlock Text="{Binding Error}" Foreground="{DynamicResource Bad}" TextWrapping="Wrap"
-                               IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+                <DataTemplate x:DataType="vm:JobRowViewModel">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="{Binding StatusIcon}" Foreground="{Binding StatusBrush}" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding StatusText}" Foreground="{Binding StatusBrush}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    <TextBlock Text="⟳ Obnoveno" Foreground="{DynamicResource Info}" FontWeight="SemiBold" VerticalAlignment="Center"
+                               IsVisible="{Binding WasRecovered}"
+                               ToolTip.Tip="Toto porovnání bylo po přerušení (pád / restart serveru) automaticky obnoveno."/>
                   </StackPanel>
                 </DataTemplate>
               </ContentControl.ContentTemplate>
             </ContentControl>
           </StackPanel>
-
-          <!-- Stavově řízené akce -->
-          <WrapPanel>
-            <Button Content="‖ Pozastavit" Classes="ghost" Command="{Binding PauseCommand}" IsVisible="{Binding CanPause}" Margin="0,0,6,6"/>
-            <Button Content="↻ Pokračovat" Classes="ghost" Command="{Binding ResumeCommand}" IsVisible="{Binding CanResume}" Margin="0,0,6,6"/>
-            <Button Content="■ Zrušit" Classes="ghost destructive" Command="{Binding CancelCommand}" IsVisible="{Binding CanCancel}" Margin="0,0,6,6"/>
-            <Button Content="↺ Opakovat" Classes="ghost" Command="{Binding RetryCommand}" IsVisible="{Binding CanRetry}" Margin="0,0,6,6"/>
-          </WrapPanel>
-
-          <!-- Souhrn (barevné chipy) -->
-          <ItemsControl ItemsSource="{Binding Summary}">
-            <ItemsControl.ItemsPanel>
-              <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
-            </ItemsControl.ItemsPanel>
-            <ItemsControl.ItemTemplate>
-              <DataTemplate x:DataType="vm:StatLine">
-                <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,0,14,4">
-                  <TextBlock Text="{Binding Icon}" Foreground="{Binding Foreground}"/>
-                  <TextBlock Text="{Binding Label}" Foreground="{Binding Foreground}"/>
-                  <TextBlock Text="{Binding Count}" Foreground="{Binding Foreground}" FontWeight="{Binding Weight}"/>
+          <ContentControl Content="{Binding SelectedSummary}">
+            <ContentControl.ContentTemplate>
+              <DataTemplate x:DataType="models:JobSummary">
+                <StackPanel Orientation="Horizontal" Spacing="14"><!-- timestamps on one line to save vertical space -->
+                  <TextBlock Foreground="{DynamicResource InkFaint}" FontSize="12"
+                             Text="{Binding CreatedAt, Converter={x:Static vm:LocalTimeConverter.Instance}, ConverterParameter='Vytvořeno|dd.MM.yyyy HH:mm'}"/>
+                  <TextBlock Foreground="{DynamicResource InkFaint}" FontSize="12"
+                             IsVisible="{Binding CompletedAt, Converter={x:Static ObjectConverters.IsNotNull}}"
+                             Text="{Binding CompletedAt, Converter={x:Static vm:LocalTimeConverter.Instance}, ConverterParameter='Dokončeno|dd.MM.yyyy HH:mm'}"/>
                 </StackPanel>
               </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-
-          <!-- Soubory: hlavička, hledání podle názvu, počet a filtr; seznam níže vyplní zbytek výšky. -->
-          <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
-            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-              <TextBlock Text="Soubory" FontWeight="SemiBold" VerticalAlignment="Center"
-                         ToolTip.Tip="Dvojklikem na řádek otevřeš detail s náhledem PDF"/>
-              <TextBlock Text="{Binding FileCountLabel}" Foreground="{DynamicResource InkFaint}" FontSize="11" VerticalAlignment="Center"/>
-            </StackPanel>
-            <TextBox Grid.Column="1" x:Name="FileSearchBox" Text="{Binding FileSearch}" VerticalAlignment="Center"
-                     PlaceholderText="Hledat soubor…" ToolTip.Tip="Hledat soubor (Ctrl+F)"/>
-            <CheckBox Grid.Column="2" Content="Jen odlišné" IsChecked="{Binding ShowOnlyDiffering}" VerticalAlignment="Center"/>
-          </Grid>
+            </ContentControl.ContentTemplate>
+          </ContentControl>
+          <!-- Correlation id (job id) — visible + copyable for support / log lookups. -->
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <TextBlock Text="{Binding SelectedSummary.Id, StringFormat='ID úlohy: {0}'}" Foreground="{DynamicResource InkFaint}"
+                       FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="320"/>
+            <Button Content="Kopírovat" Classes="ghost" FontSize="11" Padding="6,1" Command="{Binding CopyJobIdCommand}"/>
+          </StackPanel>
         </StackPanel>
 
-        <!-- Seznam souborů vyplní zbytek výšky; "Načíst další" je footer pod seznamem (nepřekrývá řádky). -->
-        <DockPanel Margin="0,8,0,0">
-          <!-- Footer: doučte další stránku souborů (i scrollem na konec); jen když je co dočítat. -->
-          <Button DockPanel.Dock="Bottom" Content="Načíst další" Classes="ghost" HorizontalAlignment="Center" Margin="0,6,0,0"
-                  IsVisible="{Binding MoreFilesAvailable}" Command="{Binding LoadMoreFilesCommand}"/>
-          <Panel>
-            <DataGrid x:Name="FilesGrid" x:CompileBindings="False" ItemsSource="{Binding FilesView}" IsReadOnly="True" MinHeight="160"
-                      AutoGenerateColumns="False" CanUserResizeColumns="True" DoubleTapped="OnFileDoubleTapped">
-              <DataGrid.Columns>
-                <DataGridTemplateColumn Header="Stav" Width="140">
-                  <DataGridTemplateColumn.CellTemplate>
-                    <DataTemplate>
-                      <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
-                        <TextBlock Text="{Binding Icon}" Foreground="{Binding Brush}"/>
-                        <TextBlock Text="{Binding StatusText}" Foreground="{Binding Brush}"/>
-                      </StackPanel>
-                    </DataTemplate>
-                  </DataGridTemplateColumn.CellTemplate>
-                </DataGridTemplateColumn>
-                <DataGridTextColumn Header="Soubor" Binding="{Binding Name}" Width="*"/>
-              </DataGrid.Columns>
-            </DataGrid>
-            <TextBlock Text="Žádné soubory neodpovídají filtru." Foreground="{DynamicResource InkFaint}"
-                       HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding ShowNoFilesMessage}"/>
-            <!-- Načítací indikátor přes seznam, dokud se soubory stahují (velký job má stovky párů). -->
-            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Center"
-                        IsVisible="{Binding IsLoadingFiles}">
-              <ProgressBar IsIndeterminate="True" Width="130" Height="4" VerticalAlignment="Center"/>
-              <TextBlock Text="Načítání souborů…" Foreground="{DynamicResource InkFaint}" VerticalAlignment="Center"/>
-            </StackPanel>
-          </Panel>
-        </DockPanel>
+        <!-- Živý průběh -->
+        <StackPanel Spacing="3">
+          <ProgressBar Minimum="0" Maximum="1" Value="{Binding LiveProgress}"/>
+          <ContentControl Content="{Binding SelectedSummary}">
+            <ContentControl.ContentTemplate>
+              <DataTemplate x:DataType="models:JobSummary">
+                <StackPanel Spacing="3">
+                  <TextBlock FontSize="12" Foreground="{DynamicResource InkDim}"
+                             Text="{Binding ProcessedCount, StringFormat='{}{0} porovnáno'}"/>
+                  <TextBlock Text="{Binding Error}" Foreground="{DynamicResource Bad}" TextWrapping="Wrap"
+                             IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+                </StackPanel>
+              </DataTemplate>
+            </ContentControl.ContentTemplate>
+          </ContentControl>
+        </StackPanel>
+
+        <!-- Stavově řízené akce -->
+        <WrapPanel>
+          <Button Content="‖ Pozastavit" Classes="ghost" Command="{Binding PauseCommand}" IsVisible="{Binding CanPause}" Margin="0,0,6,6"/>
+          <Button Content="↻ Pokračovat" Classes="ghost" Command="{Binding ResumeCommand}" IsVisible="{Binding CanResume}" Margin="0,0,6,6"/>
+          <Button Content="■ Zrušit" Classes="ghost destructive" Command="{Binding CancelCommand}" IsVisible="{Binding CanCancel}" Margin="0,0,6,6"/>
+          <Button Content="↺ Opakovat" Classes="ghost" Command="{Binding RetryCommand}" IsVisible="{Binding CanRetry}" Margin="0,0,6,6"/>
+        </WrapPanel>
+
+        <!-- Souhrn (barevné chipy) -->
+        <ItemsControl ItemsSource="{Binding Summary}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:StatLine">
+              <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,0,14,4">
+                <TextBlock Text="{Binding Icon}" Foreground="{Binding Foreground}"/>
+                <TextBlock Text="{Binding Label}" Foreground="{Binding Foreground}"/>
+                <TextBlock Text="{Binding Count}" Foreground="{Binding Foreground}" FontWeight="{Binding Weight}"/>
+              </StackPanel>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <!-- Soubory: hlavička, hledání podle názvu, počet a filtr; seznam níže vyplní zbytek výšky. -->
+        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+          <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+            <TextBlock Text="Soubory" FontWeight="SemiBold" VerticalAlignment="Center"
+                       ToolTip.Tip="Dvojklikem na řádek otevřeš detail s náhledem PDF"/>
+            <TextBlock Text="{Binding FileCountLabel}" Foreground="{DynamicResource InkFaint}" FontSize="11" VerticalAlignment="Center"/>
+          </StackPanel>
+          <TextBox Grid.Column="1" x:Name="FileSearchBox" Text="{Binding FileSearch}" VerticalAlignment="Center"
+                   PlaceholderText="Hledat soubor…" ToolTip.Tip="Hledat soubor (Ctrl+F)"/>
+          <CheckBox Grid.Column="2" Content="Jen odlišné" IsChecked="{Binding ShowOnlyDiffering}" VerticalAlignment="Center"/>
+        </Grid>
+      </StackPanel>
+
+      <!-- Seznam souborů vyplní zbytek výšky; "Načíst další" je footer pod seznamem (nepřekrývá řádky). -->
+      <DockPanel Margin="0,8,0,0">
+        <!-- Footer: doučte další stránku souborů (i scrollem na konec); jen když je co dočítat. -->
+        <Button DockPanel.Dock="Bottom" Content="Načíst další" Classes="ghost" HorizontalAlignment="Center" Margin="0,6,0,0"
+                IsVisible="{Binding MoreFilesAvailable}" Command="{Binding LoadMoreFilesCommand}"/>
+        <Panel>
+          <DataGrid x:Name="FilesGrid" x:CompileBindings="False" ItemsSource="{Binding FilesView}" IsReadOnly="True" MinHeight="160"
+                    AutoGenerateColumns="False" CanUserResizeColumns="True" DoubleTapped="OnFileDoubleTapped">
+            <DataGrid.Columns>
+              <DataGridTemplateColumn Header="Stav" Width="140">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate>
+                    <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                      <TextBlock Text="{Binding Icon}" Foreground="{Binding Brush}"/>
+                      <TextBlock Text="{Binding StatusText}" Foreground="{Binding Brush}"/>
+                    </StackPanel>
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+              <DataGridTextColumn Header="Soubor" Binding="{Binding Name}" Width="*"/>
+            </DataGrid.Columns>
+          </DataGrid>
+          <TextBlock Text="Žádné soubory neodpovídají filtru." Foreground="{DynamicResource InkFaint}"
+                     HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding ShowNoFilesMessage}"/>
+          <!-- Načítací indikátor přes seznam, dokud se soubory stahují (velký job má stovky párů). -->
+          <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Center"
+                      IsVisible="{Binding IsLoadingFiles}">
+            <ProgressBar IsIndeterminate="True" Width="130" Height="4" VerticalAlignment="Center"/>
+            <TextBlock Text="Načítání souborů…" Foreground="{DynamicResource InkFaint}" VerticalAlignment="Center"/>
+          </StackPanel>
+        </Panel>
       </DockPanel>
-    </Grid>
-  </DockPanel>
+    </DockPanel>
+  </Grid>
 </UserControl>

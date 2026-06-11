@@ -9,15 +9,21 @@ namespace DiffPdf.DesktopUI.ViewModels;
 /// ✗ N odlišných / ⚠ chyby) derived from the enriched <see cref="JobSummary"/>. Settable so a realtime event
 /// can update the row in place (preserving selection).
 /// </summary>
-public partial class JobRowViewModel(JobSummary job) : ObservableObject
+public partial class JobRowViewModel(JobSummary job) : ObservableObject, ISelectableRow
 {
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StatusText), nameof(StatusIcon), nameof(StatusBrush), nameof(Progress),
         nameof(InProgress), nameof(ProgressText), nameof(HasVerdict), nameof(VerdictText), nameof(VerdictBrush),
-        nameof(WasRecovered))]
+        nameof(WasRecovered), nameof(CanDelete))]
     private JobSummary _job = job;
 
+    /// <summary>Ticked by the list's multi-select checkbox (bulk delete).</summary>
+    [ObservableProperty] private bool _isSelected;
+
     public Guid Id => Job.Id;
+
+    /// <summary>Smazat lze jen ukončenou úlohu se stavem Hotovo/Zrušeno — běžící práci je nutné nejdřív zrušit.</summary>
+    public bool CanDelete => Job.Status is JobStatus.Completed or JobStatus.Cancelled;
 
     public string StatusIcon => Job.Status switch
     {
@@ -68,5 +74,10 @@ public partial class JobRowViewModel(JobSummary job) : ObservableObject
     /// <summary>The job was auto-recovered after an interruption (crash / restart / stale worker) — shows an "Obnoveno" chip.</summary>
     public bool WasRecovered => Job.RecoveredAt is not null;
 
-    public void Apply(JobSummary updated) => Job = updated;
+    public void Apply(JobSummary updated)
+    {
+        Job = updated;
+        // E.g. a retry reopened the job while it was ticked for deletion — an undeletable row must not stay ticked.
+        if (!CanDelete) IsSelected = false;
+    }
 }

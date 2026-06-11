@@ -11,8 +11,9 @@ namespace DiffPdf.DesktopUI.ViewModels;
 /// Úlohy: realtime list of comparison jobs (status chip + progress + outcome verdict) and a unified detail that
 /// auto-loads on selection — summary chips, CI-gate verdict and ONE file-pair list (results + diff PDF when
 /// finished, task progress while running) with a "jen odlišné" filter. Lifecycle actions are state-aware.
-/// The list refreshes via live progress events, a periodic background tick, and on demand (nav re-click, row
-/// click, F5); on-demand reloads touch only the list so the open detail never flickers.
+/// Finished jobs (Hotovo/Zrušeno) can be deleted straight from the list — per row, or in bulk via the
+/// checkbox multi-select. The list refreshes via live progress events, a periodic background tick, and on
+/// demand (nav re-click, row click, F5); on-demand reloads touch only the list so the open detail never flickers.
 /// </summary>
 public partial class JobsViewModel : PageViewModel
 {
@@ -93,6 +94,28 @@ public partial class JobsViewModel : PageViewModel
     public bool CanCancel => SelectedSummary?.Status is JobStatus.Draft or JobStatus.Queued or JobStatus.Running or JobStatus.Paused;
     public bool CanRetry => SelectedSummary?.Status is JobStatus.Completed or JobStatus.Failed or JobStatus.Cancelled;
 
+    /// <summary>Počet zaškrtnutých smazatelných úloh — řídí popisek a dostupnost tlačítka "Smazat vybrané".</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanDeleteSelected))]
+    private int _selectedDeleteCount;
+
+    public bool CanDeleteSelected => SelectedDeleteCount > 0;
+
+    /// <summary>Header "select all": zaškrtne/odškrtne všechny smazatelné (Hotovo/Zrušeno) načtené řádky.</summary>
+    public bool AllSelected
+    {
+        get
+        {
+            var deletable = Jobs.Where(r => r.CanDelete).ToList();
+            return deletable.Count > 0 && deletable.All(r => r.IsSelected);
+        }
+        set
+        {
+            foreach (var r in Jobs)
+                if (r.CanDelete) r.IsSelected = value;
+        }
+    }
+
     public JobsViewModel(ServerSession session, JobProgressHubClient hub, DialogService dialogs)
     {
         _session = session;
@@ -101,6 +124,28 @@ public partial class JobsViewModel : PageViewModel
         // The file list is paged + filtered server-side (search + "jen odlišné"), so the view shows the loaded rows
         // as-is — no client-side predicate (which would only ever see the already-loaded page).
         FilesView = new DataGridCollectionView(Files);
+
+        // Rows enter/leave the list on several paths (reconcile, "load more", deep-link insert, delete), so the
+        // bulk-delete selection is tracked with one collection hook instead of per-path wiring. Relies on rows
+        // being added/removed item-by-item (the list is never Clear()ed — a Reset carries no item deltas).
+        Jobs.CollectionChanged += (_, e) =>
+        {
+            foreach (JobRowViewModel r in e.OldItems ?? Array.Empty<object>()) r.PropertyChanged -= OnRowChanged;
+            foreach (JobRowViewModel r in e.NewItems ?? Array.Empty<object>()) r.PropertyChanged += OnRowChanged;
+            RecomputeDeleteSelection();
+        };
+    }
+
+    private void OnRowChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(JobRowViewModel.IsSelected) or nameof(JobRowViewModel.CanDelete))
+            RecomputeDeleteSelection();
+    }
+
+    private void RecomputeDeleteSelection()
+    {
+        SelectedDeleteCount = Jobs.Count(r => r.IsSelected && r.CanDelete);
+        OnPropertyChanged(nameof(AllSelected));
     }
 
     // The search + "jen odlišné" filter run server-side over the whole job, so a change reloads page 1 (search
@@ -341,7 +386,6 @@ public partial class JobsViewModel : PageViewModel
         if (!selected) return;
         LiveProgress = p.Progress;
         LiveStatus = p.Status;
-        Info = $"{p.Status}: {p.ProcessedCount}/{p.TotalCount}";
         OnPropertyChanged(nameof(CanPause)); OnPropertyChanged(nameof(CanResume));
         OnPropertyChanged(nameof(CanCancel)); OnPropertyChanged(nameof(CanRetry));
         if (terminal) _ = LoadDetailAsync(p.JobId); // pull the report/files/verdict into the open detail
@@ -467,6 +511,57 @@ public partial class JobsViewModel : PageViewModel
     [RelayCommand] private Task ResumeAsync() => ActAsync(c => c.ResumeJobAsync(SelectedJob!.Id));
     [RelayCommand] private Task CancelAsync() => ActAsync(c => c.CancelJobAsync(SelectedJob!.Id));
     [RelayCommand] private Task RetryAsync() => ActAsync(c => c.RetryJobAsync(SelectedJob!.Id));
+
+    /// <summary>Smaže jednu úlohu přímo z řádku seznamu (jen Hotovo/Zrušeno), s potvrzením.</summary>
+    [RelayCommand]
+    private Task DeleteJobAsync(JobRowViewModel? row) => RunAsync(async () =>
+    {
+        if (row is null || !row.CanDelete) return;
+        string created = row.Job.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm");
+        if (!await _dialogs.ConfirmAsync("Smazat úlohu",
+            $"Opravdu trvale smazat úlohu {row.Job.BranchKey}/{row.Job.InstanceKey} z {created}?\nSmaže se včetně výsledků porovnání a diff PDF."))
+            return;
+        await DeleteRowsAsync([row]);
+    });
+
+    /// <summary>Hromadně smaže všechny zaškrtnuté (smazatelné) úlohy. Pokračuje, i když některá selže.</summary>
+    [RelayCommand]
+    private Task DeleteSelectedAsync() => RunAsync(async () =>
+    {
+        var rows = Jobs.Where(r => r.IsSelected && r.CanDelete).ToList();
+        if (rows.Count == 0) { Info = "Nevybral jsi žádnou úlohu."; return; }
+        if (!await _dialogs.ConfirmAsync("Smazat vybrané úlohy",
+            $"Opravdu trvale smazat vybrané úlohy ({rows.Count})?\nSmažou se včetně výsledků porovnání a diff PDF."))
+            return;
+        await DeleteRowsAsync(rows);
+    });
+
+    // Deletes the rows server-side and drops them from the list as they go; a failed one (e.g. a job retried
+    // in the meantime → 409) stays listed and is reported. The total shrinks so "Načíst další" stays correct.
+    private async Task DeleteRowsAsync(IReadOnlyList<JobRowViewModel> rows)
+    {
+        var client = _session.Require();
+        int deleted = 0;
+        var failed = new List<string>();
+        foreach (var row in rows)
+        {
+            try { await client.DeleteJobAsync(row.Id); }
+            catch (DiffPdfApiException ex)
+            {
+                failed.Add($"{row.Job.BranchKey}/{row.Job.InstanceKey} ({ex.Detail ?? ex.StatusCode.ToString()})");
+                continue;
+            }
+            if (SelectedJob?.Id == row.Id) SelectedJob = null;
+            Jobs.Remove(row);
+            _jobsTotal = Math.Max(0, _jobsTotal - 1);
+            deleted++;
+        }
+        HasNoJobs = Jobs.Count == 0;
+        OnPropertyChanged(nameof(MoreJobsAvailable));
+        Info = failed.Count == 0
+            ? Format.Plural(deleted, "úloha smazána", "úlohy smazány", "úloh smazáno") + "."
+            : $"Smazáno {deleted}, nešlo smazat {failed.Count}: {string.Join("; ", failed)}";
+    }
 
     [RelayCommand]
     private Task CopyJobIdAsync() =>
