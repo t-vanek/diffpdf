@@ -110,6 +110,24 @@ public enum AutomationStepType
     FolderSync,
 }
 
+/// <summary>The category an automation belongs to (derived from its dominant step).</summary>
+public enum AutomationCategory
+{
+    Monitoring,
+    Operations,
+    Maintenance,
+    Synchronization,
+}
+
+/// <summary>The input type of an automation step parameter (for typed UI fields).</summary>
+public enum AutomationParameterType
+{
+    Int,
+    Bool,
+    String,
+    Enum,
+}
+
 /// <summary>How widely an automation applies.</summary>
 public enum AutomationScopeKind
 {

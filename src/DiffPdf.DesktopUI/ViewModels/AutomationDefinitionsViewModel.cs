@@ -49,6 +49,9 @@ public partial class EventTriggerOptionViewModel(NotificationEvent @event, strin
     [ObservableProperty] private bool _isChecked;
 }
 
+/// <summary>Jedna kategorie v galerii šablon (nadpis + šablony této kategorie).</summary>
+public sealed record AutomationTemplateGroup(string Title, IReadOnlyList<AutomationTemplateResponse> Templates);
+
 /// <summary>
 /// Automatizace (definice) — obsah sekce Automatizace: seznam + CRUD, spustit teď a historie běhů
 /// (jeden řádek na pokus, s výsledky kroků). Automatizace = spouštěče (cron/interval, události, manuál)
@@ -65,6 +68,12 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
     public ObservableCollection<AutomationResponse> Automations { get; } = [];
     public ObservableCollection<AutomationRunResponse> Runs { get; } = [];
     public ObservableCollection<AutomationStepRowViewModel> Steps { get; } = [];
+
+    /// <summary>Galerie editovatelných šablon, seskupená do kategorií (Monitorovací → Provozní → Údržbové → Synchronizační).</summary>
+    public ObservableCollection<AutomationTemplateGroup> TemplateGroups { get; } = [];
+
+    private static readonly AutomationCategory[] CategoryOrder =
+        [AutomationCategory.Monitoring, AutomationCategory.Operations, AutomationCategory.Maintenance, AutomationCategory.Synchronization];
 
     /// <summary>Spouštěcí události (multi-select) — automatizace se spustí, když nastane zaškrtnutá událost.</summary>
     public IReadOnlyList<EventTriggerOptionViewModel> EventTriggerOptions { get; } =
@@ -125,7 +134,11 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
         Steps.Add(new AutomationStepRowViewModel());
     }
 
-    public Task ActivateAsync() => RunAsync(LoadAsync);
+    public Task ActivateAsync() => RunAsync(async () =>
+    {
+        await LoadAsync();
+        if (TemplateGroups.Count == 0) await LoadTemplatesAsync();
+    });
 
     private async Task LoadAsync()
     {
@@ -133,6 +146,18 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
         foreach (var a in await _session.Require().ListAutomationsAsync()) Automations.Add(a);
         HasNoAutomations = Automations.Count == 0;
         OnPropertyChanged(nameof(Summary));
+    }
+
+    private async Task LoadTemplatesAsync()
+    {
+        var templates = await _session.Require().ListAutomationTemplatesAsync();
+        TemplateGroups.Clear();
+        foreach (var category in CategoryOrder)
+        {
+            var inCategory = templates.Where(t => t.Category == category).ToList();
+            if (inCategory.Count > 0)
+                TemplateGroups.Add(new AutomationTemplateGroup(AutomationCategoryLabelConverter.Label(category), inCategory));
+        }
     }
 
     partial void OnEditingVersionChanged(long? value) => OnPropertyChanged(nameof(IsEditing));
@@ -172,6 +197,49 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
         EventAutomationRecovered = false;
         Enabled = true;
         Info = null;
+    }
+
+    /// <summary>Předvyplní editor ze šablony. Vznikne běžná (nová) automatizace — vše zůstává editovatelné.</summary>
+    [RelayCommand]
+    private void UseTemplate(AutomationTemplateResponse? template)
+    {
+        if (template is null) return;
+
+        EditingVersion = null;
+        Key = SuggestKey(template.Key);
+        Name = template.DisplayName;
+        ScopeKind = template.DefaultScope;
+        BranchKey = InstanceKey = string.Empty;
+        Cron = template.RecommendedCron ?? string.Empty;
+        IntervalSeconds = template.RecommendedIntervalSeconds ?? 0;
+        EventDebounceSeconds = 60;
+        TimeoutSeconds = 600;
+        MaxAttempts = 1;
+        RetryDelaySeconds = 30;
+        FailureThreshold = 3;
+
+        Steps.Clear();
+        foreach (var step in template.Steps) Steps.Add(AutomationStepRowViewModel.From(step));
+        if (Steps.Count == 0) Steps.Add(new AutomationStepRowViewModel());
+
+        foreach (var opt in EventTriggerOptions) opt.IsChecked = false;
+        EventReadinessFailed = template.DefaultEvents.Contains(NotificationEvent.ReadinessFailed);
+        EventHealthDegraded = template.DefaultEvents.Contains(NotificationEvent.HealthDegraded);
+        EventStructureDrift = template.DefaultEvents.Contains(NotificationEvent.StructureDrift);
+        EventAutomationRecovered = template.DefaultEvents.Contains(NotificationEvent.AutomationRecovered);
+        Enabled = true;
+        Info = $"Předvyplněno ze šablony {template.DisplayName}. Uprav podle potřeby a ulož.";
+    }
+
+    /// <summary>Navrhne klíč nekolidující s existujícími automatizacemi (base, base-2, base-3, …).</summary>
+    private string SuggestKey(string baseKey)
+    {
+        if (Automations.All(a => a.Key != baseKey)) return baseKey;
+        for (int i = 2; ; i++)
+        {
+            string candidate = $"{baseKey}-{i}";
+            if (Automations.All(a => a.Key != candidate)) return candidate;
+        }
     }
 
     [RelayCommand]

@@ -242,9 +242,19 @@ Každá fáze je samostatně nasaditelná a nic nerozbije po cestě.
   `INetworkShareResolver`/`INetworkShareConnector` (stejný přístup jako pipeline).
 - Oba v katalogu + šablonách, registrované v DI; klient zná nové kroky.
 
-**Zbývá:** desktop UI (galerie šablon, seskupený seznam, typovaná pole parametrů) a
-zbývající P2/P3 kroky (CI brána, export výsledků, archivace, …). Vše aditivní — bez
-migrace DB (krok se serializuje do `StepsJson`, kategorie/účel jsou odvozené).
+**Hotovo (desktop UI):**
+- Klient (`DiffPdf.Client`): `AutomationCategory`/`AutomationParameterType` enumy,
+  `Category`+`Purpose` na `AutomationResponse`, modely šablon/katalogu, metody
+  `ListAutomationTemplatesAsync` / `GetAutomationCatalogAsync`.
+- Sekce Automatizace: **galerie editovatelných šablon seskupená do 4 kategorií**
+  (dlaždice s ikonou, názvem, účelem) — výběr předvyplní editor (vše zůstává
+  editovatelné, klíč se navrhne unikátní). Seznam má sloupec **Kategorie**; dropdown
+  kroků i historie běhů zobrazují **lidské názvy** místo syrového enumu.
+- Build i testy zelené (Core 407 / Client 33 / DesktopUI 75, 0 failed).
+
+**Zbývá (volitelné):** typovaná pole parametrů řízená katalogem (zatím `klíč=hodnota`),
+seskupení samotného seznamu do kategorií a zbývající P2/P3 kroky (CI brána, export,
+archivace, …). Vše aditivní — bez migrace DB.
 
 > Pozn.: v tomto prostředí není .NET SDK, takže backend nešlo lokálně zkompilovat;
 > kód je psaný podle stávajících vzorů a switche nad `AutomationStepType` mají default arm.

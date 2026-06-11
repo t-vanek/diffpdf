@@ -461,6 +461,50 @@ public sealed record AutomationResponse
     public DateTimeOffset? LastRunAt { get; init; }
     public AutomationRunOutcome? LastOutcome { get; init; }
     public long Version { get; init; }
+
+    /// <summary>The category this automation belongs to (derived from its dominant step).</summary>
+    public AutomationCategory Category { get; init; }
+
+    /// <summary>One-line purpose, derived from the automation's first step.</summary>
+    public string Purpose { get; init; } = "";
+}
+
+/// <summary>One parameter an automation step accepts, as documented by the catalog.</summary>
+public sealed record AutomationParameterSpecResponse
+{
+    public string Key { get; init; } = "";
+    public string Label { get; init; } = "";
+    public string Help { get; init; } = "";
+    public AutomationParameterType Type { get; init; }
+    public string? Default { get; init; }
+    public int? Min { get; init; }
+    public int? Max { get; init; }
+    public IReadOnlyList<string>? EnumValues { get; init; }
+}
+
+/// <summary>Catalog entry for one step type: its category, human metadata and parameter schema.</summary>
+public sealed record AutomationStepCatalogResponse
+{
+    public AutomationStepType Type { get; init; }
+    public AutomationCategory Category { get; init; }
+    public string DisplayName { get; init; } = "";
+    public string Purpose { get; init; } = "";
+    public IReadOnlyList<AutomationParameterSpecResponse> Parameters { get; init; } = [];
+}
+
+/// <summary>A ready-to-edit automation template as returned by the API.</summary>
+public sealed record AutomationTemplateResponse
+{
+    public string Key { get; init; } = "";
+    public AutomationCategory Category { get; init; }
+    public string DisplayName { get; init; } = "";
+    public string Purpose { get; init; } = "";
+    public string Icon { get; init; } = "";
+    public AutomationScopeKind DefaultScope { get; init; }
+    public IReadOnlyList<AutomationStepResponse> Steps { get; init; } = [];
+    public string? RecommendedCron { get; init; }
+    public int? RecommendedIntervalSeconds { get; init; }
+    public IReadOnlyList<NotificationEvent> DefaultEvents { get; init; } = [];
 }
 
 /// <summary>One step result within an automation run as returned by the API.</summary>
