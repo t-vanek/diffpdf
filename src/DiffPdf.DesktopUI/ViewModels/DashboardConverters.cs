@@ -71,16 +71,16 @@ public sealed class ErrorBrushConverter : IValueConverter
         BindingOperations.DoNothing;
 }
 
-/// <summary>Maps a control-check outcome (<see cref="CheckRunOutcome"/>?) to a status brush; not-yet-run (null) → Muted.</summary>
-public sealed class CheckOutcomeBrushConverter : IValueConverter
+/// <summary>Maps an automation run outcome (<see cref="AutomationRunOutcome"/>?) to a status brush; not-yet-run (null) → Muted.</summary>
+public sealed class AutomationOutcomeBrushConverter : IValueConverter
 {
-    public static readonly CheckOutcomeBrushConverter Instance = new();
+    public static readonly AutomationOutcomeBrushConverter Instance = new();
 
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => value switch
     {
-        CheckRunOutcome.Ok => Palette.Good,
-        CheckRunOutcome.Warning => Palette.Warning,
-        CheckRunOutcome.Failed => Palette.Bad,
+        AutomationRunOutcome.Ok => Palette.Good,
+        AutomationRunOutcome.Warning => Palette.Warning,
+        AutomationRunOutcome.Failed => Palette.Bad,
         _ => Palette.Muted,
     };
 
@@ -88,16 +88,51 @@ public sealed class CheckOutcomeBrushConverter : IValueConverter
         BindingOperations.DoNothing;
 }
 
-/// <summary>Maps a control-check outcome to a Czech label; not-yet-run (null) → "—".</summary>
-public sealed class CheckOutcomeLabelConverter : IValueConverter
+/// <summary>Maps an automation run outcome to a Czech label; not-yet-run (null) → "—".</summary>
+public sealed class AutomationOutcomeLabelConverter : IValueConverter
 {
-    public static readonly CheckOutcomeLabelConverter Instance = new();
+    public static readonly AutomationOutcomeLabelConverter Instance = new();
 
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => value switch
     {
-        CheckRunOutcome.Ok => "OK",
-        CheckRunOutcome.Warning => "Varování",
-        CheckRunOutcome.Failed => "Selhalo",
+        AutomationRunOutcome.Ok => "OK",
+        AutomationRunOutcome.Warning => "Varování",
+        AutomationRunOutcome.Failed => "Selhalo",
+        _ => "—",
+    };
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        BindingOperations.DoNothing;
+}
+
+/// <summary>Maps an <see cref="AutomationResponse"/> row to its schedule label: cron, interval, or manual/event-only.</summary>
+public sealed class AutomationCadenceLabelConverter : IValueConverter
+{
+    public static readonly AutomationCadenceLabelConverter Instance = new();
+
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => value switch
+    {
+        AutomationResponse { Cron: { } cron } when !string.IsNullOrWhiteSpace(cron) => cron,
+        AutomationResponse { IntervalSeconds: { } interval and > 0 } => $"{interval} s",
+        AutomationResponse { EventTriggers.Count: > 0 } => "událost",
+        AutomationResponse => "ručně",
+        _ => "—",
+    };
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        BindingOperations.DoNothing;
+}
+
+/// <summary>Maps an <see cref="AutomationTriggerKind"/> to a Czech label.</summary>
+public sealed class AutomationTriggerLabelConverter : IValueConverter
+{
+    public static readonly AutomationTriggerLabelConverter Instance = new();
+
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => value switch
+    {
+        AutomationTriggerKind.Schedule => "Plán",
+        AutomationTriggerKind.Event => "Událost",
+        AutomationTriggerKind.Manual => "Ručně",
         _ => "—",
     };
 

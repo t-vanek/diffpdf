@@ -28,7 +28,7 @@ internal static class PageRegistration
         Add<SettingsViewModel>(services);
 
         // Content view-models hosted inside a section (not nav pages themselves).
-        services.AddSingleton<ControlChecksViewModel>();
+        services.AddSingleton<AutomationDefinitionsViewModel>();
     }
 
     /// <summary>Registers <typeparamref name="T"/> as a singleton and exposes it as a nav <see cref="PageViewModel"/>.</summary>

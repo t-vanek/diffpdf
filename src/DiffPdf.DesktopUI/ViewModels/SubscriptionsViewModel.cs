@@ -107,11 +107,12 @@ public partial class SubscriptionsViewModel : PageViewModel
     [ObservableProperty] private bool _evtCompletedWithErrors = true;
     [ObservableProperty] private bool _evtFailed;
     [ObservableProperty] private bool _evtJobStalled;
-    // Events — Server a kontroly
+    // Events — Server a automatizace
     [ObservableProperty] private bool _evtHealthDegraded;
     [ObservableProperty] private bool _evtReadinessFailed;
     [ObservableProperty] private bool _evtStructureDrift;
-    [ObservableProperty] private bool _evtCheckRecovered;
+    [ObservableProperty] private bool _evtAutomationRecovered;
+    [ObservableProperty] private bool _evtAutomationFailing;
 
     public SubscriptionsViewModel(ServerSession session, DialogService dialogs)
     {
@@ -268,7 +269,8 @@ public partial class SubscriptionsViewModel : PageViewModel
         foreach (var c in InstanceChoices) c.IsChecked = false;
         EvtCompleted = EvtCompletedWithErrors = true;
         EvtFailed = EvtJobStalled = false;
-        EvtHealthDegraded = EvtReadinessFailed = EvtStructureDrift = EvtCheckRecovered = false;
+        EvtHealthDegraded = EvtReadinessFailed = EvtStructureDrift = false;
+        EvtAutomationRecovered = EvtAutomationFailing = false;
         Info = "Nové pravidlo — vyplň příjemce a události.";
     }
 
@@ -352,7 +354,8 @@ public partial class SubscriptionsViewModel : PageViewModel
         if (EvtHealthDegraded) list.Add(NotificationEvent.HealthDegraded);
         if (EvtReadinessFailed) list.Add(NotificationEvent.ReadinessFailed);
         if (EvtStructureDrift) list.Add(NotificationEvent.StructureDrift);
-        if (EvtCheckRecovered) list.Add(NotificationEvent.CheckRecovered);
+        if (EvtAutomationRecovered) list.Add(NotificationEvent.AutomationRecovered);
+        if (EvtAutomationFailing) list.Add(NotificationEvent.AutomationFailing);
         return list;
     }
 
@@ -365,6 +368,7 @@ public partial class SubscriptionsViewModel : PageViewModel
         EvtHealthDegraded = events.Contains(NotificationEvent.HealthDegraded);
         EvtReadinessFailed = events.Contains(NotificationEvent.ReadinessFailed);
         EvtStructureDrift = events.Contains(NotificationEvent.StructureDrift);
-        EvtCheckRecovered = events.Contains(NotificationEvent.CheckRecovered);
+        EvtAutomationRecovered = events.Contains(NotificationEvent.AutomationRecovered);
+        EvtAutomationFailing = events.Contains(NotificationEvent.AutomationFailing);
     }
 }

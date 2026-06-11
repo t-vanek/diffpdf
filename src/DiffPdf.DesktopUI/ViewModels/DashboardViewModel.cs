@@ -37,7 +37,7 @@ public partial class DashboardViewModel : PageViewModel
     [ObservableProperty] private int _queuedJobs;
     [ObservableProperty] private int _pausedJobs;
     [ObservableProperty] private int _activeTasks;
-    [ObservableProperty] private int _enabledChecks;
+    [ObservableProperty] private int _enabledAutomations;
 
     public DashboardViewModel(ServerSession session)
     {
@@ -73,7 +73,7 @@ public partial class DashboardViewModel : PageViewModel
         QueuedJobs = Status.Backlog.QueuedJobs;
         PausedJobs = Status.Backlog.PausedJobs;
         ActiveTasks = Status.Backlog.ActiveTasks;
-        EnabledChecks = Status.EnabledChecks;
+        EnabledAutomations = Status.EnabledAutomations;
         Readiness = readinessTask.Result;
     }, toastOnError: false); // periodic auto-refresh: errors show in the hero, don't spam a toast every 5 s
 

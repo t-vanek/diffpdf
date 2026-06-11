@@ -29,14 +29,14 @@ public partial class AutomationsViewModel : PageViewModel
 
     [ObservableProperty] private AutomationType? _selectedType;
 
-    public AutomationsViewModel(ControlChecksViewModel controlChecks)
+    public AutomationsViewModel(AutomationDefinitionsViewModel automations)
     {
         Types =
         [
             new AutomationType(
-                "Automatizované kontroly",
-                "Plánované kontroly připravenosti, zdraví serveru, struktury a retence.",
-                controlChecks),
+                "Automatizace",
+                "Spouštěče (plán, události, ručně) + pipeline kroků: kontroly, retence, plánovaná porovnání.",
+                automations),
         ];
         _selectedType = Types.FirstOrDefault();
     }

@@ -128,15 +128,17 @@
           </StackPanel>
 
           <StackPanel Spacing="6">
-            <TextBlock Text="Události — server a kontroly" FontWeight="SemiBold"/>
+            <TextBlock Text="Události — server a automatizace" FontWeight="SemiBold"/>
             <CheckBox Content="Zdraví serveru zhoršeno" IsChecked="{Binding EvtHealthDegraded}"
                       ToolTip.Tip="Kritická závislost (databáze, renderer, úložiště) je degradovaná."/>
             <CheckBox Content="Připravenost selhala" IsChecked="{Binding EvtReadinessFailed}"
                       ToolTip.Tip="Vstupy instance nejsou připravené k porovnání."/>
             <CheckBox Content="Odchylka struktury" IsChecked="{Binding EvtStructureDrift}"
                       ToolTip.Tip="Složková struktura se rozchází s konfigurací."/>
-            <CheckBox Content="Kontrola obnovena" IsChecked="{Binding EvtCheckRecovered}"
-                      ToolTip.Tip="Dříve selhávající kontrola opět prošla."/>
+            <CheckBox Content="Automatizace obnovena" IsChecked="{Binding EvtAutomationRecovered}"
+                      ToolTip.Tip="Dříve selhávající automatizace opět prošla."/>
+            <CheckBox Content="Automatizace opakovaně selhává" IsChecked="{Binding EvtAutomationFailing}"
+                      ToolTip.Tip="Automatizace selhala tolikrát po sobě, kolik má nastavený práh eskalace (ohlásí se jednou při překročení)."/>
           </StackPanel>
 
           <CheckBox Content="Pravidlo aktivní" IsChecked="{Binding Enabled}"/>
