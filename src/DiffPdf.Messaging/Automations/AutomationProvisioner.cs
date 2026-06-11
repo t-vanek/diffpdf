@@ -49,7 +49,7 @@ public sealed class AutomationProvisioner(
         {
             Id = Guid.NewGuid(),
             Key = key,
-            Name = $"Readiness: {branchKey}",
+            Name = $"Připravenost: {branchKey}",
             ScopeKind = AutomationScopeKind.Branch,
             BranchKey = branchKey,
             IntervalSeconds = Options.ReadinessIntervalSeconds,
@@ -81,7 +81,7 @@ public sealed class AutomationProvisioner(
         // ---- Server-wide baseline. ----
         await EnsureAsync(new Automation
         {
-            Id = Guid.NewGuid(), Key = HealthKey, Name = "Server health",
+            Id = Guid.NewGuid(), Key = HealthKey, Name = "Zdraví serveru",
             ScopeKind = AutomationScopeKind.Global, IntervalSeconds = Options.HealthIntervalSeconds,
             Steps = [new AutomationStep { Type = AutomationStepType.Health }],
             Events = [NotificationEvent.HealthDegraded, NotificationEvent.AutomationRecovered],
@@ -89,7 +89,7 @@ public sealed class AutomationProvisioner(
 
         await EnsureAsync(new Automation
         {
-            Id = Guid.NewGuid(), Key = RetentionKey, Name = "Report retention",
+            Id = Guid.NewGuid(), Key = RetentionKey, Name = "Úklid reportů",
             ScopeKind = AutomationScopeKind.Global, Cron = Options.RetentionCron,
             Steps =
             [
@@ -106,7 +106,7 @@ public sealed class AutomationProvisioner(
 
         await EnsureAsync(new Automation
         {
-            Id = Guid.NewGuid(), Key = DbRowRetentionKey, Name = "Database row retention",
+            Id = Guid.NewGuid(), Key = DbRowRetentionKey, Name = "Úklid databáze",
             ScopeKind = AutomationScopeKind.Global, Cron = Options.DbRowRetentionCron,
             Steps =
             [
@@ -126,7 +126,7 @@ public sealed class AutomationProvisioner(
         {
             await EnsureAsync(new Automation
             {
-                Id = Guid.NewGuid(), Key = StructureSyncKey, Name = "Scope structure sync",
+                Id = Guid.NewGuid(), Key = StructureSyncKey, Name = "Synchronizace struktury",
                 ScopeKind = AutomationScopeKind.Global, IntervalSeconds = Options.StructureSyncIntervalSeconds,
                 Steps = [new AutomationStep { Type = AutomationStepType.StructureSync }],
                 Events = [NotificationEvent.StructureDrift, NotificationEvent.AutomationRecovered],

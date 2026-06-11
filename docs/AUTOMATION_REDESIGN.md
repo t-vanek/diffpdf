@@ -212,6 +212,24 @@ dopočítané `displayName` / `icon`.
 
 Každá fáze je samostatně nasaditelná a nic nerozbije po cestě.
 
+## 7b. Stav implementace
+
+**Hotovo (backend, Fáze 0 / P1):**
+- `AutomationCategory` (4 kategorie) + `AutomationCatalog` (kategorie, lidské názvy,
+  účely, schéma parametrů, galerie šablon) v `DiffPdf.Core`.
+- Krok `SystemResource` + `SystemResourceStepExecutor` — disk / CPU / RAM proti prahům
+  (read-only, jen notifikuje), registrovaný v DI.
+- API: `AutomationResponse` má `category` + `purpose`; nové `GET /automations/templates`
+  a `GET /automations/catalog`; filtr `GET /automations?category=`.
+- Provisioning přejmenován na lidské názvy; klient zná nový krok `SystemResource`.
+
+**Zbývá:** desktop UI (galerie šablon, seskupený seznam, typovaná pole parametrů) a
+další kroky z Fází 1–2 (P2/P3). Vše aditivní — bez migrace DB (krok se serializuje do
+`StepsJson`, kategorie/účel jsou odvozené).
+
+> Pozn.: v tomto prostředí není .NET SDK, takže backend nešlo lokálně zkompilovat;
+> kód je psaný podle stávajících vzorů a switche nad `AutomationStepType` mají default arm.
+
 ## 8. Shrnutí
 
 - **4 kategorie:** 🔍 Monitorovací · ⚙️ Provozní · 🧹 Údržbové · 🔗 Synchronizační.

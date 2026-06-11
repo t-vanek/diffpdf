@@ -103,6 +103,7 @@ public enum AutomationStepType
     Retention,
     DbRowRetention,
     ScheduledComparison,
+    SystemResource,
 }
 
 /// <summary>How widely an automation applies.</summary>

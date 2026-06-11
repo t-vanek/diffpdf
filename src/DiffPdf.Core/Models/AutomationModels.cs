@@ -20,6 +20,10 @@ public enum AutomationStepType
 
     /// <summary>Enqueues a comparison for each enabled instance in scope.</summary>
     ScheduledComparison,
+
+    /// <summary>Monitors a system resource (disk free space, CPU load or RAM usage) against thresholds.
+    /// The concrete resource is chosen by the <c>resource</c> parameter (<c>disk</c> / <c>cpu</c> / <c>ram</c>).</summary>
+    SystemResource,
 }
 
 /// <summary>How widely an <see cref="Automation"/> applies.</summary>

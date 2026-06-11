@@ -63,4 +63,7 @@ internal static class StepParameters
 {
     public static int GetInt(AutomationStep step, string key, int fallback) =>
         step.Parameters.TryGetValue(key, out var raw) && int.TryParse(raw, out var value) ? value : fallback;
+
+    public static string GetString(AutomationStep step, string key, string fallback) =>
+        step.Parameters.TryGetValue(key, out var raw) && !string.IsNullOrWhiteSpace(raw) ? raw.Trim() : fallback;
 }
