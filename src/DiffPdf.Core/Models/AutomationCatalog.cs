@@ -80,6 +80,8 @@ public static class AutomationCatalog
         AutomationStepType.Health => AutomationCategory.Monitoring,
         AutomationStepType.Readiness => AutomationCategory.Monitoring,
         AutomationStepType.SystemResource => AutomationCategory.Monitoring,
+        AutomationStepType.QueueHealth => AutomationCategory.Monitoring,
+        AutomationStepType.ComparisonFreshness => AutomationCategory.Monitoring,
         AutomationStepType.ScheduledComparison => AutomationCategory.Operations,
         AutomationStepType.Retention => AutomationCategory.Maintenance,
         AutomationStepType.DbRowRetention => AutomationCategory.Maintenance,
@@ -103,6 +105,8 @@ public static class AutomationCatalog
         AutomationStepType.Health => "Zdraví serveru",
         AutomationStepType.Readiness => "Připravenost dat",
         AutomationStepType.SystemResource => "Systémový zdroj",
+        AutomationStepType.QueueHealth => "Fronta a zaseknuté joby",
+        AutomationStepType.ComparisonFreshness => "Čerstvost porovnání",
         AutomationStepType.ScheduledComparison => "Plánované porovnání",
         AutomationStepType.Retention => "Úklid reportů",
         AutomationStepType.DbRowRetention => "Úklid databáze",
@@ -116,6 +120,8 @@ public static class AutomationCatalog
         AutomationStepType.Health => "Hlídá databázi, renderer a zápis do úložiště; upozorní při výpadku.",
         AutomationStepType.Readiness => "Hlídá, že instance v rozsahu mají v old/ i new/ co porovnávat.",
         AutomationStepType.SystemResource => "Hlídá systémový zdroj (disk, CPU nebo RAM) proti prahům.",
+        AutomationStepType.QueueHealth => "Hlídá hloubku fronty a joby běžící podezřele dlouho.",
+        AutomationStepType.ComparisonFreshness => "Upozorní, když instance nevyprodukovala úspěšné porovnání déle než daná lhůta.",
         AutomationStepType.ScheduledComparison => "Pravidelně spustí porovnání pro každou zapnutou instanci v rozsahu.",
         AutomationStepType.Retention => "Maže diff-PDF a JSON reporty dokončených jobů starší než lhůta.",
         AutomationStepType.DbRowRetention => "Maže staré řádky z databáze, aby nerostla bez hranic.",
@@ -145,6 +151,17 @@ public static class AutomationCatalog
             new("resource", "Zdroj", "Který systémový zdroj se hlídá.", AutomationParameterType.Enum, "disk", EnumValues: ["disk", "cpu", "ram"]),
             new("warnPercent", "Práh varování (%)", "Při překročení (CPU/RAM) nebo poklesu pod (disk) se hlásí varování.", AutomationParameterType.Int, "85", Min: 0, Max: 100),
             new("failPercent", "Kritický práh (%)", "Při překročení (CPU/RAM) nebo poklesu pod (volný disk) se hlásí selhání.", AutomationParameterType.Int, "95", Min: 0, Max: 100),
+        ],
+        AutomationStepType.QueueHealth =>
+        [
+            new("maxQueuedWarn", "Fronta — varování", "Počet čekajících jobů, od kterého se hlásí varování.", AutomationParameterType.Int, "50", Min: 0),
+            new("maxQueuedFail", "Fronta — selhání", "Počet čekajících jobů, od kterého se hlásí selhání.", AutomationParameterType.Int, "200", Min: 0),
+            new("stalledMinutes", "Zaseknutí (min)", "Běžící job starší než tolik minut se považuje za zaseknutý.", AutomationParameterType.Int, "30", Min: 1),
+        ],
+        AutomationStepType.ComparisonFreshness =>
+        [
+            new("warnAgeHours", "Stáří — varování (h)", "Bez úspěšného porovnání déle než tolik hodin → varování.", AutomationParameterType.Int, "24", Min: 1),
+            new("failAgeHours", "Stáří — selhání (h)", "Bez úspěšného porovnání déle než tolik hodin → selhání.", AutomationParameterType.Int, "48", Min: 1),
         ],
         _ => [],
     };
@@ -194,6 +211,22 @@ public static class AutomationCatalog
             }],
             RecommendedIntervalSeconds: 60,
             DefaultEvents: [NotificationEvent.HealthDegraded, NotificationEvent.AutomationRecovered]),
+
+        new("queue-health", AutomationCategory.Monitoring, "Fronta a zaseknuté joby",
+            PurposeFor(AutomationStepType.QueueHealth), "🚦", AutomationScopeKind.Global,
+            [new AutomationStep { Type = AutomationStepType.QueueHealth }],
+            RecommendedIntervalSeconds: 120,
+            DefaultEvents: [NotificationEvent.JobStalled, NotificationEvent.AutomationRecovered]),
+
+        new("comparison-freshness", AutomationCategory.Monitoring, "Čerstvost porovnání",
+            PurposeFor(AutomationStepType.ComparisonFreshness), "⏱️", AutomationScopeKind.Branch,
+            [new AutomationStep
+            {
+                Type = AutomationStepType.ComparisonFreshness,
+                Parameters = new Dictionary<string, string> { ["warnAgeHours"] = "24", ["failAgeHours"] = "48" },
+            }],
+            RecommendedCron: "0 * * * *",
+            DefaultEvents: [NotificationEvent.AutomationRecovered]),
 
         // ⚙️ Provozní
         new("scheduled-comparison", AutomationCategory.Operations, "Plánované porovnání",

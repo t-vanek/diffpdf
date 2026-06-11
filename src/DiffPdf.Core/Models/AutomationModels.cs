@@ -24,6 +24,13 @@ public enum AutomationStepType
     /// <summary>Monitors a system resource (disk free space, CPU load or RAM usage) against thresholds.
     /// The concrete resource is chosen by the <c>resource</c> parameter (<c>disk</c> / <c>cpu</c> / <c>ram</c>).</summary>
     SystemResource,
+
+    /// <summary>Monitors the comparison queue: backlog depth (queued jobs) and jobs running suspiciously long.</summary>
+    QueueHealth,
+
+    /// <summary>Monitors data freshness: warns when an in-scope instance has produced no successful comparison
+    /// within a window (a silently stalled pipeline).</summary>
+    ComparisonFreshness,
 }
 
 /// <summary>How widely an <see cref="Automation"/> applies.</summary>

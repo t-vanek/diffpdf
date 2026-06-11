@@ -223,9 +223,18 @@ Každá fáze je samostatně nasaditelná a nic nerozbije po cestě.
   a `GET /automations/catalog`; filtr `GET /automations?category=`.
 - Provisioning přejmenován na lidské názvy; klient zná nový krok `SystemResource`.
 
+**Hotovo (backend, Fáze 1 / P2 — monitoring):**
+- Krok `QueueHealth` + executor — hloubka fronty (čekající joby) a joby běžící podezřele
+  dlouho (zaseknutí). Read-only.
+- Krok `ComparisonFreshness` + executor — hlídá stáří posledního úspěšného porovnání na
+  instanci (tichý výpadek pipeline). Read-only.
+- Oba v katalogu (kategorie/název/účel/parametry + šablony) a registrované v DI; klient
+  zná oba nové kroky.
+
 **Zbývá:** desktop UI (galerie šablon, seskupený seznam, typovaná pole parametrů) a
-další kroky z Fází 1–2 (P2/P3). Vše aditivní — bez migrace DB (krok se serializuje do
-`StepsJson`, kategorie/účel jsou odvozené).
+provozní/synchronizační kroky P2 (CI brána, přegenerování chyb, FolderSync, export
+výsledků — ty potřebují doladit zdroje/auth) + rozšíření P3. Vše aditivní — bez migrace
+DB (krok se serializuje do `StepsJson`, kategorie/účel jsou odvozené).
 
 > Pozn.: v tomto prostředí není .NET SDK, takže backend nešlo lokálně zkompilovat;
 > kód je psaný podle stávajících vzorů a switche nad `AutomationStepType` mají default arm.
