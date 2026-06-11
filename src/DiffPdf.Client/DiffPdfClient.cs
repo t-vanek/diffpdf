@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Globalization;
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -636,6 +637,100 @@ public sealed class DiffPdfClient(HttpClient http)
     /// <summary>Enable/disable an instance's scheduled run.</summary>
     public Task<ScheduleResponse> SetInstanceScheduleAsync(string branchKey, string instanceKey, SetScheduleRequest request, CancellationToken ct = default) =>
         JsonAsync<ScheduleResponse>(HttpMethod.Put, $"/api/v1/branches/{Esc(branchKey)}/instances/{Esc(instanceKey)}/schedule", request, ct);
+
+    // ---------------- Files (PDF file manager) ----------------
+
+    /// <summary>
+    /// Lists a folder of the server's PDF file manager: folders first, then PDFs, both name-sorted.
+    /// Paths are virtual ('/'-separated, relative to the server's FileManager root); empty/null = root.
+    /// Throws 400 for an invalid path, 404 for a missing folder, 503 when no root is configured.
+    /// </summary>
+    public Task<FileListResponse> ListFilesAsync(string? path = null, CancellationToken ct = default) =>
+        JsonAsync<FileListResponse>(
+            HttpMethod.Get, "/api/v1/files" + (string.IsNullOrEmpty(path) ? "" : $"?path={Esc(path)}"), null, ct);
+
+    /// <summary>
+    /// Uploads one PDF into <paramref name="targetDirectory"/> ("" = root). Per-file outcomes (exists /
+    /// not a PDF / too large) come back in the response's <see cref="UploadFileResponse.ErrorCode"/> —
+    /// not as exceptions — so callers can offer "overwrite?" per file; only request-level problems throw.
+    /// <paramref name="progress"/> receives the upload fraction (0..1) as bytes leave <paramref name="content"/>;
+    /// the stream is disposed with the request (StreamContent ownership).
+    /// </summary>
+    public async Task<UploadFileResponse> UploadFileAsync(
+        string? targetDirectory, string fileName, Stream content, bool overwrite = false,
+        IProgress<double>? progress = null, CancellationToken ct = default)
+    {
+        long? total = content.CanSeek ? content.Length - content.Position : null;
+        using var form = new MultipartFormDataContent
+        {
+            // Parts without a filename bind as form fields (form["path"] / form["overwrite"]).
+            { new StringContent(targetDirectory ?? string.Empty), "path" },
+            { new StringContent(overwrite ? "true" : "false"), "overwrite" },
+        };
+        var filePart = new StreamContent(progress is null ? content : new ProgressReadStream(content, progress, total));
+        filePart.Headers.ContentType = new MediaTypeHeaderValue("application/pdf");
+        form.Add(filePart, "files", string.IsNullOrWhiteSpace(fileName) ? "file.pdf" : fileName);
+
+        using var req = new HttpRequestMessage(HttpMethod.Post, "/api/v1/files/upload") { Content = form };
+        using var resp = await http.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode) throw await ApiException(resp, ct);
+        var batch = (await resp.Content.ReadFromJsonAsync<UploadFilesResponse>(Json, ct))!;
+        return batch.Files.Count > 0
+            ? batch.Files[0]
+            : throw new InvalidOperationException("The server returned no upload result.");
+    }
+
+    /// <summary>Creates a folder and returns it. Throws 409 when the name already exists, 404 for a missing parent.</summary>
+    public Task<FileItemDto> CreateFolderAsync(CreateFolderRequest request, CancellationToken ct = default) =>
+        JsonAsync<FileItemDto>(HttpMethod.Post, "/api/v1/files/folder", request, ct);
+
+    /// <summary>
+    /// Deletes a file or folder. A non-empty folder throws 409 unless <paramref name="recursive"/> is true —
+    /// the conflict can include content the PDF-only listing hides, so surface the message to the user.
+    /// </summary>
+    public async Task DeleteFileAsync(string path, bool recursive = false, CancellationToken ct = default)
+    {
+        string url = $"/api/v1/files?path={Esc(path)}" + (recursive ? "&recursive=true" : "");
+        using var resp = await SendRawAsync(HttpMethod.Delete, url, null, ct);
+    }
+
+    /// <summary>Renames a file or folder and returns it (files must keep .pdf). Throws 409 when the target name exists.</summary>
+    public Task<FileItemDto> RenameFileAsync(RenameFileRequest request, CancellationToken ct = default) =>
+        JsonAsync<FileItemDto>(HttpMethod.Patch, "/api/v1/files/rename", request, ct);
+
+    /// <summary>Moves a file or folder into a target folder (name kept). Throws 409 on a name collision
+    /// without Overwrite (folder collisions always — they are never merged).</summary>
+    public Task<FileItemDto> MoveFileAsync(MoveFileRequest request, CancellationToken ct = default) =>
+        JsonAsync<FileItemDto>(HttpMethod.Post, "/api/v1/files/move", request, ct);
+
+    /// <summary>Copies a file or folder into a target folder (folder copy = subfolders + PDFs). Same conflict rules as move.</summary>
+    public Task<FileItemDto> CopyFileAsync(CopyFileRequest request, CancellationToken ct = default) =>
+        JsonAsync<FileItemDto>(HttpMethod.Post, "/api/v1/files/copy", request, ct);
+
+    /// <summary>Finds PDFs whose name contains <paramref name="query"/> under <paramref name="path"/>
+    /// (case-insensitive; recursive by default). The result is capped server-side — check Truncated.</summary>
+    public Task<FileSearchResponse> SearchFilesAsync(string? path, string query, bool recursive = true, CancellationToken ct = default)
+    {
+        string url = $"/api/v1/files/search?query={Esc(query)}&recursive={(recursive ? "true" : "false")}"
+            + (string.IsNullOrEmpty(path) ? "" : $"&path={Esc(path)}");
+        return JsonAsync<FileSearchResponse>(HttpMethod.Get, url, null, ct);
+    }
+
+    /// <summary>Downloads a managed PDF as bytes (for in-memory use; prefer the stream overload for saving to disk).</summary>
+    public async Task<byte[]> DownloadFileAsync(string path, CancellationToken ct = default)
+    {
+        using var resp = await SendRawAsync(HttpMethod.Get, $"/api/v1/files/download?path={Esc(path)}", null, ct);
+        return await resp.Content.ReadAsByteArrayAsync(ct);
+    }
+
+    /// <summary>Streams a managed PDF into <paramref name="destination"/> without buffering the whole file in memory.</summary>
+    public async Task DownloadFileAsync(string path, Stream destination, CancellationToken ct = default)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/files/download?path={Esc(path)}");
+        using var resp = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
+        if (!resp.IsSuccessStatusCode) throw await ApiException(resp, ct);
+        await resp.Content.CopyToAsync(destination, ct);
+    }
 
     // ---------------- plumbing ----------------
 

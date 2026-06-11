@@ -2,6 +2,7 @@ using DiffPdf.Application.Abstractions;
 using DiffPdf.Application.Automations;
 using DiffPdf.Application.Configuration;
 using DiffPdf.Application.Email;
+using DiffPdf.Application.Files;
 using DiffPdf.Application.Jobs;
 using DiffPdf.Application.Queue;
 using DiffPdf.Application.Runs;
@@ -45,6 +46,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IScopeConfigurationResolver, ScopeConfigurationResolver>();
         services.AddScoped<IScopeConfigurationProvisioner, ScopeConfigurationProvisioner>();
         services.AddScoped<IScheduleService, ScheduleService>();
+
+        // PDF file manager (virtual-path file operations over the configured root)
+        services.AddScoped<IFileManagerService, FileManagerService>();
 
         return services;
     }
