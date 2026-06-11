@@ -1,0 +1,119 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:DiffPdf.DesktopUI.ViewModels"
+             x:Class="DiffPdf.DesktopUI.Views.FilePanelView"
+             x:DataType="vm:FilePanelViewModel">
+
+  <UserControl.Styles>
+    <!-- The active panel gets the brand-accent frame; the inactive one stays on the neutral line. -->
+    <Style Selector="Border#PanelShell">
+      <Setter Property="BorderBrush" Value="{DynamicResource Line}"/>
+      <Setter Property="BorderThickness" Value="2"/>
+      <Setter Property="CornerRadius" Value="6"/>
+    </Style>
+    <Style Selector="Border#PanelShell.active">
+      <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+    </Style>
+  </UserControl.Styles>
+
+  <Border x:Name="PanelShell" Classes.active="{Binding IsActive}" Padding="6">
+    <DockPanel>
+
+      <!-- Path row: up + editable path (Enter navigates) -->
+      <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,6">
+        <Button Grid.Column="0" Content="⬆" Classes="iconBtn ghost" Margin="0,0,6,0"
+                Command="{Binding NavigateUpCommand}"
+                IsEnabled="{Binding ParentPath, Converter={x:Static ObjectConverters.IsNotNull}}"
+                ToolTip.Tip="O složku výš (Backspace)"/>
+        <TextBox Grid.Column="1" Text="{Binding PathInput}" PlaceholderText="kořen"
+                 ToolTip.Tip="Cesta v rámci spravovaného úložiště — Enter přejde do složky">
+          <TextBox.KeyBindings>
+            <KeyBinding Gesture="Enter" Command="{Binding NavigateToInputCommand}"/>
+          </TextBox.KeyBindings>
+        </TextBox>
+        <Button Grid.Column="2" Content="↻" Classes="iconBtn ghost" Margin="6,0,0,0"
+                Command="{Binding RefreshCommand}" ToolTip.Tip="Obnovit panel"/>
+      </Grid>
+
+      <!-- Local filter over the loaded folder + the same text as a subtree search query -->
+      <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,6">
+        <TextBox Grid.Column="0" Text="{Binding FilterText}" PlaceholderText="Filtr v této složce… (Enter = hledat v podstromu)">
+          <TextBox.KeyBindings>
+            <KeyBinding Gesture="Enter" Command="{Binding SearchSubtreeCommand}"/>
+          </TextBox.KeyBindings>
+        </TextBox>
+        <Button Grid.Column="1" Content="🔍" Classes="iconBtn ghost" Margin="6,0,0,0"
+                Command="{Binding SearchSubtreeCommand}"
+                ToolTip.Tip="Hledat PDF podle názvu v celém podstromu aktuální složky"/>
+      </Grid>
+
+      <!-- Search-results banner -->
+      <Border DockPanel.Dock="Top" Background="{DynamicResource SurfaceAlt}" CornerRadius="4"
+              Padding="8,4" Margin="0,0,0,6" IsVisible="{Binding IsSearchMode}">
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBlock Grid.Column="0" Text="{Binding SearchInfo}" FontSize="12" VerticalAlignment="Center"
+                     Foreground="{DynamicResource InkDim}" TextTrimming="CharacterEllipsis"/>
+          <Button Grid.Column="1" Content="✕" Classes="iconBtn ghost" Command="{Binding ExitSearchCommand}"
+                  ToolTip.Tip="Zavřít výsledky hledání (Esc)"/>
+        </Grid>
+      </Border>
+
+      <!-- Per-panel status strip -->
+      <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusText}" Foreground="{DynamicResource InkDim}"
+                 FontSize="12" Margin="2,6,2,0"/>
+
+      <Panel>
+        <DataGrid x:Name="ItemsGrid" x:CompileBindings="False"
+                  ItemsSource="{Binding ItemsView}" SelectedItem="{Binding SelectedItem}"
+                  SelectionMode="Extended" IsReadOnly="True" AutoGenerateColumns="False"
+                  CanUserResizeColumns="True" CanUserSortColumns="True"
+                  SelectionChanged="OnSelectionChanged" DoubleTapped="OnRowDoubleTapped" KeyDown="OnGridKeyDown">
+          <DataGrid.ContextMenu>
+            <ContextMenu>
+              <MenuItem Header="Otevřít" Command="{Binding OpenSelectedCommand}"/>
+              <MenuItem Header="O složku výš" Command="{Binding NavigateUpCommand}"/>
+              <Separator/>
+              <MenuItem Header="Nahrát sem…" Click="OnUploadHere"/>
+              <MenuItem Header="Stáhnout" Click="OnDownload"/>
+              <MenuItem Header="Přejmenovat (F2)" Click="OnRename"/>
+              <MenuItem Header="Smazat (Del)" Click="OnDelete"/>
+              <MenuItem Header="Nová složka… (F7)" Click="OnCreateFolder"/>
+              <Separator/>
+              <MenuItem Header="Obnovit" Command="{Binding RefreshCommand}"/>
+            </ContextMenu>
+          </DataGrid.ContextMenu>
+          <DataGrid.Columns>
+            <DataGridTemplateColumn Header="Název" Width="*" SortMemberPath="Name">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate>
+                  <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
+                              ToolTip.Tip="{Binding Path}">
+                    <TextBlock Text="{Binding Icon}"/>
+                    <TextBlock Text="{Binding DisplayText}" TextTrimming="CharacterEllipsis"/>
+                  </StackPanel>
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTemplateColumn Header="Velikost" Width="90" SortMemberPath="Item.SizeBytes">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate>
+                  <TextBlock Text="{Binding SizeText}" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTextColumn Header="Změněno" Binding="{Binding ModifiedText}" Width="130" SortMemberPath="Item.LastModified"/>
+            <DataGridTextColumn Header="Typ" Binding="{Binding TypeText}" Width="70"/>
+          </DataGrid.Columns>
+        </DataGrid>
+
+        <!-- Empty / loading overlays -->
+        <TextBlock Text="Prázdná složka — přetáhni sem PDF, nebo použij „Nahrát“."
+                   Foreground="{DynamicResource InkFaint}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                   IsVisible="{Binding IsEmpty}"/>
+        <ProgressBar IsIndeterminate="True" Width="120" Height="4"
+                     HorizontalAlignment="Center" VerticalAlignment="Center"
+                     IsVisible="{Binding IsBusy}"/>
+      </Panel>
+    </DockPanel>
+  </Border>
+</UserControl>

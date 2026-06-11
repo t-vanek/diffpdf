@@ -134,6 +134,58 @@ public sealed class DialogService
         return files.Count > 0 ? files[0].Path.LocalPath : null;
     }
 
+    /// <summary>Opens a multi-select PDF picker and returns the chosen local paths (empty if cancelled).</summary>
+    public async Task<IReadOnlyList<string>> OpenPdfsAsync(string title)
+    {
+        if (Owner?.StorageProvider is not { } storage)
+            return [];
+
+        var files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = title,
+            AllowMultiple = true,
+            FileTypeFilter = [new FilePickerFileType("PDF") { Patterns = ["*.pdf"] }],
+        });
+        return files.Select(f => f.Path.LocalPath).ToList();
+    }
+
+    /// <summary>Opens the create-folder / rename / overwrite dialog; inspect the view-model's Confirmed afterwards.</summary>
+    public Task ShowFileOperationAsync(ViewModels.FileOperationDialogViewModel vm) =>
+        ShowModalAsync(vm, new Views.FileOperationDialogView { DataContext = vm }, width: 420, height: null);
+
+    /// <summary>Opens a folder picker and returns the chosen local folder path, or null if cancelled.</summary>
+    public async Task<string?> PickFolderAsync(string title)
+    {
+        if (Owner?.StorageProvider is not { } storage)
+            return null;
+
+        var folders = await storage.OpenFolderPickerAsync(new FolderPickerOpenOptions { Title = title, AllowMultiple = false });
+        return folders.Count > 0 ? folders[0].Path.LocalPath : null;
+    }
+
+    /// <summary>
+    /// Prompts for a save location and streams into it via <paramref name="write"/> (no whole-file buffering).
+    /// Returns the saved path, or null if cancelled.
+    /// </summary>
+    public async Task<string?> SaveStreamAsync(string suggestedName, Func<Stream, Task> write)
+    {
+        if (Owner?.StorageProvider is not { } storage)
+            return null;
+
+        var file = await storage.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            SuggestedFileName = suggestedName,
+            DefaultExtension = "pdf",
+            FileTypeChoices = [new FilePickerFileType("PDF") { Patterns = ["*.pdf"] }],
+        });
+        if (file is null)
+            return null;
+
+        await using var stream = await file.OpenWriteAsync();
+        await write(stream);
+        return file.Path.LocalPath;
+    }
+
     /// <summary>Prompts for a save location and writes <paramref name="content"/>. Returns the saved path, or null if cancelled.</summary>
     public async Task<string?> SaveBytesAsync(string suggestedName, byte[] content)
     {

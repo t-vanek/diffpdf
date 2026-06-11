@@ -1,0 +1,78 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:DiffPdf.DesktopUI.ViewModels"
+             xmlns:views="using:DiffPdf.DesktopUI.Views"
+             x:Class="DiffPdf.DesktopUI.Views.FileManagerView"
+             x:DataType="vm:FileManagerViewModel">
+
+  <!-- Total Commander keys: F5 copy / F6 move (to the other panel), F7 new folder.
+       Reload therefore moves off F5 to Ctrl+R (plus the per-panel ↻ and the nav re-click). -->
+  <UserControl.KeyBindings>
+    <KeyBinding Gesture="F5" Command="{Binding CopyToOtherPanelCommand}"/>
+    <KeyBinding Gesture="F6" Command="{Binding MoveToOtherPanelCommand}"/>
+    <KeyBinding Gesture="F7" Command="{Binding CreateFolderCommand}"/>
+    <KeyBinding Gesture="Ctrl+R" Command="{Binding ReloadCommand}"/>
+  </UserControl.KeyBindings>
+
+  <DockPanel>
+    <TextBlock DockPanel.Dock="Top" Text="Soubory" Classes="pageTitle" Margin="2,0,0,10"/>
+
+    <!-- Toolbar — every action targets the active (orange-framed) panel -->
+    <WrapPanel DockPanel.Dock="Top" ItemSpacing="8" LineSpacing="8" Margin="0,0,0,10">
+      <Button Content="⬆ Nahrát PDF" Classes="accent" Command="{Binding UploadFilesCommand}"
+              ToolTip.Tip="Nahraje jedno či více PDF do složky aktivního panelu (jde i přetáhnout z Průzkumníka)"/>
+      <Button Content="Nová složka" Classes="ghost" Command="{Binding CreateFolderCommand}" ToolTip.Tip="Vytvoří složku v aktivním panelu (F7)"/>
+
+      <Border Width="1" Background="{DynamicResource Line}" Margin="4,3"/>
+
+      <Button Content="{Binding CopyButtonText}" Classes="ghost" Command="{Binding CopyToOtherPanelCommand}"
+              ToolTip.Tip="Zkopíruje výběr do složky druhého panelu (F5)"/>
+      <Button Content="{Binding MoveButtonText}" Classes="ghost" Command="{Binding MoveToOtherPanelCommand}"
+              ToolTip.Tip="Přesune výběr do složky druhého panelu (F6)"/>
+
+      <Border Width="1" Background="{DynamicResource Line}" Margin="4,3"/>
+
+      <Button Content="Stáhnout" Classes="ghost" Command="{Binding DownloadCommand}"
+              ToolTip.Tip="Stáhne vybrané PDF (1 = uložit jako, více = do zvolené složky)"/>
+      <Button Content="Přejmenovat" Classes="ghost" Command="{Binding RenameCommand}" ToolTip.Tip="Přejmenuje vybranou položku (F2)"/>
+      <Button Content="Smazat" Classes="destructive" Command="{Binding DeleteCommand}" ToolTip.Tip="Smaže vybrané položky (Delete)"/>
+
+      <TextBlock Text="{Binding Error}" Foreground="{DynamicResource Bad}" VerticalAlignment="Center"/>
+      <ProgressBar IsIndeterminate="True" Width="100" Height="4" VerticalAlignment="Center" IsVisible="{Binding IsBusy}"/>
+    </WrapPanel>
+
+    <!-- Upload queue: visible while a batch is queued/running, self-clears after a clean finish -->
+    <Border DockPanel.Dock="Bottom" Classes="cardStatic" Padding="10" Margin="0,8,0,0"
+            IsVisible="{Binding UploadQueue.HasItems}">
+      <DockPanel>
+        <Grid DockPanel.Dock="Top" ColumnDefinitions="*,160" Margin="0,0,0,6">
+          <TextBlock Grid.Column="0" Text="{Binding UploadQueue.SummaryText}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+          <ProgressBar Grid.Column="1" Minimum="0" Maximum="1" Value="{Binding UploadQueue.TotalProgress}" Height="6" VerticalAlignment="Center"/>
+        </Grid>
+        <ScrollViewer MaxHeight="140" VerticalScrollBarVisibility="Auto">
+          <ItemsControl ItemsSource="{Binding UploadQueue.Items}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:UploadItemViewModel">
+                <Grid ColumnDefinitions="*,120,70,Auto" Margin="0,2" ToolTip.Tip="{Binding Error}">
+                  <TextBlock Grid.Column="0" Text="{Binding FileName}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                  <ProgressBar Grid.Column="1" Minimum="0" Maximum="1" Value="{Binding Progress}" Height="6" VerticalAlignment="Center"/>
+                  <TextBlock Grid.Column="2" Text="{Binding StateText}" FontSize="12" Margin="8,0,0,0"
+                             Foreground="{DynamicResource InkDim}" VerticalAlignment="Center"/>
+                  <Button Grid.Column="3" Content="✕" Classes="iconBtn ghost" Command="{Binding CancelCommand}"
+                          IsVisible="{Binding IsRunning}" ToolTip.Tip="Zrušit nahrávání"/>
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+      </DockPanel>
+    </Border>
+
+    <!-- Two panels, Total Commander style; Tab switches, the active one carries the accent frame -->
+    <Grid ColumnDefinitions="*,8,*">
+      <views:FilePanelView Grid.Column="0" x:Name="LeftPanelView" DataContext="{Binding LeftPanel}"/>
+      <GridSplitter Grid.Column="1" Background="Transparent" ResizeDirection="Columns"/>
+      <views:FilePanelView Grid.Column="2" x:Name="RightPanelView" DataContext="{Binding RightPanel}"/>
+    </Grid>
+  </DockPanel>
+</UserControl>
