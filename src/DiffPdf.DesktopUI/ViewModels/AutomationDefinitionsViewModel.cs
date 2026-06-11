@@ -65,6 +65,28 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
 
     public AutomationScopeKind[] Scopes { get; } = Enum.GetValues<AutomationScopeKind>();
 
+    /// <summary>Klíče dostupných větví / instancí pro výběr rozsahu (místo ručního psaní); instance kaskádují z větve.</summary>
+    public ObservableCollection<string> BranchOptions { get; } = [];
+    public ObservableCollection<string> InstanceOptions { get; } = [];
+
+    /// <summary>Frekvence plánu (uživatelsky přívětivá alternativa k psaní cronu) a dny v týdnu pro týdenní plán.</summary>
+    public IReadOnlyList<ScheduleKindOption> ScheduleKinds { get; } =
+    [
+        new(ScheduleKind.None, "Bez časového plánu"),
+        new(ScheduleKind.Interval, "Opakovat po intervalu"),
+        new(ScheduleKind.Daily, "Denně"),
+        new(ScheduleKind.Weekly, "Týdně"),
+        new(ScheduleKind.Monthly, "Měsíčně"),
+        new(ScheduleKind.Custom, "Vlastní (cron)"),
+    ];
+
+    public IReadOnlyList<WeekdayOption> Weekdays { get; } =
+    [
+        new(DayOfWeek.Monday, "Pondělí"), new(DayOfWeek.Tuesday, "Úterý"), new(DayOfWeek.Wednesday, "Středa"),
+        new(DayOfWeek.Thursday, "Čtvrtek"), new(DayOfWeek.Friday, "Pátek"), new(DayOfWeek.Saturday, "Sobota"),
+        new(DayOfWeek.Sunday, "Neděle"),
+    ];
+
     public ObservableCollection<AutomationResponse> Automations { get; } = [];
     public ObservableCollection<AutomationRunResponse> Runs { get; } = [];
     public ObservableCollection<AutomationStepRowViewModel> Steps { get; } = [];
@@ -94,11 +116,25 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
     [ObservableProperty] private AutomationRunResponse? _selectedRun;
     [ObservableProperty] private string _key = string.Empty;
     [ObservableProperty] private string _name = string.Empty;
-    [ObservableProperty] private AutomationScopeKind _scopeKind = AutomationScopeKind.Global;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsBranchScope), nameof(IsInstanceScope))]
+    private AutomationScopeKind _scopeKind = AutomationScopeKind.Global;
+
     [ObservableProperty] private string _branchKey = string.Empty;
     [ObservableProperty] private string _instanceKey = string.Empty;
     [ObservableProperty] private string _cron = string.Empty;
     [ObservableProperty] private decimal _intervalSeconds = 300;
+
+    // Schedule builder: a frequency + a local time of day (and weekday / day-of-month), translated to/from the
+    // server's UTC cron by CronSchedule. Visibility of the fields below is driven off the chosen frequency.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowInterval), nameof(ShowTimeOfDay), nameof(ShowWeekday),
+        nameof(ShowDayOfMonth), nameof(ShowCustomCron))]
+    private ScheduleKindOption? _selectedScheduleKind;
+    [ObservableProperty] private TimeSpan? _scheduleTimeOfDay = new TimeSpan(6, 0, 0);
+    [ObservableProperty] private WeekdayOption? _selectedWeekday;
+    [ObservableProperty] private decimal _scheduleDayOfMonth = 1;
     [ObservableProperty] private decimal _eventDebounceSeconds = 60;
     [ObservableProperty] private decimal _timeoutSeconds = 600;
     [ObservableProperty] private decimal _maxAttempts = 1;
@@ -116,6 +152,17 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
 
     public bool IsEditing => EditingVersion is not null;
 
+    /// <summary>Rozsah Větev/Instance odkrývá výběr větve; rozsah Instance navíc výběr instance.</summary>
+    public bool IsBranchScope => ScopeKind is AutomationScopeKind.Branch or AutomationScopeKind.Instance;
+    public bool IsInstanceScope => ScopeKind is AutomationScopeKind.Instance;
+
+    // Which schedule fields the chosen frequency reveals.
+    public bool ShowInterval => SelectedScheduleKind?.Kind == ScheduleKind.Interval;
+    public bool ShowTimeOfDay => SelectedScheduleKind?.Kind is ScheduleKind.Daily or ScheduleKind.Weekly or ScheduleKind.Monthly;
+    public bool ShowWeekday => SelectedScheduleKind?.Kind == ScheduleKind.Weekly;
+    public bool ShowDayOfMonth => SelectedScheduleKind?.Kind == ScheduleKind.Monthly;
+    public bool ShowCustomCron => SelectedScheduleKind?.Kind == ScheduleKind.Custom;
+
     /// <summary>At-a-glance automation health, derived from the loaded list (no extra call). Drives the summary strip.</summary>
     public IReadOnlyList<StatLine> Summary =>
     [
@@ -132,13 +179,44 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
         _session = session;
         _dialogs = dialogs;
         Steps.Add(new AutomationStepRowViewModel());
+        SelectedScheduleKind = ScheduleKinds[0];   // "Bez časového plánu" until a template / edit sets the cadence
+        SelectedWeekday = Weekdays[0];              // Pondělí
     }
 
     public Task ActivateAsync() => RunAsync(async () =>
     {
+        await LoadBranchOptionsAsync();
         await LoadAsync();
         if (TemplateGroups.Count == 0) await LoadTemplatesAsync();
     });
+
+    // Branch keys for the scope dropdown — loaded once (and on F5 refresh); selecting a branch cascades its instances.
+    private async Task LoadBranchOptionsAsync()
+    {
+        var keepBranch = BranchKey;
+        BranchOptions.Clear();
+        foreach (var b in await _session.Require().ListBranchesAsync()) BranchOptions.Add(b.Key);
+        BranchKey = BranchOptions.Contains(keepBranch) ? keepBranch : string.Empty;
+    }
+
+    partial void OnBranchKeyChanged(string value) => _ = RunAsync(() => ReloadInstanceOptionsAsync(value));
+
+    // Cascade: a branch selection repopulates the instance dropdown, preserving the current instance if it survives.
+    private async Task ReloadInstanceOptionsAsync(string? branchKey)
+    {
+        var keepInstance = InstanceKey;
+        InstanceOptions.Clear();
+        if (!string.IsNullOrWhiteSpace(branchKey))
+            foreach (var i in await _session.Require().ListInstancesAsync(branchKey)) InstanceOptions.Add(i.Key);
+        InstanceKey = InstanceOptions.Contains(keepInstance) ? keepInstance : string.Empty;
+    }
+
+    // Narrowing the scope drops the now-irrelevant keys (Global → no scope; Branch → no instance).
+    partial void OnScopeKindChanged(AutomationScopeKind value)
+    {
+        if (value == AutomationScopeKind.Global) { BranchKey = string.Empty; InstanceKey = string.Empty; }
+        else if (value == AutomationScopeKind.Branch) InstanceKey = string.Empty;
+    }
 
     private async Task LoadAsync()
     {
@@ -175,7 +253,7 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
     }
 
     [RelayCommand]
-    private Task RefreshAsync() => RunAsync(LoadAsync);
+    private Task RefreshAsync() => RunAsync(async () => { await LoadBranchOptionsAsync(); await LoadAsync(); });
 
     [RelayCommand]
     private void New()
@@ -184,7 +262,7 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
         Key = Name = string.Empty;
         ScopeKind = AutomationScopeKind.Global;
         BranchKey = InstanceKey = Cron = string.Empty;
-        IntervalSeconds = 300;
+        LoadCadence(null, 300); // default: opakovat po 5 minutách (jako dosud), uživatel snadno změní
         EventDebounceSeconds = 60;
         TimeoutSeconds = 600;
         MaxAttempts = 1;
@@ -210,8 +288,7 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
         Name = template.DisplayName;
         ScopeKind = template.DefaultScope;
         BranchKey = InstanceKey = string.Empty;
-        Cron = template.RecommendedCron ?? string.Empty;
-        IntervalSeconds = template.RecommendedIntervalSeconds ?? 0;
+        LoadCadence(template.RecommendedCron, template.RecommendedIntervalSeconds);
         EventDebounceSeconds = 60;
         TimeoutSeconds = 600;
         MaxAttempts = 1;
@@ -253,7 +330,7 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
         BranchKey = a.BranchKey ?? string.Empty;
         InstanceKey = a.InstanceKey ?? string.Empty;
         Cron = a.Cron ?? string.Empty;
-        IntervalSeconds = a.IntervalSeconds ?? 0;
+        LoadCadence(a.Cron, a.IntervalSeconds);
         EventDebounceSeconds = a.EventDebounceSeconds;
         TimeoutSeconds = a.TimeoutSeconds;
         MaxAttempts = a.MaxAttempts;
@@ -300,8 +377,7 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
         var client = _session.Require();
         string? bk = string.IsNullOrWhiteSpace(BranchKey) ? null : BranchKey;
         string? ik = string.IsNullOrWhiteSpace(InstanceKey) ? null : InstanceKey;
-        string? cron = string.IsNullOrWhiteSpace(Cron) ? null : Cron;
-        int? interval = cron is null && IntervalSeconds > 0 ? (int)IntervalSeconds : null;
+        var (cron, interval) = BuildCadence();
         var steps = Steps.Select(s => s.ToInput()).ToList();
         var triggers = EventTriggerOptions.Where(o => o.IsChecked).Select(o => o.Event).ToList();
 
@@ -359,6 +435,55 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
         await LoadRunsAsync();
         await LoadAsync(); // refresh the automation's last outcome + the summary strip
     });
+
+    /// <summary>Translates the friendly schedule fields into the (cron, intervalSeconds) the request carries.
+    /// Cron wins server-side, so only one is ever non-null. Times are local; CronSchedule emits a UTC cron.</summary>
+    private (string? Cron, int? Interval) BuildCadence()
+    {
+        var tz = TimeZoneInfo.Local;
+        var today = DateTime.Today;
+        var time = ScheduleTimeOfDay ?? new TimeSpan(6, 0, 0);
+        return SelectedScheduleKind?.Kind switch
+        {
+            ScheduleKind.Interval => (null, IntervalSeconds > 0 ? (int)IntervalSeconds : null),
+            ScheduleKind.Daily => (CronSchedule.Daily(time, tz, today), null),
+            ScheduleKind.Weekly => (CronSchedule.Weekly(SelectedWeekday?.Day ?? DayOfWeek.Monday, time, tz, today), null),
+            ScheduleKind.Monthly => (CronSchedule.Monthly((int)ScheduleDayOfMonth, time, tz, today), null),
+            ScheduleKind.Custom => (string.IsNullOrWhiteSpace(Cron) ? null : Cron.Trim(), null),
+            _ => (null, null), // None — událostně/ručně
+        };
+    }
+
+    /// <summary>Sets the schedule frequency + fields from a stored (cron, intervalSeconds). A cron that maps to a
+    /// daily/weekly/monthly pattern fills the friendly fields; anything else falls back to "Vlastní (cron)".</summary>
+    private void LoadCadence(string? cron, int? intervalSeconds)
+    {
+        var tz = TimeZoneInfo.Local;
+        var today = DateTime.Today;
+
+        if (!string.IsNullOrWhiteSpace(cron)
+            && CronSchedule.TryParse(cron, tz, today, out var kind, out var time, out var day, out var dayOfMonth))
+        {
+            SelectedScheduleKind = ScheduleKinds.First(o => o.Kind == kind);
+            ScheduleTimeOfDay = time;
+            if (kind == ScheduleKind.Weekly) SelectedWeekday = Weekdays.First(w => w.Day == day);
+            if (kind == ScheduleKind.Monthly) ScheduleDayOfMonth = dayOfMonth;
+        }
+        else if (!string.IsNullOrWhiteSpace(cron))
+        {
+            SelectedScheduleKind = ScheduleKinds.First(o => o.Kind == ScheduleKind.Custom);
+            Cron = cron;
+        }
+        else if (intervalSeconds is > 0)
+        {
+            SelectedScheduleKind = ScheduleKinds.First(o => o.Kind == ScheduleKind.Interval);
+            IntervalSeconds = intervalSeconds.Value;
+        }
+        else
+        {
+            SelectedScheduleKind = ScheduleKinds.First(o => o.Kind == ScheduleKind.None);
+        }
+    }
 
     private List<NotificationEvent> Events()
     {

@@ -7,8 +7,21 @@ namespace DiffPdf.DesktopUI.Tests;
 /// <summary>The Automatizace summary strip and the steps editor of the automation definitions view-model.</summary>
 public class AutomationDefinitionsViewModelTests
 {
-    private static AutomationDefinitionsViewModel NewVm() =>
-        new(new ServerSession(), new DialogService(new ToastService()));
+    // A FakeApi-backed session so the scope dropdowns' branch/instance loads have something to call (default:
+    // empty lists). Tests that exercise the cascade pass their own FakeApi with branches/instances.
+    private static AutomationDefinitionsViewModel NewVm(FakeApi? api = null)
+    {
+        var session = new ServerSession
+        {
+            Client = new DiffPdfClient(new HttpClient(api ?? new FakeApi
+            {
+                Branches = Array.Empty<Branch>(),
+                InstancesByBranch = _ => Array.Empty<Instance>(),
+            })
+            { BaseAddress = new Uri("http://localhost") }),
+        };
+        return new(session, new DialogService(new ToastService()));
+    }
 
     [Fact]
     public void Summary_counts_automation_health_from_the_list()
@@ -108,6 +121,7 @@ public class AutomationDefinitionsViewModelTests
 
         Assert.Equal("watch", vm.Key);
         Assert.Equal("0 6 * * *", vm.Cron);
+        Assert.Equal(ScheduleKind.Daily, vm.SelectedScheduleKind!.Kind); // "m h * * *" → friendly „Denně“
         Assert.Equal(2, vm.Steps.Count);
         Assert.Equal("Vstupy", vm.Steps[0].Name);
         Assert.True(vm.EventTriggerOptions.Single(o => o.Event == NotificationEvent.Failed).IsChecked);
@@ -119,5 +133,73 @@ public class AutomationDefinitionsViewModelTests
         Assert.True(vm.EventAutomationRecovered);
         Assert.False(vm.EventHealthDegraded);
         Assert.Equal(3, vm.EditingVersion);
+    }
+
+    [Fact]
+    public void Scope_dropdowns_reveal_by_scope_and_narrowing_clears_keys()
+    {
+        var vm = NewVm();
+        Assert.False(vm.IsBranchScope);   // Global default — no scope pickers
+        Assert.False(vm.IsInstanceScope);
+
+        vm.ScopeKind = AutomationScopeKind.Instance;
+        Assert.True(vm.IsBranchScope);    // Instance scope reveals both branch + instance pickers
+        Assert.True(vm.IsInstanceScope);
+
+        vm.ScopeKind = AutomationScopeKind.Branch;
+        Assert.True(vm.IsBranchScope);
+        Assert.False(vm.IsInstanceScope); // narrowing to Branch hides the instance picker
+
+        vm.ScopeKind = AutomationScopeKind.Global;
+        Assert.Equal(string.Empty, vm.BranchKey);   // Global drops both keys
+        Assert.Equal(string.Empty, vm.InstanceKey);
+        Assert.False(vm.IsBranchScope);
+    }
+
+    [Fact]
+    public void Picking_a_branch_loads_its_instances_into_the_instance_dropdown()
+    {
+        AsyncPump.Run(async () =>
+        {
+            var api = new FakeApi
+            {
+                Branches = new[] { new Branch { Key = "Alfa" }, new Branch { Key = "Beta" } },
+                InstancesByBranch = bk => bk == "Alfa"
+                    ? new[] { new Instance { Key = "LamaEnergy" }, new Instance { Key = "Centropol" } }
+                    : Array.Empty<Instance>(),
+            };
+            var vm = NewVm(api);
+
+            await VmTest.InvokeAsync(vm, "LoadBranchOptionsAsync");
+            Assert.Equal(new[] { "Alfa", "Beta" }, vm.BranchOptions.ToArray());
+
+            // Selecting a branch cascades its instances into the instance dropdown.
+            await VmTest.InvokeAsync(vm, "ReloadInstanceOptionsAsync", "Alfa");
+            Assert.Equal(new[] { "LamaEnergy", "Centropol" }, vm.InstanceOptions.ToArray());
+
+            // A branch with no instances empties the list.
+            await VmTest.InvokeAsync(vm, "ReloadInstanceOptionsAsync", "Beta");
+            Assert.Empty(vm.InstanceOptions);
+        });
+    }
+
+    [Fact]
+    public void Cadence_maps_stored_schedule_to_friendly_frequency()
+    {
+        var vm = NewVm();
+
+        VmTest.Invoke(vm, "LoadCadence", null, 300);
+        Assert.Equal(ScheduleKind.Interval, vm.SelectedScheduleKind!.Kind);
+        Assert.Equal(300, vm.IntervalSeconds);
+
+        VmTest.Invoke(vm, "LoadCadence", null, null);
+        Assert.Equal(ScheduleKind.None, vm.SelectedScheduleKind!.Kind);
+
+        VmTest.Invoke(vm, "LoadCadence", "*/15 * * * *", null); // not a single daily/weekly/monthly time → raw
+        Assert.Equal(ScheduleKind.Custom, vm.SelectedScheduleKind!.Kind);
+        Assert.Equal("*/15 * * * *", vm.Cron);
+
+        VmTest.Invoke(vm, "LoadCadence", "0 6 * * *", null);    // structure maps to „Denně“ regardless of host TZ
+        Assert.Equal(ScheduleKind.Daily, vm.SelectedScheduleKind!.Kind);
     }
 }

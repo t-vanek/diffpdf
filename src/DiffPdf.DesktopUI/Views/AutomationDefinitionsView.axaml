@@ -178,14 +178,64 @@
                        ToolTip.Tip="Rozsah automatizace: Global = celý server, Branch = jedna větev, Instance = jedna instance. Určuje, na co se kroky vztahují a které události ji spouští."/>
           </StackPanel>
           <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Scopes}" SelectedItem="{Binding ScopeKind}"/>
-          <TextBox Text="{Binding BranchKey}" PlaceholderText="Klíč větve (pro rozsah Větev/Instance)"/>
-          <TextBox Text="{Binding InstanceKey}" PlaceholderText="Klíč instance (pro rozsah Instance)"/>
+          <ComboBox HorizontalAlignment="Stretch" IsVisible="{Binding IsBranchScope}"
+                    ItemsSource="{Binding BranchOptions}" SelectedItem="{Binding BranchKey}"
+                    PlaceholderText="Vyber větev"/>
+          <ComboBox HorizontalAlignment="Stretch" IsVisible="{Binding IsInstanceScope}"
+                    ItemsSource="{Binding InstanceOptions}" SelectedItem="{Binding InstanceKey}"
+                    PlaceholderText="Vyber instanci"/>
 
           <TextBlock Text="Plán (čas)" Classes="headline" Margin="0,8,0,0"/>
-          <TextBox Text="{Binding Cron}" PlaceholderText="Cron (UTC, 5 polí) — má přednost"
-                   ToolTip.Tip="Cron výraz, 5 polí v UTC: minuta hodina den-v-měsíci měsíc den-v-týdnu. Příklad: 0 6 * * * = každý den v 06:00 UTC; */15 * * * * = každých 15 minut. Když je vyplněn, má přednost před intervalem. Prázdný plán = automatizace jen na události / ručně."/>
-          <TextBlock Text="nebo interval (s); 0 = bez plánu"/>
-          <NumericUpDown Value="{Binding IntervalSeconds}" Minimum="0" Increment="30"/>
+          <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding ScheduleKinds}" SelectedItem="{Binding SelectedScheduleKind}"
+                    ToolTip.Tip="Jak často se automatizace spouští podle času. „Denně/Týdně/Měsíčně“ nastavíš časem; „Vlastní (cron)“ je pro pokročilé výrazy. „Bez časového plánu“ = jen na události / ručně.">
+            <ComboBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:ScheduleKindOption">
+                <TextBlock Text="{Binding Label}"/>
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+
+          <!-- Interval -->
+          <StackPanel Spacing="4" IsVisible="{Binding ShowInterval}">
+            <TextBlock Text="Interval (s)"/>
+            <NumericUpDown Value="{Binding IntervalSeconds}" Minimum="0" Increment="30"
+                           ToolTip.Tip="Jak často se opakuje, v sekundách (např. 300 = každých 5 minut)."/>
+          </StackPanel>
+
+          <!-- Čas dne (denně/týdně/měsíčně) -->
+          <StackPanel Spacing="4" IsVisible="{Binding ShowTimeOfDay}">
+            <TextBlock Text="Čas (místní)"/>
+            <TimePicker SelectedTime="{Binding ScheduleTimeOfDay}" ClockIdentifier="24HourClock" MinuteIncrement="5"
+                        HorizontalAlignment="Left"/>
+          </StackPanel>
+
+          <!-- Den v týdnu (týdně) -->
+          <StackPanel Spacing="4" IsVisible="{Binding ShowWeekday}">
+            <TextBlock Text="Den v týdnu"/>
+            <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Weekdays}" SelectedItem="{Binding SelectedWeekday}">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:WeekdayOption">
+                  <TextBlock Text="{Binding Label}"/>
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+          </StackPanel>
+
+          <!-- Den v měsíci (měsíčně) -->
+          <StackPanel Spacing="4" IsVisible="{Binding ShowDayOfMonth}">
+            <TextBlock Text="Den v měsíci (1–28)"/>
+            <NumericUpDown Value="{Binding ScheduleDayOfMonth}" Minimum="1" Maximum="28" Increment="1"/>
+          </StackPanel>
+
+          <!-- Vlastní cron (pokročilé) -->
+          <StackPanel Spacing="4" IsVisible="{Binding ShowCustomCron}">
+            <TextBox Text="{Binding Cron}" PlaceholderText="Cron (UTC, 5 polí)"
+                     ToolTip.Tip="Cron výraz, 5 polí v UTC: minuta hodina den-v-měsíci měsíc den-v-týdnu. Příklad: 0 6 * * * = každý den v 06:00 UTC; */15 * * * * = každých 15 minut."/>
+          </StackPanel>
+
+          <TextBlock Text="Čas se ukládá v UTC; po přechodu mezi letním a zimním časem se spuštění může posunout o hodinu."
+                     Foreground="{DynamicResource InkFaint}" FontSize="11" TextWrapping="Wrap"
+                     IsVisible="{Binding ShowTimeOfDay}"/>
 
           <TextBlock Text="Spouštěcí události" Classes="headline" Margin="0,8,0,0"
                      ToolTip.Tip="Automatizace se spustí, když v jejím rozsahu nastane zaškrtnutá událost (s ochrannou prodlevou níže). Vlastní události automatizace ji nikdy nespustí znovu."/>
