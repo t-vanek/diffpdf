@@ -86,9 +86,9 @@
               </DataTemplate>
             </DataGridTemplateColumn.CellTemplate>
           </DataGridTemplateColumn>
-          <DataGridTextColumn Header="Klíč" Binding="{Binding Instance.Key}" Width="140"/>
-          <DataGridTextColumn Header="Název" Binding="{Binding Instance.Name}" Width="140"/>
-          <DataGridTextColumn Header="Základní cesta" Binding="{Binding Instance.BasePath}" Width="*"/>
+          <DataGridTextColumn Header="Klíč" Binding="{Binding Instance.Key}" Width="160"/>
+          <!-- Základní cesta záměrně není ve mřížce (zbytečně zabírá místo); je vidět v detailu vpravo (Připravenost · Složky). -->
+          <DataGridTextColumn Header="Název" Binding="{Binding Instance.Name}" Width="*"/>
           <DataGridTemplateColumn Header="Aktivní" Width="110" SortMemberPath="Instance.Enabled">
             <DataGridTemplateColumn.CellTemplate>
               <DataTemplate>
