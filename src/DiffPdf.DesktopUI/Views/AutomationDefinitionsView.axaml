@@ -62,6 +62,8 @@
               <DataGridTextColumn Header="Název" Binding="{Binding Name}" Width="180"/>
               <DataGridTextColumn Header="Kategorie" Binding="{Binding Category, Converter={x:Static vm:AutomationCategoryLabelConverter.Instance}}" Width="125"/>
               <DataGridTextColumn Header="Plán" Binding="{Binding ., Converter={x:Static vm:AutomationCadenceLabelConverter.Instance}}" Width="105"/>
+              <DataGridTextColumn Header="Příští běh" Width="110"
+                                  Binding="{Binding NextRunAt, Converter={x:Static vm:LocalTimeConverter.Instance}, ConverterParameter='dd.MM. HH:mm'}"/>
               <DataGridTemplateColumn Header="Povoleno" Width="90" SortMemberPath="Enabled">
                 <DataGridTemplateColumn.CellTemplate>
                   <DataTemplate>
@@ -269,6 +271,10 @@
                      Foreground="{DynamicResource InkFaint}" FontSize="11" TextWrapping="Wrap"
                      IsVisible="{Binding ShowTimeOfDay}"/>
 
+          <!-- Okamžitá zpětná vazba na plán: tři nejbližší spuštění v místním čase. -->
+          <TextBlock Text="{Binding NextRunsPreview}" Foreground="{DynamicResource Info}" FontSize="12"
+                     TextWrapping="Wrap" Margin="0,2,0,0"/>
+
           <TextBlock Text="Spouštěcí události" Classes="headline" Margin="0,8,0,0"
                      ToolTip.Tip="Automatizace se spustí, když v jejím rozsahu nastane zaškrtnutá událost. Vlastní události automatizace ji nikdy nespustí znovu."/>
           <ItemsControl ItemsSource="{Binding EventTriggerGroups}">
@@ -331,8 +337,28 @@
                                   CommandParameter="{Binding}"/>
                         </Grid>
                         <TextBox Text="{Binding Name}" PlaceholderText="Popisek kroku (volitelný)"/>
-                        <TextBox Text="{Binding ParametersText}" AcceptsReturn="True" Height="46"
-                                 PlaceholderText="Parametry: klíč=hodnota na řádek (např. retentionDays=30)"/>
+
+                        <!-- Typovaná pole parametrů vygenerovaná z katalogu (popisek + nápověda + meze);
+                             hodnoty jsou předvyplněné výchozími, takže běžně není co vyplňovat. -->
+                        <ItemsControl ItemsSource="{Binding Parameters}" IsVisible="{Binding HasParameters}">
+                          <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:StepParameterFieldViewModel">
+                              <StackPanel Spacing="2" Margin="0,2,0,2" ToolTip.Tip="{Binding Help}">
+                                <TextBlock Text="{Binding Label}" FontSize="12" Foreground="{DynamicResource InkDim}"
+                                           IsVisible="{Binding !IsBool}"/>
+                                <CheckBox Content="{Binding Label}" IsChecked="{Binding BoolValue}" IsVisible="{Binding IsBool}"/>
+                                <NumericUpDown Value="{Binding NumberValue}" Minimum="{Binding Min}" Maximum="{Binding Max}"
+                                               Increment="1" FormatString="0" IsVisible="{Binding IsInt}"/>
+                                <ComboBox ItemsSource="{Binding EnumValues}" SelectedItem="{Binding Value}"
+                                          HorizontalAlignment="Stretch" IsVisible="{Binding IsEnum}"/>
+                                <TextBox Text="{Binding Value}" PlaceholderText="{Binding Watermark}" IsVisible="{Binding IsText}"/>
+                              </StackPanel>
+                            </DataTemplate>
+                          </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Text="{Binding UnknownSummary}" Foreground="{DynamicResource InkFaint}" FontSize="11"
+                                   TextWrapping="Wrap"
+                                   IsVisible="{Binding UnknownSummary, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                       </StackPanel>
                     </Border>
                   </DataTemplate>
@@ -361,6 +387,12 @@
               <CheckBox Content="Automatizace obnovena" IsChecked="{Binding EventAutomationRecovered}"/>
             </StackPanel>
           </Expander>
+
+          <!-- Shrnutí větou: co se přesně uloží — kdy, kde a co automatizace udělá. -->
+          <Border Background="{DynamicResource SurfaceAlt}" BorderBrush="{DynamicResource Line}" BorderThickness="1"
+                  CornerRadius="{DynamicResource RadSm}" Padding="10,8" Margin="0,6,0,0">
+            <TextBlock Text="{Binding SaveSummary}" FontSize="12" Foreground="{DynamicResource InkDim}" TextWrapping="Wrap"/>
+          </Border>
 
           <Button Content="Uložit automatizaci" Classes="accent" Command="{Binding SaveCommand}" HorizontalAlignment="Left" IsEnabled="{Binding !IsBusy}" Margin="0,4,0,0"/>
         </StackPanel>

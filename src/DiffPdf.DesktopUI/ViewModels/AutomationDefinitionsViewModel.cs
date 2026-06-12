@@ -1,4 +1,6 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DiffPdf.Client;
@@ -6,39 +8,123 @@ using DiffPdf.DesktopUI.Services;
 
 namespace DiffPdf.DesktopUI.ViewModels;
 
-/// <summary>One editovatelný krok pipeline v editoru automatizace.</summary>
+/// <summary>
+/// Jedno typované pole parametru kroku, vygenerované z katalogu (popisek, nápověda, meze, výchozí hodnota).
+/// Nahrazuje ruční psaní „klíč=hodnota" — uživatel vyplňuje formulář, ne konfiguraci.
+/// </summary>
+public partial class StepParameterFieldViewModel : ObservableObject
+{
+    public AutomationParameterSpecResponse Spec { get; }
+
+    [ObservableProperty] private string _value = string.Empty;   // String / Enum
+    [ObservableProperty] private bool _boolValue;                 // Bool
+    [ObservableProperty] private decimal? _numberValue;           // Int
+
+    public StepParameterFieldViewModel(AutomationParameterSpecResponse spec, string? current)
+    {
+        Spec = spec;
+        string effective = current ?? spec.Default ?? string.Empty;
+        switch (spec.Type)
+        {
+            case AutomationParameterType.Bool:
+                _boolValue = bool.TryParse(effective, out var b) && b;
+                break;
+            case AutomationParameterType.Int:
+                _numberValue = decimal.TryParse(effective, out var n) ? n : null;
+                break;
+            default:
+                _value = effective;
+                break;
+        }
+    }
+
+    public bool IsBool => Spec.Type == AutomationParameterType.Bool;
+    public bool IsInt => Spec.Type == AutomationParameterType.Int;
+    public bool IsEnum => Spec.Type == AutomationParameterType.Enum;
+    public bool IsText => Spec.Type == AutomationParameterType.String;
+
+    public string Label => Spec.Label;
+    public string? Help => string.IsNullOrWhiteSpace(Spec.Help) ? null : Spec.Help;
+    public IReadOnlyList<string> EnumValues => Spec.EnumValues ?? [];
+    public decimal Min => Spec.Min ?? 0;
+    public decimal Max => Spec.Max ?? decimal.MaxValue;
+    public string Watermark => string.IsNullOrWhiteSpace(Spec.Default) ? "" : $"výchozí: {Spec.Default}";
+
+    /// <summary>Hodnota pro uložení; null = nevyplněno (server použije výchozí).</summary>
+    public string? Serialized => Spec.Type switch
+    {
+        AutomationParameterType.Bool => BoolValue ? "true" : "false",
+        AutomationParameterType.Int => NumberValue?.ToString("0", System.Globalization.CultureInfo.InvariantCulture),
+        _ => string.IsNullOrWhiteSpace(Value) ? null : Value.Trim(),
+    };
+}
+
+/// <summary>One editovatelný krok pipeline v editoru automatizace. Pole parametrů se generují z katalogu
+/// kroků (typ, popisek, meze); klíče, které katalog nezná, se beze změny zachovají (round-trip).</summary>
 public partial class AutomationStepRowViewModel : ObservableObject
 {
+    private readonly Func<AutomationStepType, IReadOnlyList<AutomationParameterSpecResponse>> _specsFor;
+    private Dictionary<string, string> _unknownParameters = [];
+
     public AutomationStepType[] Types { get; } = Enum.GetValues<AutomationStepType>();
 
-    [ObservableProperty] private AutomationStepType _type = AutomationStepType.Readiness;
+    [ObservableProperty] private AutomationStepType _type;
     [ObservableProperty] private string _name = string.Empty;
-    [ObservableProperty] private string _parametersText = string.Empty;
+
+    public ObservableCollection<StepParameterFieldViewModel> Parameters { get; } = [];
+
+    [ObservableProperty] private bool _hasParameters;
+    [ObservableProperty] private string? _unknownSummary;
+
+    public AutomationStepRowViewModel(
+        Func<AutomationStepType, IReadOnlyList<AutomationParameterSpecResponse>> specsFor,
+        AutomationStepType type = AutomationStepType.Readiness,
+        string? name = null,
+        IReadOnlyDictionary<string, string>? parameters = null)
+    {
+        _specsFor = specsFor;
+        _type = type;
+        _name = name ?? string.Empty;
+        RebuildFields(parameters ?? new Dictionary<string, string>());
+    }
+
+    // Změna typu kroku přegeneruje pole podle nového typu; hodnoty se stejným klíčem se přenesou.
+    partial void OnTypeChanged(AutomationStepType value) => RebuildFields(CollectValues());
+
+    /// <summary>Přegeneruje pole z katalogu (volá se i poté, co se katalog dodatečně načte).</summary>
+    public void RebuildFields() => RebuildFields(CollectValues());
+
+    private void RebuildFields(IReadOnlyDictionary<string, string> values)
+    {
+        var specs = _specsFor(Type);
+        Parameters.Clear();
+        foreach (var spec in specs)
+            Parameters.Add(new StepParameterFieldViewModel(spec, values.TryGetValue(spec.Key, out var v) ? v : null));
+        HasParameters = Parameters.Count > 0;
+
+        // Klíče, které katalog nepopisuje, zachovat beze změny a ukázat je (ručně přes API / starší verze).
+        var known = specs.Select(s => s.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        _unknownParameters = values.Where(kv => !known.Contains(kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value);
+        UnknownSummary = _unknownParameters.Count == 0
+            ? null
+            : "Další parametry: " + string.Join(", ", _unknownParameters.Select(kv => $"{kv.Key}={kv.Value}"));
+    }
+
+    private Dictionary<string, string> CollectValues()
+    {
+        var dict = new Dictionary<string, string>(_unknownParameters, StringComparer.OrdinalIgnoreCase);
+        foreach (var field in Parameters)
+            if (field.Serialized is { } v)
+                dict[field.Spec.Key] = v;
+        return dict;
+    }
 
     public AutomationStepInput ToInput() => new()
     {
         Type = Type,
         Name = string.IsNullOrWhiteSpace(Name) ? null : Name,
-        Parameters = ParseParameters(),
+        Parameters = CollectValues(),
     };
-
-    public static AutomationStepRowViewModel From(AutomationStepResponse step) => new()
-    {
-        Type = step.Type,
-        Name = step.Name ?? string.Empty,
-        ParametersText = string.Join('\n', step.Parameters.Select(kv => $"{kv.Key}={kv.Value}")),
-    };
-
-    private Dictionary<string, string> ParseParameters()
-    {
-        var dict = new Dictionary<string, string>();
-        foreach (var line in ParametersText.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            int eq = line.IndexOf('=');
-            if (eq > 0) dict[line[..eq].Trim()] = line[(eq + 1)..].Trim();
-        }
-        return dict;
-    }
 }
 
 /// <summary>Zaškrtávací volba jedné spouštěcí události v editoru automatizace.</summary>
@@ -67,6 +153,19 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
     private readonly DialogService _dialogs;
     private readonly JobProgressHubClient _hub;
     private bool _liveSubscribed;
+
+    // Katalog kroků (typ → popis + parametry) — plní typovaná pole parametrů v editoru.
+    private readonly Dictionary<AutomationStepType, AutomationStepCatalogResponse> _catalogByType = [];
+
+    private IReadOnlyList<AutomationParameterSpecResponse> SpecsFor(AutomationStepType type) =>
+        _catalogByType.TryGetValue(type, out var entry) ? entry.Parameters : [];
+
+    /// <summary>Nový řádek kroku napojený na katalog (pole se přegenerují, i když se katalog načte později).</summary>
+    private AutomationStepRowViewModel NewStepRow(
+        AutomationStepType type = AutomationStepType.Readiness,
+        string? name = null,
+        IReadOnlyDictionary<string, string>? parameters = null) =>
+        new(SpecsFor, type, name, parameters);
 
     public AutomationScopeKind[] Scopes { get; } = Enum.GetValues<AutomationScopeKind>();
 
@@ -142,26 +241,42 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
     [ObservableProperty] private AutomationResponse? _selected;
     [ObservableProperty] private AutomationRunResponse? _selectedRun;
     [ObservableProperty] private string _key = string.Empty;
-    [ObservableProperty] private string _name = string.Empty;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SaveSummary))]
+    private string _name = string.Empty;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsBranchScope), nameof(IsInstanceScope))]
+    [NotifyPropertyChangedFor(nameof(IsBranchScope), nameof(IsInstanceScope), nameof(SaveSummary))]
     private AutomationScopeKind _scopeKind = AutomationScopeKind.Global;
 
-    [ObservableProperty] private string _branchKey = string.Empty;
-    [ObservableProperty] private string _instanceKey = string.Empty;
-    [ObservableProperty] private string _cron = string.Empty;
-    [ObservableProperty] private decimal _intervalSeconds = 300;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SaveSummary))]
+    private string _branchKey = string.Empty;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SaveSummary))]
+    private string _instanceKey = string.Empty;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(NextRunsPreview), nameof(SaveSummary))]
+    private string _cron = string.Empty;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(NextRunsPreview), nameof(SaveSummary))]
+    private decimal _intervalSeconds = 300;
 
     // Schedule builder: a frequency + a local time of day (and weekday / day-of-month), translated to/from the
     // server's UTC cron by CronSchedule. Visibility of the fields below is driven off the chosen frequency.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowInterval), nameof(ShowTimeOfDay), nameof(ShowWeekday),
-        nameof(ShowDayOfMonth), nameof(ShowCustomCron))]
+        nameof(ShowDayOfMonth), nameof(ShowCustomCron), nameof(NextRunsPreview), nameof(SaveSummary))]
     private ScheduleKindOption? _selectedScheduleKind;
-    [ObservableProperty] private TimeSpan? _scheduleTimeOfDay = new TimeSpan(6, 0, 0);
-    [ObservableProperty] private WeekdayOption? _selectedWeekday;
-    [ObservableProperty] private decimal _scheduleDayOfMonth = 1;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(NextRunsPreview), nameof(SaveSummary))]
+    private TimeSpan? _scheduleTimeOfDay = new TimeSpan(6, 0, 0);
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(NextRunsPreview), nameof(SaveSummary))]
+    private WeekdayOption? _selectedWeekday;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(NextRunsPreview), nameof(SaveSummary))]
+    private decimal _scheduleDayOfMonth = 1;
     [ObservableProperty] private decimal _eventDebounceSeconds = 60;
     [ObservableProperty] private decimal _timeoutSeconds = 600;
     [ObservableProperty] private decimal _maxAttempts = 1;
@@ -171,8 +286,12 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
     [ObservableProperty] private bool _eventHealthDegraded = true;
     [ObservableProperty] private bool _eventStructureDrift = true;
     [ObservableProperty] private bool _eventAutomationRecovered;
-    [ObservableProperty] private bool _enabled = true;
-    [ObservableProperty] private bool _notificationsEnabled = true;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SaveSummary))]
+    private bool _enabled = true;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SaveSummary))]
+    private bool _notificationsEnabled = true;
     [ObservableProperty] private long? _editingVersion;
     [ObservableProperty] private string? _info;
     [ObservableProperty] private bool _hasNoAutomations;
@@ -191,6 +310,114 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
     public bool ShowDayOfMonth => SelectedScheduleKind?.Kind == ScheduleKind.Monthly;
     public bool ShowCustomCron => SelectedScheduleKind?.Kind == ScheduleKind.Custom;
 
+    private static readonly CultureInfo Czech = CultureInfo.GetCultureInfo("cs-CZ");
+
+    /// <summary>Tři nejbližší spuštění podle aktuálního plánu (místní čas) — okamžitá kontrola, že plán sedí.</summary>
+    public string NextRunsPreview
+    {
+        get
+        {
+            var kind = SelectedScheduleKind?.Kind ?? ScheduleKind.None;
+            var time = ScheduleTimeOfDay ?? new TimeSpan(6, 0, 0);
+            var now = DateTime.Now;
+            var next = new List<DateTime>(3);
+            switch (kind)
+            {
+                case ScheduleKind.None:
+                    return "Bez časového plánu — spustí se jen na zaškrtnuté události nebo ručně.";
+                case ScheduleKind.Custom:
+                    return "Podle cron výrazu (UTC); náhled se pro vlastní cron nepočítá.";
+                case ScheduleKind.Interval:
+                    if (IntervalSeconds <= 0) return "Zadej interval větší než 0 s.";
+                    for (int i = 1; i <= 3; i++) next.Add(now + TimeSpan.FromSeconds((double)IntervalSeconds * i));
+                    break;
+                case ScheduleKind.Daily:
+                {
+                    var first = now.Date + time;
+                    if (first <= now) first = first.AddDays(1);
+                    for (int i = 0; i < 3; i++) next.Add(first.AddDays(i));
+                    break;
+                }
+                case ScheduleKind.Weekly:
+                {
+                    var day = SelectedWeekday?.Day ?? DayOfWeek.Monday;
+                    var first = now.Date + time;
+                    while (first.DayOfWeek != day || first <= now) first = first.AddDays(1);
+                    for (int i = 0; i < 3; i++) next.Add(first.AddDays(7 * i));
+                    break;
+                }
+                case ScheduleKind.Monthly:
+                {
+                    int dom = Math.Clamp((int)ScheduleDayOfMonth, 1, 28);
+                    var candidate = new DateTime(now.Year, now.Month, dom) + time;
+                    if (candidate <= now) candidate = candidate.AddMonths(1);
+                    for (int i = 0; i < 3; i++) next.Add(candidate.AddMonths(i));
+                    break;
+                }
+            }
+            return "Příští spuštění: " + string.Join("  ·  ", next.Select(FormatRun));
+        }
+    }
+
+    private static string FormatRun(DateTime t)
+    {
+        string day = t.Date == DateTime.Today ? "dnes"
+            : t.Date == DateTime.Today.AddDays(1) ? "zítra"
+            : t.ToString("ddd d. M.", Czech);
+        return $"{day} {t:HH:mm}";
+    }
+
+    /// <summary>Lidská věta shrnující, co se uloží — uživatel si přečte, co automatizace skutečně udělá.</summary>
+    public string SaveSummary
+    {
+        get
+        {
+            string? schedule = (SelectedScheduleKind?.Kind ?? ScheduleKind.None) switch
+            {
+                ScheduleKind.Interval when IntervalSeconds > 0 => $"Každých {FormatInterval((int)IntervalSeconds)}",
+                ScheduleKind.Daily => $"Každý den v {Time():hh\\:mm}",
+                ScheduleKind.Weekly => $"Každé {(SelectedWeekday?.Label ?? "pondělí").ToLowerInvariant()} v {Time():hh\\:mm}",
+                ScheduleKind.Monthly => $"Každý měsíc {Math.Clamp((int)ScheduleDayOfMonth, 1, 28)}. v {Time():hh\\:mm}",
+                ScheduleKind.Custom => "Podle cron výrazu",
+                _ => null,
+            };
+            var triggers = EventTriggerOptions.Where(o => o.IsChecked).Select(o => $"„{o.Label}“").ToList();
+            string when = (schedule, triggers.Count) switch
+            {
+                (null, 0) => "Jen ručně",
+                (null, _) => $"Při události {string.Join(", ", triggers)}",
+                (_, 0) => schedule!,
+                _ => $"{schedule} a při události {string.Join(", ", triggers)}",
+            };
+            string scope = ScopeKind switch
+            {
+                AutomationScopeKind.Branch =>
+                    string.IsNullOrWhiteSpace(BranchKey) ? " pro vybranou větev" : $" pro větev {BranchKey}",
+                AutomationScopeKind.Instance =>
+                    string.IsNullOrWhiteSpace(InstanceKey) ? " pro vybranou instanci" : $" pro instanci {BranchKey}/{InstanceKey}",
+                _ => "",
+            };
+            var stepLabels = Steps.Select(s =>
+                (string)AutomationStepTypeLabelConverter.Instance.Convert(s.Type, typeof(string), null, Czech)!);
+            string notify = NotificationsEnabled
+                ? "Při problému ohlásí notifikace."
+                : "Notifikace jsou ztlumené.";
+            string disabled = Enabled ? "" : " (zatím zakázána)";
+            return $"{when}{scope} provede: {string.Join(" → ", stepLabels)}.{disabled} {notify}";
+
+            TimeSpan Time() => ScheduleTimeOfDay ?? new TimeSpan(6, 0, 0);
+        }
+    }
+
+    private static string FormatInterval(int seconds) => seconds switch
+    {
+        < 60 => $"{seconds} s",
+        < 3600 when seconds % 60 == 0 => $"{seconds / 60} min",
+        < 3600 => $"{seconds / 60} min {seconds % 60} s",
+        _ when seconds % 3600 == 0 => $"{seconds / 3600} h",
+        _ => $"{seconds / 3600} h {seconds % 3600 / 60} min",
+    };
+
     /// <summary>At-a-glance automation health, derived from the loaded list (no extra call). Drives the summary strip.</summary>
     public IReadOnlyList<StatLine> Summary =>
     [
@@ -208,9 +435,25 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
         _dialogs = dialogs;
         _hub = hub;
         EventTriggerGroups = BuildEventTriggerGroups();
-        Steps.Add(new AutomationStepRowViewModel());
+        Steps.Add(NewStepRow());
         SelectedScheduleKind = ScheduleKinds[0];   // "Bez časového plánu" until a template / edit sets the cadence
         SelectedWeekday = Weekdays[0];              // Pondělí
+
+        // Shrnutí věty reaguje i na zaškrtávátka událostí a na změny kroků (kolekce + typ kroku).
+        foreach (var opt in EventTriggerOptions)
+            opt.PropertyChanged += (_, _) => OnPropertyChanged(nameof(SaveSummary));
+        Steps.CollectionChanged += (_, e) =>
+        {
+            foreach (AutomationStepRowViewModel r in e.OldItems ?? Array.Empty<object>()) r.PropertyChanged -= OnStepRowChanged;
+            foreach (AutomationStepRowViewModel r in e.NewItems ?? Array.Empty<object>()) r.PropertyChanged += OnStepRowChanged;
+            OnPropertyChanged(nameof(SaveSummary));
+        };
+    }
+
+    private void OnStepRowChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(AutomationStepRowViewModel.Type))
+            OnPropertyChanged(nameof(SaveSummary));
     }
 
     /// <summary>Popisek tlačítka ztlumení podle aktuálního stavu vybrané automatizace.</summary>
@@ -240,6 +483,20 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
         }
         // System events are pushed to the scope group; join it so finished runs refresh the page live.
         try { await _hub.JoinScopeAsync(); } catch { /* realtime is best-effort */ }
+
+        // Katalog kroků (jednou): z něj se generují typovaná pole parametrů. Bez něj editor funguje dál,
+        // jen parametry zůstanou skryté a hodnoty se zachovají beze změny.
+        if (_catalogByType.Count == 0)
+        {
+            try
+            {
+                foreach (var entry in await _session.Require().GetAutomationCatalogAsync())
+                    _catalogByType[entry.Type] = entry;
+                foreach (var row in Steps)
+                    row.RebuildFields();
+            }
+            catch { /* katalog je vylepšení editoru, ne podmínka */ }
+        }
 
         await LoadBranchOptionsAsync();
         await LoadAsync();
@@ -371,7 +628,7 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
         RetryDelaySeconds = 30;
         FailureThreshold = 3;
         Steps.Clear();
-        Steps.Add(new AutomationStepRowViewModel());
+        Steps.Add(NewStepRow());
         foreach (var opt in EventTriggerOptions) opt.IsChecked = false;
         EventReadinessFailed = EventHealthDegraded = EventStructureDrift = true;
         EventAutomationRecovered = false;
@@ -400,8 +657,8 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
         FailureThreshold = 3;
 
         Steps.Clear();
-        foreach (var step in template.Steps) Steps.Add(AutomationStepRowViewModel.From(step));
-        if (Steps.Count == 0) Steps.Add(new AutomationStepRowViewModel());
+        foreach (var step in template.Steps) Steps.Add(NewStepRow(step.Type, step.Name, step.Parameters));
+        if (Steps.Count == 0) Steps.Add(NewStepRow());
 
         foreach (var opt in EventTriggerOptions) opt.IsChecked = false;
         EventReadinessFailed = template.DefaultEvents.Contains(NotificationEvent.ReadinessFailed);
@@ -442,8 +699,8 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
         RetryDelaySeconds = a.RetryDelaySeconds;
         FailureThreshold = a.FailureThreshold;
         Steps.Clear();
-        foreach (var step in a.Steps) Steps.Add(AutomationStepRowViewModel.From(step));
-        if (Steps.Count == 0) Steps.Add(new AutomationStepRowViewModel());
+        foreach (var step in a.Steps) Steps.Add(NewStepRow(step.Type, step.Name, step.Parameters));
+        if (Steps.Count == 0) Steps.Add(NewStepRow());
         foreach (var opt in EventTriggerOptions) opt.IsChecked = a.EventTriggers.Contains(opt.Event);
         EventReadinessFailed = a.Events.Contains(NotificationEvent.ReadinessFailed);
         EventHealthDegraded = a.Events.Contains(NotificationEvent.HealthDegraded);
@@ -455,7 +712,7 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
     }
 
     [RelayCommand]
-    private void AddStep() => Steps.Add(new AutomationStepRowViewModel());
+    private void AddStep() => Steps.Add(NewStepRow());
 
     [RelayCommand]
     private void RemoveStep(AutomationStepRowViewModel row)
