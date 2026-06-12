@@ -37,6 +37,23 @@
       <Panel>
         <DataGrid x:Name="JobsGrid" x:CompileBindings="False" Tapped="OnJobRowTapped" ItemsSource="{Binding Jobs}"
                   SelectedItem="{Binding SelectedJob}" IsReadOnly="True" AutoGenerateColumns="False" CanUserResizeColumns="True">
+          <!-- Pravý klik na úlohu: transportní akce + kopírování ID + smazání, bez přecházení do panelu
+               detailu. Pravé tlačítko řádek nejdřív vybere (viz RowContextMenu.Attach v code-behind). -->
+          <DataGrid.ContextMenu>
+            <ContextMenu>
+              <MenuItem Header="‖ Pozastavit" Command="{Binding PauseCommand}" IsEnabled="{Binding CanPause}"/>
+              <MenuItem Header="↻ Pokračovat" Command="{Binding ResumeCommand}" IsEnabled="{Binding CanResume}"/>
+              <MenuItem Header="■ Zrušit…" Classes="destructive" Command="{Binding CancelCommand}" IsEnabled="{Binding CanCancel}"/>
+              <MenuItem Header="↺ Opakovat" Command="{Binding RetryCommand}" IsEnabled="{Binding CanRetry}"/>
+              <Separator/>
+              <MenuItem Header="✉ Odeslat odlišné…" Command="{Binding SendDiffsCommand}" IsEnabled="{Binding CanSendDiffs}"/>
+              <MenuItem Header="Kopírovat ID úlohy" Command="{Binding CopyJobIdCommand}"/>
+              <Separator/>
+              <MenuItem Header="🗑&#xFE0E; Smazat úlohu…" Classes="destructive"
+                        Command="{Binding DeleteJobCommand}" CommandParameter="{Binding SelectedJob}"
+                        IsEnabled="{Binding SelectedJob.CanDelete, FallbackValue=False}"/>
+            </ContextMenu>
+          </DataGrid.ContextMenu>
           <DataGrid.Columns>
             <DataGridTemplateColumn Width="40" CanUserSort="False">
               <DataGridTemplateColumn.Header>
@@ -215,7 +232,15 @@
                 IsVisible="{Binding MoreFilesAvailable}" Command="{Binding LoadMoreFilesCommand}"/>
         <Panel>
           <DataGrid x:Name="FilesGrid" x:CompileBindings="False" ItemsSource="{Binding FilesView}" IsReadOnly="True" MinHeight="160"
+                    SelectedItem="{Binding SelectedFile}"
                     AutoGenerateColumns="False" CanUserResizeColumns="True" DoubleTapped="OnFileDoubleTapped">
+            <!-- Pravý klik na soubor: detail bez dvojkliku + název do schránky (do ticketu / hlášení). -->
+            <DataGrid.ContextMenu>
+              <ContextMenu>
+                <MenuItem Header="Otevřít detail" Command="{Binding OpenFileDetailCommand}" CommandParameter="{Binding SelectedFile}"/>
+                <MenuItem Header="Kopírovat název souboru" Command="{Binding CopyFileNameCommand}" CommandParameter="{Binding SelectedFile}"/>
+              </ContextMenu>
+            </DataGrid.ContextMenu>
             <DataGrid.Columns>
               <DataGridTemplateColumn Header="Stav" Width="140">
                 <DataGridTemplateColumn.CellTemplate>

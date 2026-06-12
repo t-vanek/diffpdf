@@ -65,6 +65,9 @@ public partial class JobsViewModel : PageViewModel
 
     public JobSummary? SelectedSummary => SelectedJob?.Job;
 
+    /// <summary>Vybraný řádek souborového seznamu — cíl kontextového menu (otevřít detail / kopírovat název).</summary>
+    [ObservableProperty] private FilePairLine? _selectedFile;
+
     [ObservableProperty] private double _liveProgress;
     [ObservableProperty] private string? _liveStatus;
     [ObservableProperty] private string? _info;
@@ -583,6 +586,11 @@ public partial class JobsViewModel : PageViewModel
     [RelayCommand]
     private Task CopyJobIdAsync() =>
         SelectedSummary is { } s ? _dialogs.CopyToClipboardAsync(s.Id.ToString(), "ID úlohy zkopírováno.") : Task.CompletedTask;
+
+    /// <summary>Zkopíruje název souboru z kontextového menu řádku — tester ho vkládá do ticketu/hlášení.</summary>
+    [RelayCommand]
+    private Task CopyFileNameAsync(FilePairLine? line) =>
+        (line ?? SelectedFile) is { } f ? _dialogs.CopyToClipboardAsync(f.Name, "Název souboru zkopírován.") : Task.CompletedTask;
 
     /// <summary>Opens the send dialog for the whole batch — every differing pair of the selected finished job.</summary>
     [RelayCommand]

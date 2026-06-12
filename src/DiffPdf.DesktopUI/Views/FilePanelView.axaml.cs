@@ -33,6 +33,11 @@ public partial class FilePanelView : UserControl
         AddHandler(DragDrop.DropEvent, OnDrop, RoutingStrategies.Bubble, handledEventsToo: true);
         DragDrop.SetAllowDrop(this, true);
 
+        // Right-click selects the row under the cursor (keeping a multi-selection that contains it) before
+        // the context menu opens; the menu stays available on empty space for the folder-level actions
+        // (Nahrát sem, Nová složka, Obnovit).
+        Infrastructure.RowContextMenu.Attach(ItemsGrid, openOnEmpty: true);
+
         // Drag source: a pressed row that travels past the threshold starts a panel→panel drag.
         ItemsGrid.AddHandler(PointerPressedEvent, OnGridPointerPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
         ItemsGrid.AddHandler(PointerMovedEvent, OnGridPointerMoved, RoutingStrategies.Tunnel, handledEventsToo: true);
@@ -215,6 +220,7 @@ public partial class FilePanelView : UserControl
     private void OnRename(object? sender, RoutedEventArgs e) => InvokeManager(m => m.RenameCommand.Execute(null));
     private void OnDelete(object? sender, RoutedEventArgs e) => InvokeManager(m => m.DeleteCommand.Execute(null));
     private void OnCreateFolder(object? sender, RoutedEventArgs e) => InvokeManager(m => m.CreateFolderCommand.Execute(null));
+    private void OnCopyPath(object? sender, RoutedEventArgs e) => InvokeManager(m => m.CopyPathCommand.Execute(null));
 
     private void InvokeManager(Action<FileManagerViewModel> action)
     {

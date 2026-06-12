@@ -146,6 +146,10 @@
   <Style Selector="Button.destructive">
     <Setter Property="Foreground" Value="{DynamicResource Bad}"/>
   </Style>
+  <!-- Same meaning inside a context menu — the destructive entry (Smazat…) reads red at a glance. -->
+  <Style Selector="MenuItem.destructive">
+    <Setter Property="Foreground" Value="{DynamicResource Bad}"/>
+  </Style>
 
   <!-- Filled destructive primary — the confirm button of a danger dialog ("Smazat", "Zrušit úlohu").
        Red fill so the irreversible choice is unmistakable; per-state template overrides for the same

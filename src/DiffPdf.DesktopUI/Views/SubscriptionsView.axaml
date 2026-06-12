@@ -30,8 +30,16 @@
 
     <Grid ColumnDefinitions="3*,2*">
       <!-- Seznam pravidel -->
-      <DataGrid Grid.Column="0" Margin="0,0,12,0" x:CompileBindings="False" ItemsSource="{Binding Rules}"
+      <DataGrid Grid.Column="0" Margin="0,0,12,0" x:Name="RulesGrid" x:CompileBindings="False" ItemsSource="{Binding Rules}"
                 SelectedItem="{Binding Selected}" IsReadOnly="True" AutoGenerateColumns="False" CanUserResizeColumns="True">
+        <!-- Pravý klik na pravidlo: výběr řádku ho rovnou otevře v editoru vpravo, menu nese zbylé akce. -->
+        <DataGrid.ContextMenu>
+          <ContextMenu>
+            <MenuItem Header="Nové pravidlo" Command="{Binding NewCommand}"/>
+            <Separator/>
+            <MenuItem Header="🗑&#xFE0E; Smazat pravidlo…" Classes="destructive" Command="{Binding DeleteCommand}"/>
+          </ContextMenu>
+        </DataGrid.ContextMenu>
         <DataGrid.Columns>
           <DataGridTextColumn Header="Název" Binding="{Binding DisplayName}" Width="140"/>
           <DataGridTextColumn Header="Příjemci" Binding="{Binding RecipientsSummary}" Width="*"/>

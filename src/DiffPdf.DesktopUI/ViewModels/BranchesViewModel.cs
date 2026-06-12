@@ -253,6 +253,11 @@ public partial class BranchesViewModel : PageViewModel
         if (!string.IsNullOrEmpty(outcome.Message)) Info = outcome.Message;
     });
 
+    /// <summary>Zkopíruje klíč větve do schránky (kontextové menu řádku) — pro vyhledávání v API/logu.</summary>
+    [RelayCommand]
+    private Task CopyKeyAsync(BranchRowViewModel? row) =>
+        (row ?? SelectedRow) is { } r ? _dialogs.CopyToClipboardAsync(r.Branch.Key, "Klíč větve zkopírován.") : Task.CompletedTask;
+
     /// <summary>Otevře konfiguraci (triggery + porovnávače) této větve (ozubené kolo u řádku).</summary>
     [RelayCommand]
     private async Task OpenSettingsAsync(BranchRowViewModel? row)

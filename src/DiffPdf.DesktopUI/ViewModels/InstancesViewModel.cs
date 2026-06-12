@@ -293,6 +293,16 @@ public partial class InstancesViewModel : PageViewModel
         if (!string.IsNullOrEmpty(outcome.Message)) Info = outcome.Message;
     });
 
+    /// <summary>Zkopíruje klíč instance do schránky (kontextové menu řádku) — pro vyhledávání v API/logu.</summary>
+    [RelayCommand]
+    private Task CopyKeyAsync(InstanceRowViewModel? row) =>
+        (row ?? SelectedRow) is { } r ? _dialogs.CopyToClipboardAsync(r.Instance.Key, "Klíč instance zkopírován.") : Task.CompletedTask;
+
+    /// <summary>Zkopíruje základní cestu instance do schránky — cesta není ve mřížce, tohle je nejrychlejší způsob, jak ji dostat.</summary>
+    [RelayCommand]
+    private Task CopyPathAsync(InstanceRowViewModel? row) =>
+        (row ?? SelectedRow) is { } r ? _dialogs.CopyToClipboardAsync(r.Instance.BasePath, "Cesta instance zkopírována.") : Task.CompletedTask;
+
     /// <summary>Otevře formulář pro vytvoření nové instance pod vybranou větví (modální dialog).</summary>
     [RelayCommand]
     private async Task ShowCreate()

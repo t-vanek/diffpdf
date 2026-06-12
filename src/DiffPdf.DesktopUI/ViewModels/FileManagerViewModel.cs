@@ -169,6 +169,7 @@ public partial class FileManagerViewModel : PageViewModel
     private void RefreshCommandStates()
     {
         RenameCommand.NotifyCanExecuteChanged();
+        CopyPathCommand.NotifyCanExecuteChanged();
         DeleteCommand.NotifyCanExecuteChanged();
         DownloadCommand.NotifyCanExecuteChanged();
         CopyToOtherPanelCommand.NotifyCanExecuteChanged();
@@ -235,6 +236,12 @@ public partial class FileManagerViewModel : PageViewModel
         await RefreshPanelsShowingAsync(ActivePanel.Backend, ActivePanel.CurrentPath);
         ActivePanel.SelectByPath(renamed.Path);
     });
+
+    /// <summary>Zkopíruje úplnou cestu označené položky aktivního panelu (kontextové menu) —
+    /// tester ji vkládá do hlášení nebo do konfigurace instance.</summary>
+    [RelayCommand(CanExecute = nameof(HasSingleSelection))]
+    private Task CopyPathAsync() =>
+        ActivePanel.PrimaryItem is { } item ? _dialogs.CopyToClipboardAsync(item.Path, "Cesta zkopírována.") : Task.CompletedTask;
 
     [RelayCommand(CanExecute = nameof(HasSelection))]
     private Task DeleteAsync() => RunAsync(async () =>
