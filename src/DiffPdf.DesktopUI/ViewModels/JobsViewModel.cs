@@ -60,7 +60,7 @@ public partial class JobsViewModel : PageViewModel
     [ObservableProperty] private JobStatus? _filterStatus;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(SelectedSummary), nameof(CanPause), nameof(CanResume), nameof(CanCancel), nameof(CanRetry))]
+    [NotifyPropertyChangedFor(nameof(SelectedSummary), nameof(CanPause), nameof(CanResume), nameof(CanCancel), nameof(CanRetry), nameof(CanSendDiffs))]
     private JobRowViewModel? _selectedJob;
 
     public JobSummary? SelectedSummary => SelectedJob?.Job;
@@ -93,6 +93,8 @@ public partial class JobsViewModel : PageViewModel
     public bool CanResume => SelectedSummary?.Status == JobStatus.Paused;
     public bool CanCancel => SelectedSummary?.Status is JobStatus.Draft or JobStatus.Queued or JobStatus.Running or JobStatus.Paused;
     public bool CanRetry => SelectedSummary?.Status is JobStatus.Completed or JobStatus.Failed or JobStatus.Cancelled;
+    /// <summary>The batch send needs a finished report; whether anything actually differs is the server's call (400 + toast).</summary>
+    public bool CanSendDiffs => SelectedSummary?.Status == JobStatus.Completed;
 
     /// <summary>Počet zaškrtnutých smazatelných úloh — řídí popisek a dostupnost tlačítka "Smazat vybrané".</summary>
     [ObservableProperty]
@@ -387,7 +389,7 @@ public partial class JobsViewModel : PageViewModel
         LiveProgress = p.Progress;
         LiveStatus = p.Status;
         OnPropertyChanged(nameof(CanPause)); OnPropertyChanged(nameof(CanResume));
-        OnPropertyChanged(nameof(CanCancel)); OnPropertyChanged(nameof(CanRetry));
+        OnPropertyChanged(nameof(CanCancel)); OnPropertyChanged(nameof(CanRetry)); OnPropertyChanged(nameof(CanSendDiffs));
         if (terminal) _ = LoadDetailAsync(p.JobId); // pull the report/files/verdict into the open detail
     }
 
@@ -567,6 +569,17 @@ public partial class JobsViewModel : PageViewModel
     private Task CopyJobIdAsync() =>
         SelectedSummary is { } s ? _dialogs.CopyToClipboardAsync(s.Id.ToString(), "ID úlohy zkopírováno.") : Task.CompletedTask;
 
+    /// <summary>Opens the send dialog for the whole batch — every differing pair of the selected finished job.</summary>
+    [RelayCommand]
+    private async Task SendDiffsAsync()
+    {
+        if (SelectedJob is not { } sel || !CanSendDiffs) return;
+        var vm = new SendDiffsDialogViewModel(_session, sel.Id,
+            $"Celá dávka {sel.Job.BranchKey}/{sel.Job.InstanceKey} — odešlou se všechny odlišné dvojice.", files: null);
+        if (await _dialogs.ShowSendDiffsAsync(vm) is { } sent)
+            _dialogs.ShowToast(SendDiffsDialogViewModel.SuccessToast(sent), ToastKind.Success);
+    }
+
     private Task ActAsync(Func<DiffPdfClient, Task<JobSummary>> action) => RunAsync(async () =>
     {
         if (SelectedJob is null) throw new InvalidOperationException("Vyber úlohu.");
@@ -574,7 +587,7 @@ public partial class JobsViewModel : PageViewModel
         SelectedJob.Apply(updated);
         OnPropertyChanged(nameof(SelectedSummary));
         OnPropertyChanged(nameof(CanPause)); OnPropertyChanged(nameof(CanResume));
-        OnPropertyChanged(nameof(CanCancel)); OnPropertyChanged(nameof(CanRetry));
+        OnPropertyChanged(nameof(CanCancel)); OnPropertyChanged(nameof(CanRetry)); OnPropertyChanged(nameof(CanSendDiffs));
         Info = $"Úloha: {updated.Status}.";
     });
 

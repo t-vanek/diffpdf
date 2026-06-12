@@ -42,7 +42,7 @@ public sealed class NotificationDispatcher(
         {
             try
             {
-                await sender.SendAsync(settings, rule.Recipients, notification.Title, notification.Summary, ct);
+                await sender.SendAsync(settings, rule.Recipients, notification.Title, notification.Summary, ct: ct);
             }
             catch (Exception ex)
             {

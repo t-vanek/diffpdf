@@ -161,6 +161,7 @@ Všechny aplikační cesty jsou pod prefixem **`/api/v1`**. OpenAPI dokument je 
 | `POST` | `/api/v1/jobs/{id}/pause` | Pozastaví běžící úlohu. |
 | `POST` | `/api/v1/jobs/{id}/resume` | Obnoví pozastavenou úlohu. |
 | `POST` | `/api/v1/jobs/{id}/retry` | Znovu spustí failed file-pairs hotové úlohy. |
+| `POST` | `/api/v1/jobs/{id}/send` | Pošle e-mailem zvýrazněná diff-PDF — jedné dvojice, výběru (`files`), nebo všech odlišných; velké/početné přílohy se sbalí do ZIP (`413` nad `Notifications:MaxMailAttachmentMb`, default 20 MB). |
 | `GET`  | `/api/v1/jobs/{id}/artifacts/{**path}` | Stažení zvýrazněného diff-PDF. |
 | `POST` `GET` | `/api/v1/subscriptions` | Vytvoří / vypíše notifikační odběry. |
 | `GET` `PUT` `DELETE` | `/api/v1/subscriptions/{id}` | Detail / úprava (`Version` → `409`) / smazání (`204`). |
