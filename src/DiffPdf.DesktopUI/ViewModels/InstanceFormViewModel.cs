@@ -123,6 +123,17 @@ public partial class InstanceFormViewModel : ViewModelBase, IModalViewModel
     [RelayCommand]
     private void Cancel() => CloseRequested?.Invoke();
 
+    // Živá re-validace — stejné chování jako BranchFormViewModel: po prvním neúspěšném uložení se chyba
+    // přepočítává průběžně a zmizí, jakmile je vstup v pořádku.
+    partial void OnKeyChanged(string value) => RevalidateIfInvalid();
+    partial void OnNameChanged(string value) => RevalidateIfInvalid();
+    partial void OnRootChanged(string value) => RevalidateIfInvalid();
+    partial void OnBasePathChanged(string value) => RevalidateIfInvalid();
+    private void RevalidateIfInvalid()
+    {
+        if (ValidationError is not null) ValidationError = Validate();
+    }
+
     /// <summary>Klientská kontrola: povinná pole + unikátnost v rámci větve (klíč case-sensitive). Null = OK.</summary>
     private string? Validate()
     {
@@ -133,11 +144,11 @@ public partial class InstanceFormViewModel : ViewModelBase, IModalViewModel
             if (key.Length == 0) return "Zadej klíč.";
             if (!ScopeKey.IsValid(key)) return ScopeKey.Rule;
             if (_existingKeys.Any(k => string.Equals(k, key, StringComparison.Ordinal)))
-                return $"Instance s klíčem '{key}' už v této větvi existuje.";
+                return $"Instance s klíčem {UiText.Quote(key)} už v této větvi existuje.";
         }
         if (name.Length == 0) return "Zadej název.";
         if (_otherNames.Any(n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase)))
-            return $"Instance s názvem '{name}' už v této větvi existuje.";
+            return $"Instance s názvem {UiText.Quote(name)} už v této větvi existuje.";
 
         if (IsCreateMode)
         {

@@ -50,6 +50,8 @@ public partial class EmailSettingsViewModel : ViewModelBase
     [RelayCommand]
     private Task SaveAsync() => RunAsync(async () =>
     {
+        // Klientská kontrola před voláním serveru — ať uživatel dostane srozumitelnou odpověď hned.
+        if (Validate() is { } validation) { Info = null; Error = validation; return; }
         var saved = await _session.Require().UpdateEmailSettingsAsync(new UpdateEmailSettingsRequest
         {
             Host = Host,
@@ -73,8 +75,20 @@ public partial class EmailSettingsViewModel : ViewModelBase
     {
         var to = TestTo?.Trim() ?? string.Empty;
         if (to.Length == 0) { Info = "Zadej adresu, na kterou poslat test."; return; }
+        if (!to.Contains('@')) { Info = null; Error = $"{UiText.Quote(to)} není e-mailová adresa."; return; }
         await _session.Require().SendTestEmailAsync(new SendTestEmailRequest { To = to });
         Info = $"Testovací e-mail odeslán na {to}.";
         ToastSink?.Show(Info, ToastKind.Success);
     });
+
+    /// <summary>Povinná pole pro funkční odesílání: SMTP server a odesílací adresa (s '@'). Null = OK.</summary>
+    private string? Validate()
+    {
+        if (string.IsNullOrWhiteSpace(Host)) return "Zadej adresu SMTP serveru.";
+        if (Port is < 1 or > 65535) return "Port musí být mezi 1 a 65535.";
+        var from = FromAddress?.Trim() ?? string.Empty;
+        if (from.Length == 0) return "Zadej odesílací adresu (pole „Odesílatel“).";
+        if (!from.Contains('@')) return $"{UiText.Quote(from)} není e-mailová adresa.";
+        return null;
+    }
 }

@@ -62,6 +62,10 @@
   <SolidColorBrush x:Key="Accent" Color="#EE7D00"/>
   <SolidColorBrush x:Key="Good"   Color="#5FD27E"/>
   <SolidColorBrush x:Key="Bad"    Color="#FF5C61"/>
+  <!-- Filled destructive button (confirm dialogs): hover lift + a dark text that clears AA on the red
+       fill — white on this red sits at only ~3:1, same problem as white-on-accent. -->
+  <SolidColorBrush x:Key="BadHover" Color="#FF767A"/>
+  <SolidColorBrush x:Key="OnBad"    Color="#33090C"/>
   <SolidColorBrush x:Key="Warn"   Color="#E2A03B"/>
   <SolidColorBrush x:Key="Info"   Color="#6FB7FF"/>
   <SolidColorBrush x:Key="Paused" Color="#E5A050"/>

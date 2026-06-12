@@ -182,7 +182,8 @@
       </ItemsControl.ItemsPanel>
       <ItemsControl.ItemTemplate>
         <DataTemplate x:DataType="services:ToastItem">
-          <Border Classes="fadeIn" Background="{DynamicResource SurfaceAlt}" BorderBrush="{Binding Accent}" BorderThickness="1"
+          <Border Classes="toast fadeIn" Classes.closing="{Binding IsClosing}"
+                  Background="{DynamicResource SurfaceAlt}" BorderBrush="{Binding Accent}" BorderThickness="1"
                   CornerRadius="{DynamicResource RadSm}" MinWidth="220" MaxWidth="380" ClipToBounds="True">
             <StackPanel Orientation="Horizontal">
               <Border Width="4" Background="{Binding Accent}"/>

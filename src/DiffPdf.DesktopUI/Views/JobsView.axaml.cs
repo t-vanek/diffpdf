@@ -6,6 +6,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.VisualTree;
+using DiffPdf.DesktopUI.Infrastructure;
 using DiffPdf.DesktopUI.ViewModels;
 
 namespace DiffPdf.DesktopUI.Views;
@@ -18,6 +19,9 @@ public partial class JobsView : UserControl
         // Lazy "load more on scroll" for both grids; the visible "Načíst další" button is the reliable fallback.
         HookLoadMoreOnScroll(JobsGrid, () => (DataContext as JobsViewModel)?.LoadMoreJobsCommand);
         HookLoadMoreOnScroll(FilesGrid, () => (DataContext as JobsViewModel)?.LoadMoreFilesCommand);
+        // Right-click selects the row under the cursor before its context menu opens (Windows convention).
+        RowContextMenu.Attach(JobsGrid);
+        RowContextMenu.Attach(FilesGrid);
     }
 
     // Best-effort: when the DataGrid's vertical scrollbar nears the end, invoke the supplied "load more" command.

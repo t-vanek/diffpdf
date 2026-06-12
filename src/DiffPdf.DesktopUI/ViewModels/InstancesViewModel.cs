@@ -271,7 +271,19 @@ public partial class InstancesViewModel : PageViewModel
     [RelayCommand] private Task EnqueueInstance(InstanceRowViewModel row) => QueueInstanceAsync(row, QueueAction.Enqueue);
     [RelayCommand] private Task PauseInstance(InstanceRowViewModel row) => QueueInstanceAsync(row, QueueAction.Pause);
     [RelayCommand] private Task ResumeInstance(InstanceRowViewModel row) => QueueInstanceAsync(row, QueueAction.Resume);
-    [RelayCommand] private Task StopInstance(InstanceRowViewModel row) => QueueInstanceAsync(row, QueueAction.Stop);
+
+    /// <summary>Stop zruší rozběhnutou úlohu instance (nevratně) — na rozdíl od vratné pauzy chce potvrzení.</summary>
+    [RelayCommand]
+    private async Task StopInstance(InstanceRowViewModel row)
+    {
+        if (row is null) return;
+        if (!await _dialogs.ConfirmAsync("Zastavit instanci",
+                $"Rozběhnutá úloha instance {UiText.Quote(row.Instance.Key)} se zruší a porovnání se nedokončí. " +
+                "Pokud chceš jen dočasně přerušit, použij Pozastavit.",
+                confirmText: "Zastavit", cancelText: "Nechat běžet", danger: true))
+            return;
+        await QueueInstanceAsync(row, QueueAction.Stop);
+    }
 
     private Task QueueInstanceAsync(InstanceRowViewModel? row, QueueAction action) => RunAsync(async () =>
     {
@@ -281,17 +293,27 @@ public partial class InstancesViewModel : PageViewModel
         if (!string.IsNullOrEmpty(outcome.Message)) Info = outcome.Message;
     });
 
+    /// <summary>Zkopíruje klíč instance do schránky (kontextové menu řádku) — pro vyhledávání v API/logu.</summary>
+    [RelayCommand]
+    private Task CopyKeyAsync(InstanceRowViewModel? row) =>
+        (row ?? SelectedRow) is { } r ? _dialogs.CopyToClipboardAsync(r.Instance.Key, "Klíč instance zkopírován.") : Task.CompletedTask;
+
+    /// <summary>Zkopíruje základní cestu instance do schránky — cesta není ve mřížce, tohle je nejrychlejší způsob, jak ji dostat.</summary>
+    [RelayCommand]
+    private Task CopyPathAsync(InstanceRowViewModel? row) =>
+        (row ?? SelectedRow) is { } r ? _dialogs.CopyToClipboardAsync(r.Instance.BasePath, "Cesta instance zkopírována.") : Task.CompletedTask;
+
     /// <summary>Otevře formulář pro vytvoření nové instance pod vybranou větví (modální dialog).</summary>
     [RelayCommand]
     private async Task ShowCreate()
     {
-        if (SelectedBranch is not { } branch) { Info = "Vyber větev."; return; }
+        if (SelectedBranch is not { } branch) { Info = UiText.SelectBranchFirst; return; }
         var keys = Instances.Select(r => r.Instance.Key).ToList();
         var names = Instances.Select(r => r.Instance.Name).ToList();
         var form = InstanceFormViewModel.ForCreate(_session, branch.Key, ScopeRoot, keys, names);
         if (await _dialogs.ShowInstanceFormAsync(form))
         {
-            Info = $"Instance '{form.Key.Trim()}' vytvořena.";
+            Info = $"Instance {UiText.Quote(form.Key.Trim())} vytvořena.";
             await RunAsync(LoadInstancesAsync);
         }
     }
@@ -306,7 +328,7 @@ public partial class InstancesViewModel : PageViewModel
         var form = InstanceFormViewModel.ForEdit(_session, branch.Key, inst, otherNames);
         if (await _dialogs.ShowInstanceFormAsync(form))
         {
-            Info = $"Instance '{inst.Key}' uložena.";
+            Info = $"Instance {UiText.Quote(inst.Key)} uložena.";
             await RunAsync(LoadInstancesAsync);
         }
     }
@@ -316,10 +338,11 @@ public partial class InstancesViewModel : PageViewModel
     {
         if (SelectedBranch is not { } branch || SelectedInstance is not { } inst)
             throw new InvalidOperationException("Vyber větev i instanci.");
-        if (!await _dialogs.ConfirmAsync("Smazat instanci", $"Opravdu smazat instanci '{inst.Key}'?"))
+        if (!await _dialogs.ConfirmAsync("Smazat instanci",
+                $"Instance {UiText.Quote(inst.Key)} se smaže včetně svých úloh.", confirmText: "Smazat", danger: true))
             return;
         await _session.Require().DeleteInstanceAsync(branch.Key, inst.Key);
-        Info = $"Instance '{inst.Key}' smazána.";
+        Info = $"Instance {UiText.Quote(inst.Key)} smazána.";
         await LoadInstancesAsync();
     });
 
@@ -327,10 +350,11 @@ public partial class InstancesViewModel : PageViewModel
     [RelayCommand]
     private Task DeleteSelectedAsync() => RunAsync(async () =>
     {
-        if (SelectedBranch is not { } branch) { Info = "Vyber větev."; return; }
+        if (SelectedBranch is not { } branch) { Info = UiText.SelectBranchFirst; return; }
         var targets = Instances.Where(r => r.IsSelected).Select(r => r.Instance).ToList();
-        if (targets.Count == 0) { Info = "Nevybral jsi žádnou instanci."; return; }
-        if (!await _dialogs.ConfirmAsync("Smazat instance", $"Opravdu smazat vybrané instance ({targets.Count})?"))
+        if (targets.Count == 0) { Info = UiText.NothingSelected("instanci"); return; }
+        if (!await _dialogs.ConfirmAsync("Smazat instance",
+                $"Vybrané instance ({targets.Count}) se smažou včetně svých úloh.", confirmText: "Smazat", danger: true))
             return;
 
         var client = _session.Require();
@@ -344,7 +368,7 @@ public partial class InstancesViewModel : PageViewModel
 
         Info = failed.Count == 0
             ? $"Smazáno {deleted} instancí."
-            : $"Smazáno {deleted}, nešlo smazat {failed.Count}: {string.Join("; ", failed)}";
+            : UiText.PartialFailure("Smazáno", deleted, failed);
         await LoadInstancesAsync();
     });
 
@@ -358,9 +382,9 @@ public partial class InstancesViewModel : PageViewModel
 
     private Task SetSelectedEnabledAsync(bool enabled) => RunAsync(async () =>
     {
-        if (SelectedBranch is not { } branch) { Info = "Vyber větev."; return; }
+        if (SelectedBranch is not { } branch) { Info = UiText.SelectBranchFirst; return; }
         var targets = Instances.Where(r => r.IsSelected).Select(r => r.Instance).ToList();
-        if (targets.Count == 0) { Info = "Nevybral jsi žádnou instanci."; return; }
+        if (targets.Count == 0) { Info = UiText.NothingSelected("instanci"); return; }
 
         var client = _session.Require();
         int done = 0;

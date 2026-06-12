@@ -33,7 +33,7 @@ public class AutomationDefinitionsViewModelTests
 
         var byLabel = vm.Summary.ToDictionary(l => l.Label, l => l.Count);
         Assert.Equal(3, byLabel["Celkem"]);
-        Assert.Equal(1, byLabel["OK"]);
+        Assert.Equal(1, byLabel["V pořádku"]);
         Assert.Equal(1, byLabel["Selhané"]);
         Assert.Equal(1, byLabel["Nespuštěné"]);
         Assert.Equal(1, byLabel["Zakázané"]);

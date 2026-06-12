@@ -44,8 +44,17 @@
     <Grid ColumnDefinitions="3*,2*">
       <DockPanel Grid.Column="0" Margin="0,0,12,0">
         <Panel DockPanel.Dock="Top" Height="260">
-          <DataGrid x:CompileBindings="False" ItemsSource="{Binding Automations}"
+          <DataGrid x:Name="AutomationsGrid" x:CompileBindings="False" ItemsSource="{Binding Automations}"
                     SelectedItem="{Binding Selected}" IsReadOnly="True" AutoGenerateColumns="False" CanUserResizeColumns="True">
+            <!-- Pravý klik na automatizaci: spustit hned / upravit / smazat bez hledání tlačítek v editoru. -->
+            <DataGrid.ContextMenu>
+              <ContextMenu>
+                <MenuItem Header="▸ Spustit teď" Command="{Binding RunNowCommand}"/>
+                <MenuItem Header="✎ Upravit" Command="{Binding EditSelectedCommand}"/>
+                <Separator/>
+                <MenuItem Header="🗑&#xFE0E; Smazat…" Classes="destructive" Command="{Binding DeleteCommand}"/>
+              </ContextMenu>
+            </DataGrid.ContextMenu>
             <DataGrid.Columns>
               <DataGridTextColumn Header="Klíč" Binding="{Binding Key}" Width="140"/>
               <DataGridTextColumn Header="Kategorie" Binding="{Binding Category, Converter={x:Static vm:AutomationCategoryLabelConverter.Instance}}" Width="130"/>
@@ -305,7 +314,7 @@
           <CheckBox Content="Nesoulad struktury" IsChecked="{Binding EventStructureDrift}"/>
           <CheckBox Content="Automatizace obnovena" IsChecked="{Binding EventAutomationRecovered}"/>
           <CheckBox Content="Povoleno" IsChecked="{Binding Enabled}"/>
-          <Button Content="Uložit automatizaci" Classes="accent" Command="{Binding SaveCommand}" HorizontalAlignment="Left"/>
+          <Button Content="Uložit automatizaci" Classes="accent" Command="{Binding SaveCommand}" HorizontalAlignment="Left" IsEnabled="{Binding !IsBusy}"/>
         </StackPanel>
       </ScrollViewer>
     </Grid>

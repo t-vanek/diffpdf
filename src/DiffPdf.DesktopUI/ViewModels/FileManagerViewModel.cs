@@ -169,6 +169,7 @@ public partial class FileManagerViewModel : PageViewModel
     private void RefreshCommandStates()
     {
         RenameCommand.NotifyCanExecuteChanged();
+        CopyPathCommand.NotifyCanExecuteChanged();
         DeleteCommand.NotifyCanExecuteChanged();
         DownloadCommand.NotifyCanExecuteChanged();
         CopyToOtherPanelCommand.NotifyCanExecuteChanged();
@@ -236,6 +237,12 @@ public partial class FileManagerViewModel : PageViewModel
         ActivePanel.SelectByPath(renamed.Path);
     });
 
+    /// <summary>Zkopíruje úplnou cestu označené položky aktivního panelu (kontextové menu) —
+    /// tester ji vkládá do hlášení nebo do konfigurace instance.</summary>
+    [RelayCommand(CanExecute = nameof(HasSingleSelection))]
+    private Task CopyPathAsync() =>
+        ActivePanel.PrimaryItem is { } item ? _dialogs.CopyToClipboardAsync(item.Path, "Cesta zkopírována.") : Task.CompletedTask;
+
     [RelayCommand(CanExecute = nameof(HasSelection))]
     private Task DeleteAsync() => RunAsync(async () =>
     {
@@ -246,7 +253,7 @@ public partial class FileManagerViewModel : PageViewModel
             ? $"„{selection[0].Name}“"
             : Format.Plural(selection.Count, "vybranou položku", "vybrané položky", "vybraných položek");
         string where = ActivePanel.IsServer ? "na serveru" : "na tomto počítači (do koše)";
-        if (!await _dialogs.ConfirmAsync("Smazat", $"Opravdu smazat {what} {where}?"))
+        if (!await _dialogs.ConfirmAsync("Smazat", $"Smaže se {what} {where}.", confirmText: "Smazat", danger: true))
             return;
 
         var backend = ActivePanel.Backend;
@@ -278,7 +285,8 @@ public partial class FileManagerViewModel : PageViewModel
             string folders = string.Join(", ", nonEmptyFolders.Select(f => $"„{f.Name}“"));
             if (await _dialogs.ConfirmAsync(
                     "Složka není prázdná",
-                    $"{folders}: složka obsahuje další položky (i takové, které tento seznam nezobrazuje). Smazat včetně celého obsahu?"))
+                    $"{folders}: složka obsahuje další položky (i takové, které tento seznam nezobrazuje).",
+                    confirmText: "Smazat včetně obsahu", cancelText: "Přeskočit", danger: true))
             {
                 foreach (var folder in nonEmptyFolders)
                 {

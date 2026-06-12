@@ -47,6 +47,19 @@
             </Style.Animations>
         </Style>
 
+        <!-- Toast leave: ToastService flips IsClosing shortly before removing the item, the bound
+             "closing" class then fades the card out through this transition (enter is the fadeIn above). -->
+        <Style Selector="Border.toast">
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.25" Easing="CubicEaseIn"/>
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Border.toast.closing">
+            <Setter Property="Opacity" Value="0"/>
+        </Style>
+
         <!-- Rotating ring spinner for loading states. -->
         <Style Selector="Ellipse.spinner">
             <Setter Property="Width" Value="18"/>

@@ -51,6 +51,19 @@ public class ViewModelBaseTests
         });
     }
 
+    // Truly unexpected exceptions (not API, not connection, not a guard InvalidOperationException) keep their
+    // technical detail but get a Czech framing so they don't read like the app's own text.
+    [Fact]
+    public void Unexpected_errors_are_prefixed_but_keep_the_detail()
+    {
+        AsyncPump.Run(async () =>
+        {
+            var vm = new ProbeViewModel();
+            await vm.Run(() => throw new ArgumentException("boom"));
+            Assert.Equal("Neočekávaná chyba: boom", vm.Error);
+        });
+    }
+
     // A periodic background refresh (toastOnError: false) still records the error for the page, but must NOT
     // raise a toast — otherwise a server outage spams one every few seconds.
     [Fact]

@@ -1,13 +1,19 @@
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.VisualTree;
+using DiffPdf.DesktopUI.Infrastructure;
 using DiffPdf.DesktopUI.ViewModels;
 
 namespace DiffPdf.DesktopUI.Views;
 
 public partial class BranchesView : UserControl
 {
-    public BranchesView() => InitializeComponent();
+    public BranchesView()
+    {
+        InitializeComponent();
+        // Right-click selects the row under the cursor before its context menu opens (Windows convention).
+        RowContextMenu.Attach(BranchesGrid);
+    }
 
     // Ctrl+F jumps to the search box so testers can filter long lists without reaching for the mouse.
     protected override void OnKeyDown(KeyEventArgs e)

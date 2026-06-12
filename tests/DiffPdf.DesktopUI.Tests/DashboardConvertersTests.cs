@@ -35,7 +35,7 @@ public class DashboardConvertersTests
     [Fact]
     public void OkLabel_uses_defaults_then_parameter_overrides()
     {
-        Assert.Equal("OK", Convert(OkLabelConverter.Instance, true));
+        Assert.Equal("V pořádku", Convert(OkLabelConverter.Instance, true));
         Assert.Equal("Chyba", Convert(OkLabelConverter.Instance, false));
         Assert.Equal("Vedoucí", Convert(OkLabelConverter.Instance, true, "Vedoucí|Následovník"));
         Assert.Equal("Následovník", Convert(OkLabelConverter.Instance, false, "Vedoucí|Následovník"));

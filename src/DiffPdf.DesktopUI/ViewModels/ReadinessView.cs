@@ -94,7 +94,7 @@ public sealed class ReadinessView
         {
             StructureItemState.Missing => "chybí",
             StructureItemState.WrongType => "není složka",
-            _ => i.PdfCount is { } n ? $"{n} PDF" : "OK",
+            _ => i.PdfCount is { } n ? $"{n} PDF" : "V pořádku",
         };
         return new FolderLine(i.Name, value, dot, present ? Palette.Text : dot);
     }

@@ -23,7 +23,7 @@ public class InstanceFormViewModelTests
         await form.SaveCommand.ExecuteAsync(null);
 
         Assert.False(form.Saved);
-        Assert.Contains("klíčem 'LamaEnergy'", form.ValidationError);
+        Assert.Contains("klíčem „LamaEnergy“", form.ValidationError);
     }
 
     [Fact]
@@ -79,7 +79,7 @@ public class InstanceFormViewModelTests
         form.Name = "Centropol"; // collides with a different instance
         await form.SaveCommand.ExecuteAsync(null);
         Assert.False(form.Saved);
-        Assert.Contains("názvem 'Centropol'", form.ValidationError);
+        Assert.Contains("názvem „Centropol“", form.ValidationError);
 
         form.Name = "Lama";
         form.BasePath = "";

@@ -40,9 +40,32 @@
 
     <!-- Master (seznam) + detail (stav, statistiky této větve) — vytvoření i úprava jsou modální formuláře -->
     <Grid ColumnDefinitions="3*,2*">
-      <DataGrid Grid.Column="0" x:CompileBindings="False" Tapped="OnRowTapped"
+      <DataGrid Grid.Column="0" x:Name="BranchesGrid" x:CompileBindings="False" Tapped="OnRowTapped"
                 ItemsSource="{Binding BranchesView}" SelectedItem="{Binding SelectedRow}"
                 IsReadOnly="True" AutoGenerateColumns="False" CanUserResizeColumns="True" CanUserSortColumns="True">
+        <!-- Pravý klik na řádek: stejné akce jako tlačítka v řádku, ale bez míření na drobné ikony.
+             Pravé tlačítko řádek nejdřív vybere (viz RowContextMenu.Attach v code-behind). -->
+        <DataGrid.ContextMenu>
+          <ContextMenu>
+            <MenuItem Header="▸ Spustit" Command="{Binding RunBranchCommand}" CommandParameter="{Binding SelectedRow}"
+                      IsEnabled="{Binding SelectedRow.CanRun, FallbackValue=False}"/>
+            <MenuItem Header="+ Přidat do fronty" Command="{Binding EnqueueBranchCommand}" CommandParameter="{Binding SelectedRow}"
+                      IsEnabled="{Binding SelectedRow.CanEnqueue, FallbackValue=False}"/>
+            <MenuItem Header="‖ Pozastavit" Command="{Binding PauseBranchCommand}" CommandParameter="{Binding SelectedRow}"
+                      IsEnabled="{Binding SelectedRow.CanPause, FallbackValue=False}"/>
+            <MenuItem Header="↻ Obnovit" Command="{Binding ResumeBranchCommand}" CommandParameter="{Binding SelectedRow}"
+                      IsEnabled="{Binding SelectedRow.CanResume, FallbackValue=False}"/>
+            <MenuItem Header="■ Zastavit…" Command="{Binding StopBranchCommand}" CommandParameter="{Binding SelectedRow}"
+                      IsEnabled="{Binding SelectedRow.CanStop, FallbackValue=False}"/>
+            <Separator/>
+            <MenuItem Header="✎ Upravit větev…" Command="{Binding EditBranchCommand}" CommandParameter="{Binding SelectedRow}"/>
+            <MenuItem Header="⚙&#xFE0E; Konfigurace…" Command="{Binding OpenSettingsCommand}" CommandParameter="{Binding SelectedRow}"/>
+            <Separator/>
+            <MenuItem Header="Kopírovat klíč" Command="{Binding CopyKeyCommand}" CommandParameter="{Binding SelectedRow}"/>
+            <Separator/>
+            <MenuItem Header="🗑&#xFE0E; Smazat větev…" Classes="destructive" Command="{Binding DeleteCommand}"/>
+          </ContextMenu>
+        </DataGrid.ContextMenu>
         <DataGrid.Columns>
           <DataGridTemplateColumn Width="40" CanUserSort="False">
             <DataGridTemplateColumn.Header>

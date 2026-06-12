@@ -334,7 +334,9 @@ public partial class SubscriptionsViewModel : PageViewModel
     private Task DeleteAsync() => RunAsync(async () =>
     {
         if (Selected is not { } s) { Info = "Vyber pravidlo."; return; }
-        if (!await _dialogs.ConfirmAsync("Smazat pravidlo", $"Opravdu smazat pravidlo: {s.DisplayName}?"))
+        if (!await _dialogs.ConfirmAsync("Smazat pravidlo",
+                $"Pravidlo {UiText.Quote(s.DisplayName)} se smaže a notifikace se přestanou posílat.",
+                confirmText: "Smazat", danger: true))
             return;
         await _session.Require().DeleteSubscriptionAsync(s.Model.Id);
         Info = "Pravidlo smazáno.";

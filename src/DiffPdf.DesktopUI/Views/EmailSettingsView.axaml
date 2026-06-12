@@ -46,7 +46,7 @@
             <TextBox Text="{Binding FromName}" PlaceholderText="DiffPDF"/>
           </StackPanel>
 
-          <Button Content="Uložit nastavení" Classes="accent" Command="{Binding SaveCommand}" HorizontalAlignment="Left"/>
+          <Button Content="Uložit nastavení" Classes="accent" Command="{Binding SaveCommand}" HorizontalAlignment="Left" IsEnabled="{Binding !IsBusy}"/>
         </StackPanel>
       </Border>
 
@@ -57,7 +57,7 @@
                      Foreground="{DynamicResource InkDim}" TextWrapping="Wrap"/>
           <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
             <TextBox Grid.Column="0" Text="{Binding TestTo}" PlaceholderText="adresa pro test…"/>
-            <Button Grid.Column="1" Content="Poslat testovací e-mail" Classes="ghost" Command="{Binding SendTestCommand}"/>
+            <Button Grid.Column="1" Content="Poslat testovací e-mail" Classes="ghost" Command="{Binding SendTestCommand}" IsEnabled="{Binding !IsBusy}"/>
           </Grid>
         </StackPanel>
       </Border>

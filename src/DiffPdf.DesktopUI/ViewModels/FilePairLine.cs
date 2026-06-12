@@ -53,10 +53,22 @@ public sealed record FilePairLine(string Name, string Icon, string StatusText, I
             "Paused" => ("⏸", "Pozastaveno", Palette.Paused),
             _ => ("⏳", "Čeká", Palette.Muted),
         };
-        string detail = t.AttemptCount > 1 ? $"{t.AttemptCount}. pokus" : t.ResultStatus ?? "";
+        string detail = t.AttemptCount > 1 ? $"{t.AttemptCount}. pokus" : ResultStatusCz(t.ResultStatus);
         bool differing = t.ResultStatus is "Differs" or "OnlyInOld" or "OnlyInNew" or "Error";
         return new FilePairLine(t.RelativePath, icon, text, brush, detail, differing, null);
     }
+
+    /// <summary>Server-side mezistav výsledku přichází jako anglický řetězec — v detailu řádku ho ukazujeme česky.</summary>
+    private static string ResultStatusCz(string? status) => status switch
+    {
+        "Identical" => "Shodné",
+        "Differs" => "Odlišné",
+        "OnlyInOld" => "Jen ve staré",
+        "OnlyInNew" => "Jen v nové",
+        "Error" => "Chyba",
+        null => "",
+        _ => status,
+    };
 
     private static (string Icon, string Text, IBrush Brush, bool Differing) Classify(FilePairStatus s) => s switch
     {

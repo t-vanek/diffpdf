@@ -80,9 +80,10 @@
               <MenuItem Header="Nahrát sem…" Click="OnUploadHere"/>
               <MenuItem Header="Stáhnout" Click="OnDownload"/>
               <MenuItem Header="Přejmenovat (F2)" Click="OnRename"/>
-              <MenuItem Header="Smazat (Del)" Click="OnDelete"/>
+              <MenuItem Header="Smazat (Del)" Classes="destructive" Click="OnDelete"/>
               <MenuItem Header="Nová složka… (F7)" Click="OnCreateFolder"/>
               <Separator/>
+              <MenuItem Header="Kopírovat cestu" Click="OnCopyPath"/>
               <MenuItem Header="Obnovit" Command="{Binding RefreshCommand}"/>
             </ContextMenu>
           </DataGrid.ContextMenu>

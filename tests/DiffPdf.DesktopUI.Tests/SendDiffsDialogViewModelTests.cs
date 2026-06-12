@@ -58,7 +58,7 @@ public class SendDiffsDialogViewModelTests
             await vm.SendCommand.ExecuteAsync(null);
 
             Assert.Null(vm.Result);
-            Assert.Contains("'vratnice'", vm.ValidationError);
+            Assert.Contains("„vratnice“", vm.ValidationError);
         }
         finally { Cleanup(dir); }
     }
