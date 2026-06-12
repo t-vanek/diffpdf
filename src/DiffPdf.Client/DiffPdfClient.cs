@@ -349,6 +349,11 @@ public sealed class DiffPdfClient(HttpClient http)
     }
 
     /// <summary>Runs an automation now and returns the recorded run (409 while a run is in flight).</summary>
+    /// <summary>Mutes/unmutes the automation's outbound notifications (quick toggle; no Version handshake). 404 if unknown.</summary>
+    public Task<AutomationResponse> SetAutomationNotificationsAsync(Guid id, bool enabled, CancellationToken ct = default) =>
+        JsonAsync<AutomationResponse>(HttpMethod.Post,
+            $"/api/v1/automations/{id}/notifications/{(enabled ? "enable" : "disable")}", null, ct);
+
     public Task<AutomationRunResponse> RunAutomationAsync(Guid id, CancellationToken ct = default) =>
         JsonAsync<AutomationRunResponse>(HttpMethod.Post, $"/api/v1/automations/{id}/run", null, ct);
 

@@ -49,6 +49,9 @@ public partial class EventTriggerOptionViewModel(NotificationEvent @event, strin
     [ObservableProperty] private bool _isChecked;
 }
 
+/// <summary>Jedna kategorie spouštěcích událostí (nadpis + volby) — místo jednoho dlouhého plochého seznamu.</summary>
+public sealed record EventTriggerGroup(string Title, string Hint, IReadOnlyList<EventTriggerOptionViewModel> Options);
+
 /// <summary>Jedna kategorie v galerii šablon (nadpis + šablony této kategorie).</summary>
 public sealed record AutomationTemplateGroup(string Title, IReadOnlyList<AutomationTemplateResponse> Templates);
 
@@ -106,13 +109,35 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
         new(NotificationEvent.CompletedWithErrors, "Dokončeno s chybami"),
         new(NotificationEvent.GateViolated, "Porušená brána"),
         new(NotificationEvent.Failed, "Porovnání selhalo"),
+        new(NotificationEvent.JobStalled, "Porovnání se zaseklo"),
         new(NotificationEvent.ReadinessFailed, "Připravenost selhala"),
         new(NotificationEvent.HealthDegraded, "Zhoršené zdraví serveru"),
         new(NotificationEvent.StructureDrift, "Nesoulad struktury"),
-        new(NotificationEvent.JobStalled, "Job se zasekl"),
         new(NotificationEvent.AutomationRecovered, "Automatizace obnovena"),
         new(NotificationEvent.AutomationFailing, "Automatizace opakovaně selhává"),
     ];
+
+    /// <summary>Tytéž volby roztříděné do dvou srozumitelných kategorií: co se stalo s porovnáním vs. jak
+    /// dopadly kontroly a automatizace. Skupiny sdílí instance voleb, takže zaškrtnutí se nikde neduplikuje.</summary>
+    public IReadOnlyList<EventTriggerGroup> EventTriggerGroups { get; }
+
+    private IReadOnlyList<EventTriggerGroup> BuildEventTriggerGroups()
+    {
+        NotificationEvent[] batchEvents =
+            [NotificationEvent.Completed, NotificationEvent.CompletedWithErrors, NotificationEvent.GateViolated,
+             NotificationEvent.Failed, NotificationEvent.JobStalled];
+        return
+        [
+            new EventTriggerGroup(
+                "Události porovnání",
+                "Co se stalo s porovnáním PDF: dokončení, chyby, porušená brána, selhání nebo zaseknutí.",
+                EventTriggerOptions.Where(o => batchEvents.Contains(o.Event)).ToList()),
+            new EventTriggerGroup(
+                "Výsledky kontrol a automatizací",
+                "Jak dopadly kontroly serveru a běhy automatizací: připravenost dat, zdraví serveru, struktura, opakovaná selhání či zotavení.",
+                EventTriggerOptions.Where(o => !batchEvents.Contains(o.Event)).ToList()),
+        ];
+    }
 
     [ObservableProperty] private AutomationResponse? _selected;
     [ObservableProperty] private AutomationRunResponse? _selectedRun;
@@ -147,6 +172,7 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
     [ObservableProperty] private bool _eventStructureDrift = true;
     [ObservableProperty] private bool _eventAutomationRecovered;
     [ObservableProperty] private bool _enabled = true;
+    [ObservableProperty] private bool _notificationsEnabled = true;
     [ObservableProperty] private long? _editingVersion;
     [ObservableProperty] private string? _info;
     [ObservableProperty] private bool _hasNoAutomations;
@@ -181,10 +207,29 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
         _session = session;
         _dialogs = dialogs;
         _hub = hub;
+        EventTriggerGroups = BuildEventTriggerGroups();
         Steps.Add(new AutomationStepRowViewModel());
         SelectedScheduleKind = ScheduleKinds[0];   // "Bez časového plánu" until a template / edit sets the cadence
         SelectedWeekday = Weekdays[0];              // Pondělí
     }
+
+    /// <summary>Popisek tlačítka ztlumení podle aktuálního stavu vybrané automatizace.</summary>
+    public string NotificationsToggleLabel =>
+        Selected is { NotificationsEnabled: false } ? "Zapnout notifikace" : "Ztlumit notifikace";
+
+    /// <summary>Rychlé ztlumení/zapnutí notifikací vybrané automatizace — bez otevírání editoru a bez
+    /// verzovacího konfliktu s rozpracovanou úpravou (server verzi nemění).</summary>
+    [RelayCommand]
+    private Task ToggleNotificationsAsync() => RunAsync(async () =>
+    {
+        if (Selected is not { } a) throw new InvalidOperationException("Vyber automatizaci.");
+        var updated = await _session.Require().SetAutomationNotificationsAsync(a.Id, !a.NotificationsEnabled);
+        Info = updated.NotificationsEnabled
+            ? $"Notifikace automatizace {UiText.Quote(updated.Name)} zapnuty."
+            : $"Notifikace automatizace {UiText.Quote(updated.Name)} ztlumeny (běhy pokračují).";
+        _dialogs.ShowToast(Info!, ToastKind.Success);
+        await LiveRefreshAsync();
+    });
 
     public Task ActivateAsync() => RunAsync(async () =>
     {
@@ -292,7 +337,11 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
 
     partial void OnEditingVersionChanged(long? value) => OnPropertyChanged(nameof(IsEditing));
 
-    partial void OnSelectedChanged(AutomationResponse? value) => _ = RunAsync(LoadRunsAsync);
+    partial void OnSelectedChanged(AutomationResponse? value)
+    {
+        OnPropertyChanged(nameof(NotificationsToggleLabel));
+        _ = RunAsync(LoadRunsAsync);
+    }
 
     private async Task LoadRunsAsync()
     {
@@ -310,6 +359,7 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
     [RelayCommand]
     private void New()
     {
+        Selected = null; // odkryje galerii šablon v hlavní ploše — přirozený první krok nové automatizace
         EditingVersion = null;
         Key = Name = string.Empty;
         ScopeKind = AutomationScopeKind.Global;
@@ -326,6 +376,7 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
         EventReadinessFailed = EventHealthDegraded = EventStructureDrift = true;
         EventAutomationRecovered = false;
         Enabled = true;
+        NotificationsEnabled = true;
         Info = null;
     }
 
@@ -335,6 +386,7 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
     {
         if (template is null) return;
 
+        Selected = null; // editor teď patří nové automatizaci, ne vybranému řádku
         EditingVersion = null;
         Key = SuggestKey(template.Key);
         Name = template.DisplayName;
@@ -357,6 +409,7 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
         EventStructureDrift = template.DefaultEvents.Contains(NotificationEvent.StructureDrift);
         EventAutomationRecovered = template.DefaultEvents.Contains(NotificationEvent.AutomationRecovered);
         Enabled = true;
+        NotificationsEnabled = true;
         Info = $"Předvyplněno ze šablony {template.DisplayName}. Uprav podle potřeby a ulož.";
     }
 
@@ -397,6 +450,7 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
         EventStructureDrift = a.Events.Contains(NotificationEvent.StructureDrift);
         EventAutomationRecovered = a.Events.Contains(NotificationEvent.AutomationRecovered);
         Enabled = a.Enabled;
+        NotificationsEnabled = a.NotificationsEnabled;
         Info = $"Editace automatizace {a.Key} (v{a.Version}).";
     }
 
@@ -427,6 +481,13 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
     private Task SaveAsync() => RunAsync(async () =>
     {
         var client = _session.Require();
+        // Klíč je technikálie — když ho uživatel nevyplní, vygeneruje se z názvu (a název je pak povinný).
+        if (string.IsNullOrWhiteSpace(Key))
+        {
+            if (string.IsNullOrWhiteSpace(Name))
+                throw new InvalidOperationException("Zadej název automatizace.");
+            Key = SuggestKey(Slugify(Name));
+        }
         string? bk = string.IsNullOrWhiteSpace(BranchKey) ? null : BranchKey;
         string? ik = string.IsNullOrWhiteSpace(InstanceKey) ? null : InstanceKey;
         var (cron, interval) = BuildCadence();
@@ -443,7 +504,7 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
                 EventTriggers = triggers, EventDebounceSeconds = (int)EventDebounceSeconds,
                 TimeoutSeconds = (int)TimeoutSeconds, MaxAttempts = (int)MaxAttempts,
                 RetryDelaySeconds = (int)RetryDelaySeconds, FailureThreshold = (int)FailureThreshold,
-                Events = Events(), Enabled = Enabled,
+                Events = Events(), Enabled = Enabled, NotificationsEnabled = NotificationsEnabled,
             });
             Info = "Uloženo (úprava).";
         }
@@ -457,13 +518,28 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
                 EventTriggers = triggers, EventDebounceSeconds = (int)EventDebounceSeconds,
                 TimeoutSeconds = (int)TimeoutSeconds, MaxAttempts = (int)MaxAttempts,
                 RetryDelaySeconds = (int)RetryDelaySeconds, FailureThreshold = (int)FailureThreshold,
-                Events = Events(), Enabled = Enabled,
+                Events = Events(), Enabled = Enabled, NotificationsEnabled = NotificationsEnabled,
             });
             Info = "Vytvořeno.";
         }
         await LoadAsync();
         _dialogs.ShowToast(Info!, ToastKind.Success);
     });
+
+    /// <summary>Z názvu udělá bezpečný klíč: malá písmena bez diakritiky, mezery a zvláštní znaky → pomlčky.</summary>
+    private static string Slugify(string name)
+    {
+        string normalized = name.Trim().Normalize(System.Text.NormalizationForm.FormD);
+        var sb = new System.Text.StringBuilder(normalized.Length);
+        foreach (char c in normalized)
+        {
+            if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) == System.Globalization.UnicodeCategory.NonSpacingMark)
+                continue; // diakritika
+            sb.Append(char.IsAsciiLetterOrDigit(c) ? char.ToLowerInvariant(c) : '-');
+        }
+        string slug = System.Text.RegularExpressions.Regex.Replace(sb.ToString(), "-{2,}", "-").Trim('-');
+        return slug.Length == 0 ? "automatizace" : slug;
+    }
 
     [RelayCommand]
     private Task DeleteAsync() => RunAsync(async () =>

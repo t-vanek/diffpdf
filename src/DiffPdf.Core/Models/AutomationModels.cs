@@ -153,6 +153,11 @@ public sealed record Automation
 
     public bool Enabled { get; init; } = true;
 
+    /// <summary>Mute switch for this automation's outbound notifications: when false the runner raises no
+    /// notification events (no e-mails, no event-trigger cascade) — the automation still runs and its runs
+    /// stay visible in the history + system event log. Toggled from the UI without touching the Version.</summary>
+    public bool NotificationsEnabled { get; init; } = true;
+
     // -- Persisted engine state (read-only through the API) --
 
     /// <summary>Next scheduled due time (UTC); null = no schedule or not yet seeded. Persisted so the

@@ -472,6 +472,9 @@ public sealed record AutomationResponse
     public AutomationRunOutcome? LastOutcome { get; init; }
     public long Version { get; init; }
 
+    /// <summary>False = outbound notifications are muted (the automation still runs).</summary>
+    public bool NotificationsEnabled { get; init; } = true;
+
     /// <summary>The category this automation belongs to (derived from its dominant step).</summary>
     public AutomationCategory Category { get; init; }
 

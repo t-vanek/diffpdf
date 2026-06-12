@@ -159,6 +159,7 @@ public sealed class AutomationEntity
     public int FailureThreshold { get; set; } = 3;
     public string EventsJson { get; set; } = "[]";
     public bool Enabled { get; set; } = true;
+    public bool NotificationsEnabled { get; set; } = true;
     public DateTimeOffset? NextRunAt { get; set; }
     public DateTimeOffset? RunningSince { get; set; }
     public int ConsecutiveFailures { get; set; }

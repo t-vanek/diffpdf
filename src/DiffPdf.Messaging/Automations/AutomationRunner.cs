@@ -211,6 +211,11 @@ public sealed class AutomationRunner(
     private async Task NotifyAsync(
         Automation automation, AutomationRun run, int consecutiveFailures, int chainDepth, CancellationToken ct)
     {
+        // Muted: no e-mail rules fire and no event-trigger cascade — the run itself still happened and
+        // stays visible in the run history + system event log.
+        if (!automation.NotificationsEnabled)
+            return;
+
         try
         {
             if (run.Outcome != AutomationRunOutcome.Ok)

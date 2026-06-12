@@ -205,6 +205,7 @@ public sealed class DiffPdfDbContext(DbContextOptions<DiffPdfDbContext> options)
             e.Property(x => x.FailureThreshold).HasColumnName("failure_threshold");
             e.Property(x => x.EventsJson).HasColumnName("events_json");
             e.Property(x => x.Enabled).HasColumnName("enabled");
+            e.Property(x => x.NotificationsEnabled).HasColumnName("notifications_enabled").HasDefaultValue(true);
             e.Property(x => x.NextRunAt).HasColumnName("next_run_at");
             e.Property(x => x.RunningSince).HasColumnName("running_since");
             e.Property(x => x.ConsecutiveFailures).HasColumnName("consecutive_failures");

@@ -7,25 +7,11 @@
   <DockPanel>
     <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="10" Margin="0,0,0,8">
       <TextBlock Text="Automatizace" Classes="pageTitle"/>
-      <TextBlock Text="Centrální místo pro automatizované akce. Vyber typ automatizace vlevo."
+      <TextBlock Text="Plánované i událostmi spouštěné akce — porovnání, kontroly, úklid a synchronizace."
                  Foreground="{DynamicResource InkDim}" VerticalAlignment="Center"/>
     </StackPanel>
 
-    <Grid ColumnDefinitions="230,*">
-      <!-- Levý seznam typů automatizací (rozšiřitelné) -->
-      <ListBox Grid.Column="0" ItemsSource="{Binding Types}" SelectedItem="{Binding SelectedType}">
-        <ListBox.ItemTemplate>
-          <DataTemplate x:DataType="vm:AutomationType">
-            <StackPanel Margin="2" Spacing="2">
-              <TextBlock Text="{Binding Title}" FontWeight="Bold" TextWrapping="Wrap"/>
-              <TextBlock Text="{Binding Description}" Foreground="{DynamicResource InkFaint}" FontSize="11" TextWrapping="Wrap"/>
-            </StackPanel>
-          </DataTemplate>
-        </ListBox.ItemTemplate>
-      </ListBox>
-
-      <!-- Obsah vybraného typu (VM → View přes ViewLocator) -->
-      <ContentControl Grid.Column="1" Margin="10,0,0,0" Content="{Binding SelectedType.Content}"/>
-    </Grid>
+    <!-- Jediný typ obsahu → žádný vnitřní výběr; obsah dostane celou šířku (VM → View přes ViewLocator). -->
+    <ContentControl Content="{Binding SelectedType.Content}"/>
   </DockPanel>
 </UserControl>
