@@ -19,7 +19,9 @@ public sealed class DiffPdfClient(HttpClient http)
     internal static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        Converters = { new JsonStringEnumConverter() },
+        // Tolerant variant of JsonStringEnumConverter: an enum member this client does not know yet
+        // (newer server) degrades to the default member instead of throwing on every response read.
+        Converters = { new TolerantEnumConverterFactory() },
     };
 
     // ---------------- Branches ----------------

@@ -56,17 +56,29 @@
 
         <!-- Column 1 (*) is the flexible, draggable gap. -->
 
-        <!-- Live connection status — a subtle pill chip (live dot + status text) that reads as a status badge. -->
-        <Border Grid.Column="2" VerticalAlignment="Center" Margin="0,0,10,0" Padding="9,3"
-                Background="{DynamicResource SurfaceAlt}" BorderBrush="{DynamicResource Line}" BorderThickness="1"
-                CornerRadius="{DynamicResource RadPill}">
-          <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
-            <Ellipse Width="8" Height="8" Fill="{DynamicResource Good}" VerticalAlignment="Center" Classes="pulse" IsVisible="{Binding IsConnected}"/>
-            <Ellipse Width="8" Height="8" Fill="{DynamicResource InkFaint}" VerticalAlignment="Center" IsVisible="{Binding !IsConnected}"/>
-            <TextBlock Text="{Binding ConnectionStatus}" Foreground="{DynamicResource InkDim}" VerticalAlignment="Center"
-                       FontSize="12" TextTrimming="CharacterEllipsis" MaxWidth="340" ToolTip.Tip="{Binding ConnectionStatus}"/>
-          </StackPanel>
-        </Border>
+        <!-- Live connection status — a subtle pill chip (live dot + status text) that reads as a status badge,
+             plus a warning pill while the realtime hub is down (pushes missed → lists may lag behind the server). -->
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="0,0,10,0">
+          <Border VerticalAlignment="Center" Padding="9,3"
+                  Background="{DynamicResource SurfaceAlt}" BorderBrush="{DynamicResource Warn}" BorderThickness="1"
+                  CornerRadius="{DynamicResource RadPill}" IsVisible="{Binding RealtimeDegraded}"
+                  ToolTip.Tip="Živé aktualizace ze serveru teď nechodí — připojení se obnovuje automaticky. Data se mohou opožďovat; seznamy se po obnovení samy načtou.">
+            <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+              <TextBlock Text="⚠&#xFE0E;" FontSize="12" Foreground="{DynamicResource Warn}" VerticalAlignment="Center"/>
+              <TextBlock Text="Výpadek živých aktualizací" Foreground="{DynamicResource Warn}" VerticalAlignment="Center" FontSize="12"/>
+            </StackPanel>
+          </Border>
+          <Border VerticalAlignment="Center" Padding="9,3"
+                  Background="{DynamicResource SurfaceAlt}" BorderBrush="{DynamicResource Line}" BorderThickness="1"
+                  CornerRadius="{DynamicResource RadPill}">
+            <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+              <Ellipse Width="8" Height="8" Fill="{DynamicResource Good}" VerticalAlignment="Center" Classes="pulse" IsVisible="{Binding IsConnected}"/>
+              <Ellipse Width="8" Height="8" Fill="{DynamicResource InkFaint}" VerticalAlignment="Center" IsVisible="{Binding !IsConnected}"/>
+              <TextBlock Text="{Binding ConnectionStatus}" Foreground="{DynamicResource InkDim}" VerticalAlignment="Center"
+                         FontSize="12" TextTrimming="CharacterEllipsis" MaxWidth="340" ToolTip.Tip="{Binding ConnectionStatus}"/>
+            </StackPanel>
+          </Border>
+        </StackPanel>
 
         <!-- Connection gear: configure / connect / remember -->
         <Button Grid.Column="3" Classes="titleIcon" VerticalAlignment="Center" Padding="8,5" Margin="0,0,8,0" ToolTip.Tip="Připojení k serveru">

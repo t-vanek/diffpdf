@@ -81,10 +81,14 @@
                 <DataTemplate>
                   <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
                     <TextBlock Text="{Binding StatusIcon}" Foreground="{Binding StatusBrush}"/>
-                    <TextBlock Text="{Binding StatusText}" Foreground="{Binding StatusBrush}"/>
+                    <TextBlock Text="{Binding StatusText}" Foreground="{Binding StatusBrush}"
+                               ToolTip.Tip="{Binding ErrorText}"/>
                     <TextBlock Text="⟳" Foreground="{DynamicResource Info}" FontWeight="Bold"
                                IsVisible="{Binding WasRecovered}"
                                ToolTip.Tip="Obnoveno po přerušení (pád / restart serveru)."/>
+                    <TextBlock Text="ⓘ" Foreground="{DynamicResource Bad}" FontWeight="Bold"
+                               IsVisible="{Binding HasError}"
+                               ToolTip.Tip="{Binding ErrorText}"/>
                   </StackPanel>
                 </DataTemplate>
               </DataGridTemplateColumn.CellTemplate>
@@ -143,6 +147,9 @@
                     <TextBlock Text="⟳ Obnoveno" Foreground="{DynamicResource Info}" FontWeight="SemiBold" VerticalAlignment="Center"
                                IsVisible="{Binding WasRecovered}"
                                ToolTip.Tip="Toto porovnání bylo po přerušení (pád / restart serveru) automaticky obnoveno."/>
+                    <TextBlock Text="{Binding ErrorText}" Foreground="{DynamicResource Bad}" VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis" MaxWidth="420"
+                               IsVisible="{Binding HasError}" ToolTip.Tip="{Binding ErrorText}"/>
                   </StackPanel>
                 </DataTemplate>
               </ContentControl.ContentTemplate>

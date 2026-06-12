@@ -87,6 +87,7 @@ public sealed class BatchLauncher(
             InstanceId = instance.Id,
             TriggerId = spec.TriggerId,
             Source = spec.Source,
+            SourceAutomationId = spec.SourceAutomationId,
         };
 
         if (enqueueOnly)

@@ -59,19 +59,31 @@ public sealed class FinalizeBatchHandler
             // tasks, not finalize-pending jobs. Use CancellationToken.None so the completion (and the
             // BatchFinished cascade it enables) is never lost mid-finalize.
             var completed = await jobStore.CompleteAsync(job.Id, report, job.Version, CancellationToken.None);
-            await progressPublisher.PublishAsync(JobProgressChanged.From(completed), CancellationToken.None);
             metrics.RecordJobFinished(report.Passed ? "passed" : "gate_violated", report.CompletedAt - report.StartedAt);
 
-            // Real-time comparison.completed for trigger-launched batches (after the completion is committed).
-            if (completed.TriggerId is { } triggerId)
-                await triggerEvents.PublishAsync(new TriggerEvent(
-                    "comparison.completed", triggerId, completed.Id, completed.BranchId, completed.InstanceId,
-                    completed.BranchKey, completed.InstanceKey,
-                    Status: "completed", Result: report.Passed ? "success" : "gate-violated",
-                    StartedAt: report.StartedAt, FinishedAt: report.CompletedAt,
-                    DurationMs: (long)(report.CompletedAt - report.StartedAt).TotalMilliseconds,
-                    Source: completed.Source.ToString(), Message: "Porovnání bylo dokončeno.",
-                    ResultReference: completed.Id.ToString()), CancellationToken.None);
+            // Realtime pushes are best-effort and must never abort the handler past the terminal commit:
+            // a throw here would make Wolverine redeliver FinalizeBatch, the retry would see a non-Running
+            // job and return null, and the BatchFinished cascade (notifications, queue advance) would be
+            // lost forever. The pushes have no backstop of their own — clients reload from REST.
+            try
+            {
+                await progressPublisher.PublishAsync(JobProgressChanged.From(completed), CancellationToken.None);
+
+                // Real-time comparison.completed for trigger-launched batches (after the completion is committed).
+                if (completed.TriggerId is { } triggerId)
+                    await triggerEvents.PublishAsync(new TriggerEvent(
+                        "comparison.completed", triggerId, completed.Id, completed.BranchId, completed.InstanceId,
+                        completed.BranchKey, completed.InstanceKey,
+                        Status: "completed", Result: report.Passed ? "success" : "gate-violated",
+                        StartedAt: report.StartedAt, FinishedAt: report.CompletedAt,
+                        DurationMs: (long)(report.CompletedAt - report.StartedAt).TotalMilliseconds,
+                        Source: completed.Source.ToString(), Message: "Porovnání bylo dokončeno.",
+                        ResultReference: completed.Id.ToString()), CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Job {JobId}: realtime publish after completion failed; continuing the cascade.", job.Id);
+            }
 
             logger.LogInformation("Job {JobId} finalized: {Total} files, {Diff} differing.",
                 completed.Id, report.Total, report.Differing);
@@ -80,7 +92,8 @@ public sealed class FinalizeBatchHandler
                 completed.Id, job.BranchKey, job.InstanceKey,
                 report.Total, report.Identical, report.Differing, report.Errors,
                 report.FilesWithContentErrors, report.Passed,
-                report.GateViolations.ToArray(), report.CompletedAt);
+                report.GateViolations.ToArray(), report.CompletedAt,
+                completed.SourceAutomationId);
         }
         catch (ConcurrencyConflictException)
         {

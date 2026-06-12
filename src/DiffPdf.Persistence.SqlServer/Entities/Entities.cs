@@ -73,6 +73,7 @@ public sealed class JobEntity
     public Guid? TriggerId { get; set; }
     public string Source { get; set; } = "System";
     public int Priority { get; set; }
+    public Guid? SourceAutomationId { get; set; }
 }
 
 public sealed class SubscriptionEntity

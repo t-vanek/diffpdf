@@ -14,7 +14,7 @@ public partial class JobRowViewModel(JobSummary job) : ObservableObject, ISelect
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StatusText), nameof(StatusIcon), nameof(StatusBrush), nameof(Progress),
         nameof(InProgress), nameof(ProgressText), nameof(HasVerdict), nameof(VerdictText), nameof(VerdictBrush),
-        nameof(WasRecovered), nameof(CanDelete))]
+        nameof(WasRecovered), nameof(CanDelete), nameof(HasError), nameof(ErrorText))]
     private JobSummary _job = job;
 
     /// <summary>Ticked by the list's multi-select checkbox (bulk delete).</summary>
@@ -73,6 +73,11 @@ public partial class JobRowViewModel(JobSummary job) : ObservableObject, ISelect
 
     /// <summary>The job was auto-recovered after an interruption (crash / restart / stale worker) — shows an "Obnoveno" chip.</summary>
     public bool WasRecovered => Job.RecoveredAt is not null;
+
+    /// <summary>The failure reason, shown right in the row (tooltip) so a failed job explains itself without
+    /// opening the detail.</summary>
+    public string? ErrorText => string.IsNullOrWhiteSpace(Job.Error) ? null : Job.Error;
+    public bool HasError => ErrorText is not null;
 
     public void Apply(JobSummary updated)
     {

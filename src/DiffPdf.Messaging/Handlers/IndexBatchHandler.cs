@@ -82,14 +82,24 @@ public sealed class IndexBatchHandler
             await jobStore.FailAsync(job.Id, ex.Message, job.Version, ct);
             metrics.RecordJobFinished("failed", now - (job.StartedAt ?? job.CreatedAt));
 
-            // Real-time comparison.failed for trigger-launched batches (after the failure is committed).
-            if (job.TriggerId is { } triggerId)
-                await triggerEvents.PublishAsync(new TriggerEvent(
-                    "comparison.failed", triggerId, job.Id, job.BranchId, job.InstanceId, job.BranchKey, job.InstanceKey,
-                    Status: "failed", Result: "error", StartedAt: job.StartedAt, FinishedAt: now,
-                    Source: job.Source.ToString(), Message: "Porovnání selhalo.", ErrorMessage: ex.Message), ct);
+            // Best-effort realtime push: a throw after the FailAsync commit would make the Wolverine retry
+            // see a non-Running job and return null — losing the BatchFailed cascade (the Failed
+            // notification) forever. CancellationToken.None so a shutdown mid-failure cannot abort it either.
+            try
+            {
+                // Real-time comparison.failed for trigger-launched batches (after the failure is committed).
+                if (job.TriggerId is { } triggerId)
+                    await triggerEvents.PublishAsync(new TriggerEvent(
+                        "comparison.failed", triggerId, job.Id, job.BranchId, job.InstanceId, job.BranchKey, job.InstanceKey,
+                        Status: "failed", Result: "error", StartedAt: job.StartedAt, FinishedAt: now,
+                        Source: job.Source.ToString(), Message: "Porovnání selhalo.", ErrorMessage: ex.Message), CancellationToken.None);
+            }
+            catch (Exception pushEx)
+            {
+                logger.LogWarning(pushEx, "Job {JobId}: realtime publish after failure failed; continuing the cascade.", job.Id);
+            }
 
-            return new BatchFailed(job.Id, job.BranchKey, job.InstanceKey, ex.Message, now);
+            return new BatchFailed(job.Id, job.BranchKey, job.InstanceKey, ex.Message, now, job.SourceAutomationId);
         }
 
         await jobStore.SetTotalAsync(job.Id, pairs.Count, ct);

@@ -76,6 +76,7 @@ public sealed class DiffPdfDbContext(DbContextOptions<DiffPdfDbContext> options)
             e.Property(x => x.TriggerId).HasColumnName("trigger_id");
             e.Property(x => x.Source).HasColumnName("source").HasMaxLength(32);
             e.Property(x => x.Priority).HasColumnName("priority");
+            e.Property(x => x.SourceAutomationId).HasColumnName("source_automation_id");
             e.HasIndex(x => new { x.BranchId, x.InstanceId, x.CreatedAt });
             e.HasIndex(x => new { x.Status, x.CreatedAt });
             e.HasIndex(x => new { x.BranchId, x.Status });

@@ -12,7 +12,9 @@ public sealed record FinalizeBatch(Guid JobId);
 /// <summary>
 /// Domain event published when a batch finishes (completed, with or without gate
 /// violations). Consumed by the notification handler. Carries the headline report
-/// figures so subscribers need not reload the job.
+/// figures so subscribers need not reload the job. <see cref="SourceAutomationId"/>
+/// carries the automation whose step launched the batch (null for ad-hoc launches),
+/// so event-triggered automations can exclude the launcher from re-triggering itself.
 /// </summary>
 public sealed record BatchFinished(
     Guid JobId,
@@ -25,15 +27,18 @@ public sealed record BatchFinished(
     int FilesWithContentErrors,
     bool Passed,
     string[] GateViolations,
-    DateTimeOffset CompletedAt);
+    DateTimeOffset CompletedAt,
+    Guid? SourceAutomationId = null);
 
 /// <summary>
 /// Domain event published when a batch hard-fails (e.g. indexing could not pair the folders).
 /// Consumed by the notification handler to raise a <c>Failed</c> notification.
+/// <see cref="SourceAutomationId"/>: see <see cref="BatchFinished.SourceAutomationId"/>.
 /// </summary>
 public sealed record BatchFailed(
     Guid JobId,
     string BranchKey,
     string InstanceKey,
     string Error,
-    DateTimeOffset OccurredAt);
+    DateTimeOffset OccurredAt,
+    Guid? SourceAutomationId = null);

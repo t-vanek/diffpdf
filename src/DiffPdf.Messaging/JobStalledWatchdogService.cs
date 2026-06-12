@@ -73,6 +73,7 @@ public sealed class JobStalledWatchdogService(
         var jobs = scope.ServiceProvider.GetRequiredService<IJobStore>();
         var tasks = scope.ServiceProvider.GetRequiredService<IFilePairTaskStore>();
         var dispatcher = scope.ServiceProvider.GetRequiredService<INotificationDispatcher>();
+        var automationEvents = scope.ServiceProvider.GetRequiredService<IAutomationEventSink>();
 
         var now = DateTimeOffset.UtcNow;
         var running = await jobs.ListAsync(new JobListQuery { Status = JobStatus.Running, Limit = 1000 }, ct);
@@ -91,6 +92,13 @@ public sealed class JobStalledWatchdogService(
             await dispatcher.DispatchAsync(new JobStalledNotification(
                 job.Id, job.BranchKey, job.InstanceKey, job.ProcessedCount, job.TotalCount,
                 now - lastProgress, lastProgress, now), ct);
+            // Stalls also fire event-triggered automations (JobStalled is offered as a spouštěč); the
+            // launching automation is excluded so it cannot re-trigger itself off its own stalled batch.
+            await automationEvents.PublishAsync(
+                NotificationEvent.JobStalled, job.BranchKey, job.InstanceKey,
+                $"{job.BranchKey}/{job.InstanceKey}: {job.ProcessedCount}/{job.TotalCount} párů, bez postupu {(now - lastProgress).TotalMinutes:0} min",
+                sourceAutomationId: job.SourceAutomationId,
+                chainDepth: job.SourceAutomationId is null ? 0 : 1, ct);
         }
         _alerted.IntersectWith(stalled.Select(j => j.Id)); // forget recovered jobs so they can alert again later
 

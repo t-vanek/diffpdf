@@ -326,7 +326,20 @@ public partial class JobsViewModel : PageViewModel
         return Task.CompletedTask;
     }
 
-    private void OnReconnected() => _ = ReloadQuietlyAsync();
+    private void OnReconnected()
+    {
+        _ = ReloadQuietlyAsync();
+        // The open detail can be just as stale as the list (a terminal push may have been missed while
+        // offline) — refresh it too; LoadDetailAsync guards against the selection moving meanwhile.
+        if (SelectedJob is { } row)
+            _ = RefreshDetailQuietlyAsync(row.Id);
+    }
+
+    private async Task RefreshDetailQuietlyAsync(Guid id)
+    {
+        try { await LoadDetailAsync(id); }
+        catch { /* best-effort post-reconnect refresh; the next selection/poll retries */ }
+    }
 
     private async Task ReloadQuietlyAsync()
     {

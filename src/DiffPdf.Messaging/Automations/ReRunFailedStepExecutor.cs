@@ -63,7 +63,7 @@ public sealed class ReRunFailedStepExecutor(
                     continue;
 
                 var eff = await resolver.ResolveForInstanceAsync(instance.BranchId, instance.Id, ct);
-                var spec = LaunchSpec.FromEffective(eff, source: JobSource.Scheduler);
+                var spec = LaunchSpec.FromEffective(eff, source: JobSource.Scheduler, sourceAutomationId: automation.Id);
                 var result = await launcher.LaunchAsync(branchKey, instance.Key, spec, enqueueOnly: true, ct);
                 if (result.Launched)
                 {

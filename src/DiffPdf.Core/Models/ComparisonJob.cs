@@ -31,6 +31,10 @@ public sealed record ComparisonJob
     public Guid? TriggerId { get; init; }
     /// <summary>Where the batch was launched from (Manager / REST API / System / Scheduler).</summary>
     public JobSource Source { get; init; } = JobSource.System;
+    /// <summary>The automation whose step launched this batch (ScheduledComparison / ReRunFailed); null otherwise.
+    /// Batch-outcome events carry it into the automation event sink so the launching automation never
+    /// re-triggers itself from its own batch (cascade loop guard).</summary>
+    public Guid? SourceAutomationId { get; init; }
 
     /// <summary>Per-branch queue priority: higher is released first (0 = "Přidat do fronty", 100 = "Spustit"/run now).</summary>
     public int Priority { get; init; }
