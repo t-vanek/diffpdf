@@ -5,10 +5,21 @@ on:
     branches: ["**"]
   pull_request:
 
+# Least privilege: CI only reads the repo.
+permissions:
+  contents: read
+
+# Cancel superseded runs on the same ref (a new push aborts the previous CI).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-test:
-    name: Build & test
-    runs-on: ubuntu-latest
+    name: Build & test (server + SDK)
+    # Windows: DiffPdf is a Windows-only product (Windows service, WNetAddConnection2 share
+    # mounting, WinExe client), so CI runs on the same OS it ships on.
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -16,6 +27,13 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0.x"
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/*.slnx') }}
+          restore-keys: nuget-${{ runner.os }}-
 
       - name: Restore
         run: dotnet restore DiffPdf.slnx
@@ -26,10 +44,10 @@ jobs:
       - name: Test
         run: dotnet test DiffPdf.slnx -c Release --no-build --verbosity normal
 
-  # The desktop client (Avalonia, WinExe) is excluded from DiffPdf.slnx, so the job above never builds it.
-  # Build + test it on Windows so a client-only break is caught in CI.
   client:
     name: Build & test desktop client
+    # The desktop client (Avalonia, WinExe) is excluded from DiffPdf.slnx, so the job above never
+    # builds it. Build + test it explicitly here so a client-only break is still caught.
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -38,6 +56,13 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0.x"
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/*.slnx') }}
+          restore-keys: nuget-${{ runner.os }}-
 
       - name: Build & test
         run: dotnet test tests/DiffPdf.DesktopUI.Tests/DiffPdf.DesktopUI.Tests.csproj -c Release
