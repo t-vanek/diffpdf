@@ -11,6 +11,7 @@ public sealed class DiffPdfDbContext(DbContextOptions<DiffPdfDbContext> options)
     public DbSet<FilePairTaskEntity> FilePairTasks => Set<FilePairTaskEntity>();
     public DbSet<SubscriptionEntity> Subscriptions => Set<SubscriptionEntity>();
     public DbSet<NotificationDeliveryEntity> NotificationDeliveries => Set<NotificationDeliveryEntity>();
+    public DbSet<SystemEventEntity> SystemEvents => Set<SystemEventEntity>();
     public DbSet<AutomationEntity> Automations => Set<AutomationEntity>();
     public DbSet<AutomationRunEntity> AutomationRuns => Set<AutomationRunEntity>();
     public DbSet<TriggerEntity> Triggers => Set<TriggerEntity>();
@@ -124,6 +125,24 @@ public sealed class DiffPdfDbContext(DbContextOptions<DiffPdfDbContext> options)
             e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
             e.Property(x => x.Version).HasColumnName("version");
             e.HasIndex(x => x.Enabled);
+        });
+
+        b.Entity<SystemEventEntity>(e =>
+        {
+            e.ToTable("system_events");
+            e.HasKey(x => x.Seq); // clustered identity → ListSince (Seq > cursor ORDER BY Seq) is an index seek
+            e.Property(x => x.Seq).HasColumnName("seq").ValueGeneratedOnAdd();
+            e.Property(x => x.Type).HasColumnName("type").HasMaxLength(64);
+            e.Property(x => x.Severity).HasColumnName("severity").HasMaxLength(16);
+            e.Property(x => x.BranchKey).HasColumnName("branch_key").HasMaxLength(256);
+            e.Property(x => x.InstanceKey).HasColumnName("instance_key").HasMaxLength(256);
+            e.Property(x => x.JobId).HasColumnName("job_id");
+            e.Property(x => x.AutomationId).HasColumnName("automation_id");
+            e.Property(x => x.Message).HasColumnName("message");
+            e.Property(x => x.Detail).HasColumnName("detail");
+            e.Property(x => x.OccurredAt).HasColumnName("occurred_at");
+            e.HasIndex(x => x.OccurredAt); // retention prune
+            e.HasIndex(x => x.JobId);      // stall-alert dedup lookup
         });
 
         b.Entity<NotificationDeliveryEntity>(e =>

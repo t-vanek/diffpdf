@@ -63,7 +63,7 @@ public class PostCommitPublishResilienceTests
         var result = await FinalizeBatchHandler.Handle(
             new FinalizeBatch(job.Id), jobs, tasks,
             new ThrowingProgressPublisher(), new ThrowingTriggerEventPublisher(),
-            metrics, NullLogger<FinalizeBatchHandler>.Instance, CancellationToken.None);
+            new NullSystemEventLog(), metrics, NullLogger<FinalizeBatchHandler>.Instance, CancellationToken.None);
 
         Assert.NotNull(result); // the cascade survives the realtime outage
         Assert.Equal(job.Id, result!.JobId);
@@ -85,7 +85,7 @@ public class PostCommitPublishResilienceTests
 
         var result = await IndexBatchHandler.Handle(
             new IndexBatch(job.Id), jobs, tasks, new NoopProvisioner(),
-            new ThrowingTriggerEventPublisher(), new RecordingMessageBus(),
+            new ThrowingTriggerEventPublisher(), new NullSystemEventLog(), new RecordingMessageBus(),
             metrics, NullLogger<IndexBatchHandler>.Instance, CancellationToken.None);
 
         Assert.NotNull(result); // the Failed notification cascade survives the realtime outage
@@ -107,7 +107,7 @@ public class PostCommitPublishResilienceTests
         var result = await FinalizeBatchHandler.Handle(
             new FinalizeBatch(job.Id), jobs, tasks,
             new NullJobProgressPublisher(), new NullTriggerEventPublisher(),
-            metrics, NullLogger<FinalizeBatchHandler>.Instance, CancellationToken.None);
+            new NullSystemEventLog(), metrics, NullLogger<FinalizeBatchHandler>.Instance, CancellationToken.None);
 
         Assert.NotNull(result);
     }

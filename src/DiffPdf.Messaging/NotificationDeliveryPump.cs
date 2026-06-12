@@ -20,6 +20,7 @@ public sealed class NotificationDeliveryPump(
     INotificationDeliveryStore store,
     EmailSettingsResolver settingsResolver,
     IEmailSender sender,
+    ISystemEventLog systemEvents,
     DiffPdfMetrics metrics,
     NotificationDeliveryOptions options,
     ILogger logger)
@@ -55,9 +56,22 @@ public sealed class NotificationDeliveryPump(
                     await store.MarkFailedAsync(delivery.Id, Truncate(ex.Message), attempts, next, dead, CancellationToken.None);
                     metrics.RecordNotificationDelivery(dead ? "deadletter" : "failed");
                     if (dead)
+                    {
                         logger.LogError(ex,
                             "E-mail delivery {Id} ({Event}, rule '{Rule}') dead-lettered after {Attempts} attempt(s).",
                             delivery.Id, delivery.Event, delivery.RuleName, attempts);
+                        // A dead-lettered alert is itself an alert-worthy fact — surface it in the event feed
+                        // so the operator learns about it even though the e-mail channel just proved broken.
+                        await systemEvents.AppendAsync(new SystemEvent
+                        {
+                            Type = SystemEventTypes.NotificationDeadLetter,
+                            Severity = SystemEventSeverity.Error,
+                            BranchKey = delivery.BranchKey,
+                            InstanceKey = delivery.InstanceKey,
+                            Message = $"E-mailovou notifikaci „{delivery.Subject}“ se nepodařilo doručit ({attempts} pokusů) — viz Konfigurace → E-mail.",
+                            Detail = $"Pravidlo „{delivery.RuleName}“, příjemci: {string.Join(", ", delivery.Recipients)}. {ex.Message}",
+                        }, CancellationToken.None);
+                    }
                     else
                         logger.LogWarning(ex,
                             "E-mail delivery {Id} ({Event}, rule '{Rule}') failed attempt {Attempts}/{Max}; retry at {Next:HH:mm:ss}.",

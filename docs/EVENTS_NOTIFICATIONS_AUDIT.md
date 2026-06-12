@@ -1,6 +1,13 @@
 # Analýza a návrh: události, notifikace a automatizace (klient ↔ server)
 
 > **Status:** analýza stavu k 2026-06-12 (větev `main`) + návrh řešení ve třech fázích.
+> **Implementováno 2026-06-12** (větev `claude/events-notifications-robustness`): všechny tři
+> fáze — N1/N3 opravy, notification outbox s retry a historií doručení, systémový event log
+> (`system_events` + `GET /api/v1/events?sinceSeq`) a centrum notifikací v klientu s replayem.
+> Vědomé odchylky od návrhu: scope CRUD / změny konfigurace se do event logu nezapisují
+> (mají audit log + realtime `branch.*`/`instance.*` push); idempotency key u ručního spuštění
+> nebyl potřeba (frontu chrání serverový anti-duplicitní guard a outcome automatizace už UI
+> toastuje); version handshake klient–server odložen (tolerantní enum converter řeší pád).
 > Cíl: ověřit, že všechny události, notifikace a automatizační kroky si odpovídají mezi
 > serverem a desktopovým klientem, najít místa, kde se akce ztrácí nebo nemají adekvátní
 > reakci, a navrhnout, jak pipeline vyhladit a zrobustnit.

@@ -14,11 +14,15 @@ public partial class MainViewModel : ViewModelBase
     private readonly ServerDiscoveryClient _discovery;
     private readonly ClientSettingsStore _settings;
     private readonly ToastService _toasts;
+    private readonly NotificationCenterService _notificationCenter;
 
     public IReadOnlyList<PageViewModel> Pages { get; }
 
     /// <summary>Backs the transient toast overlay in the shell window.</summary>
     public ToastService Toasts => _toasts;
+
+    /// <summary>Backs the bell button + event feed flyout in the title bar.</summary>
+    public NotificationCenterService NotificationCenter => _notificationCenter;
 
     [ObservableProperty] private PageViewModel? _selectedPage;
     [ObservableProperty] private string _serverUrl = "http://localhost:5275";
@@ -37,7 +41,7 @@ public partial class MainViewModel : ViewModelBase
 
     public MainViewModel(ServerSession session, JobProgressHubClient hub, NavigationService navigation,
         ClientConfig config, ServerDiscoveryClient discovery, ClientSettingsStore settings, ToastService toasts,
-        IEnumerable<PageViewModel> pages)
+        NotificationCenterService notificationCenter, IEnumerable<PageViewModel> pages)
     {
         _session = session;
         _hub = hub;
@@ -45,6 +49,7 @@ public partial class MainViewModel : ViewModelBase
         _discovery = discovery;
         _settings = settings;
         _toasts = toasts;
+        _notificationCenter = notificationCenter;
         Pages = pages.OrderBy(p => p.NavOrder).ToList();
         navigation.Navigated += page => SelectedPage = page;
         // Degraded only while a REST session exists — when fully disconnected the shell overlay says it all.
@@ -108,6 +113,9 @@ public partial class MainViewModel : ViewModelBase
         _toasts.Show($"Připojeno k {ServerUrl}.", ToastKind.Success);
 
         try { await _hub.EnsureStartedAsync(); } catch { /* live progress is best-effort */ }
+        // The event feed (bell): initial history fill + scope-group join for live pushes. Best-effort —
+        // a feed hiccup must not fail the connect; the next reconnect replay catches up.
+        try { await _notificationCenter.InitializeAsync(); } catch { /* feed is best-effort */ }
 
         SelectedPage ??= Pages.FirstOrDefault();
         if (SelectedPage is not null)
@@ -119,6 +127,7 @@ public partial class MainViewModel : ViewModelBase
     {
         await _hub.StopAsync();
         _session.Disconnect();
+        _notificationCenter.Reset();
         IsConnected = false;
         RealtimeDegraded = false;
         ConnectionStatus = "Nepřipojeno";

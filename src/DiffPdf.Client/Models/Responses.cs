@@ -543,6 +543,26 @@ public sealed record AutomationRunResponse
     public IReadOnlyList<AutomationStepResultResponse> StepResults { get; init; } = [];
 }
 
+/// <summary>
+/// One system event log row — the durable trail behind the notification center. <see cref="Seq"/> is the
+/// replay cursor: remember the highest one seen and pass it as <c>sinceSeq</c> after a reconnect to catch
+/// up on everything missed. Delivered both by <c>GET /api/v1/events</c> and the SignalR <c>systemEvent</c> push.
+/// </summary>
+public sealed record SystemEvent
+{
+    public long Seq { get; init; }
+    /// <summary>Dotted machine type, e.g. "job.completed", "automation.run.finished" (prefix-filterable).</summary>
+    public string Type { get; init; } = "";
+    public SystemEventSeverity Severity { get; init; }
+    public string? BranchKey { get; init; }
+    public string? InstanceKey { get; init; }
+    public Guid? JobId { get; init; }
+    public Guid? AutomationId { get; init; }
+    public string Message { get; init; } = "";
+    public string? Detail { get; init; }
+    public DateTimeOffset OccurredAt { get; init; }
+}
+
 /// <summary>One notification outbox row — the e-mail delivery history (sent / retrying / dead-lettered).</summary>
 public sealed record NotificationDeliveryResponse
 {

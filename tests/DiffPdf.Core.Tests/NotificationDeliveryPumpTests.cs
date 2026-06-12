@@ -1,4 +1,5 @@
 using DiffPdf.Application.Abstractions;
+using DiffPdf.Core.Abstractions;
 using DiffPdf.Core.Models;
 using DiffPdf.Messaging;
 using DiffPdf.Notifications;
@@ -54,13 +55,13 @@ public class NotificationDeliveryPumpTests
     };
 
     private static (NotificationDeliveryPump Pump, InMemoryNotificationDeliveryStore Store, RecordingSender Sender, DiffPdfMetrics Metrics)
-        Build(EmailSettings? settings = null, int maxAttempts = 5)
+        Build(EmailSettings? settings = null, int maxAttempts = 5, ISystemEventLog? systemEvents = null)
     {
         var store = new InMemoryNotificationDeliveryStore();
         var sender = new RecordingSender();
         var resolver = new EmailSettingsResolver(new FakeEmailSettingsStore(settings ?? Configured), Options.Create(new NotificationOptions()));
         var metrics = new DiffPdfMetrics();
-        var pump = new NotificationDeliveryPump(store, resolver, sender, metrics,
+        var pump = new NotificationDeliveryPump(store, resolver, sender, systemEvents ?? new NullSystemEventLog(), metrics,
             new NotificationDeliveryOptions { MaxAttempts = maxAttempts }, NullLogger.Instance);
         return (pump, store, sender, metrics);
     }
@@ -190,6 +191,26 @@ public class NotificationDeliveryPumpTests
 
         Assert.Single(sender.Sent);
         Assert.Equal(NotificationDeliveryStatus.Sent, (await store.GetAsync(row.Id))!.Status);
+    }
+
+    [Fact]
+    public async Task DeadLetter_AppendsErrorSystemEvent()
+    {
+        // A dead-lettered alert surfaces in the event feed — the e-mail channel just proved broken,
+        // so the operator must learn about it through the other channel.
+        var eventStore = new InMemorySystemEventStore();
+        var log = new SystemEventLog(eventStore, new NullSystemEventPublisher(), NullLogger<SystemEventLog>.Instance);
+        var (pump, store, sender, metrics) = Build(maxAttempts: 1, systemEvents: log);
+        using var _ = metrics;
+        sender.Throw = new InvalidOperationException("smtp down");
+        await store.AddRangeAsync([Row()]);
+
+        await pump.DeliverDueAsync(DateTimeOffset.UtcNow);
+
+        var evt = Assert.Single(await eventStore.ListSinceAsync(0, 10));
+        Assert.Equal(SystemEventTypes.NotificationDeadLetter, evt.Type);
+        Assert.Equal(SystemEventSeverity.Error, evt.Severity);
+        Assert.Contains("nepodařilo doručit", evt.Message);
     }
 
     [Fact]

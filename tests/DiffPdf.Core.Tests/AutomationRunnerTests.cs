@@ -82,7 +82,7 @@ public class AutomationRunnerTests
         var sink = new RecordingEventSink();
         using var metrics = new AutomationMetrics();
         var runner = new AutomationRunner(
-            executors, store, runs, dispatcher, sink, metrics, NullLogger<AutomationRunner>.Instance);
+            executors, store, runs, dispatcher, sink, new NullSystemEventLog(), metrics, NullLogger<AutomationRunner>.Instance);
         return (runner, dispatcher, sink, store, runs);
     }
 

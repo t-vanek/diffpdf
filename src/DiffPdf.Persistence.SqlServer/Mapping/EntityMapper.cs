@@ -33,6 +33,8 @@ public sealed partial class EntityMapper
     [MapProperty(nameof(NotificationDeliveryEntity.RecipientsJson), nameof(NotificationDelivery.Recipients))]
     public partial NotificationDelivery ToDomain(NotificationDeliveryEntity entity);
 
+    public partial SystemEvent ToDomain(SystemEventEntity entity);
+
     [MapperIgnoreSource(nameof(EmailSettingsEntity.Id))] // single-row settings; the domain model has no Id
     public partial EmailSettings ToDomain(EmailSettingsEntity entity);
 
@@ -98,4 +100,8 @@ public sealed partial class EntityMapper
     // Unknown event names (older server reading a newer row) degrade to Completed — informational only.
     private static NotificationEvent MapNotificationEvent(string @event) =>
         Enum.TryParse<NotificationEvent>(@event, ignoreCase: true, out var parsed) ? parsed : NotificationEvent.Completed;
+
+    // Unknown severities degrade to Info — display metadata only.
+    private static SystemEventSeverity MapSystemEventSeverity(string severity) =>
+        Enum.TryParse<SystemEventSeverity>(severity, ignoreCase: true, out var parsed) ? parsed : SystemEventSeverity.Info;
 }

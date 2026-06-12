@@ -1,4 +1,6 @@
+using DiffPdf.Application.Abstractions;
 using DiffPdf.Core.Abstractions;
+using DiffPdf.Core.Models;
 using DiffPdf.Messaging.Messages;
 using DiffPdf.Messaging.Observability;
 using DiffPdf.Persistence;
@@ -69,6 +71,7 @@ public sealed class BranchQueueDispatcherService(
         var dispatcher = scope.ServiceProvider.GetRequiredService<IBranchQueueDispatcher>();
         var bus = scope.ServiceProvider.GetRequiredService<IMessageBus>();
         var tasks = scope.ServiceProvider.GetRequiredService<IFilePairTaskStore>();
+        var systemEvents = scope.ServiceProvider.GetService<ISystemEventLog>();
 
         // Recover jobs stuck Running (crashed during indexing → no file-pair tasks for task recovery to revive),
         // which would otherwise occupy the branch forever; fail them so the queue advances.
@@ -81,6 +84,17 @@ public sealed class BranchQueueDispatcherService(
                 metrics.RecordJobFinished("failed", DateTimeOffset.UtcNow - (stuck.StartedAt ?? stuck.CreatedAt));
                 logger.LogWarning("Recovered stale job {JobId} for {Branch}/{Instance} (expired lease, never indexed).",
                     stuck.Id, stuck.BranchKey, stuck.InstanceKey);
+                if (systemEvents is not null)
+                    await systemEvents.AppendAsync(new SystemEvent
+                    {
+                        Type = SystemEventTypes.JobFailed,
+                        Severity = SystemEventSeverity.Error,
+                        BranchKey = stuck.BranchKey,
+                        InstanceKey = stuck.InstanceKey,
+                        JobId = stuck.Id,
+                        Message = $"Porovnání {stuck.BranchKey}/{stuck.InstanceKey} selhalo: worker padl před dokončením indexace.",
+                        Detail = "Vypršela zámková lhůta; fronta větve byla uvolněna.",
+                    }, ct);
                 await dispatcher.DispatchBranchAsync(stuck.BranchId, ct);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
@@ -117,8 +131,26 @@ public sealed class BranchQueueDispatcherService(
         if (stranded.Count > 0)
         {
             // Flag the affected jobs so the client shows an "Obnoveno" chip (a lost-dispatch pair was recovered).
-            await jobs.MarkRecoveredAsync(stranded.Select(s => s.JobId).Distinct().ToList(), ct);
+            var strandedJobIds = stranded.Select(s => s.JobId).Distinct().ToList();
+            await jobs.MarkRecoveredAsync(strandedJobIds, ct);
             logger.LogWarning("Re-dispatched {Count} stranded Queued pair(s) under stale Running jobs.", stranded.Count);
+            if (systemEvents is not null)
+                foreach (var jobId in strandedJobIds)
+                {
+                    var job = await jobs.GetAsync(jobId, ct);
+                    await systemEvents.AppendAsync(new SystemEvent
+                    {
+                        Type = SystemEventTypes.JobRecovered,
+                        Severity = SystemEventSeverity.Warning,
+                        BranchKey = job?.BranchKey,
+                        InstanceKey = job?.InstanceKey,
+                        JobId = jobId,
+                        Message = job is null
+                            ? "Porovnání bylo obnoveno (ztracené páry znovu zařazeny do fronty)."
+                            : $"Porovnání {job.BranchKey}/{job.InstanceKey} bylo obnoveno (ztracené páry znovu zařazeny do fronty).",
+                        Detail = $"{stranded.Count(s => s.JobId == jobId)} párů.",
+                    }, ct);
+                }
         }
 
         // Advance only branches that actually have a pending job — one query instead of a dispatch probe per

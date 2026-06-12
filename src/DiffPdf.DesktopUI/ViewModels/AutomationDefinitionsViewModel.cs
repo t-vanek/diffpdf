@@ -62,6 +62,8 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
 {
     private readonly ServerSession _session;
     private readonly DialogService _dialogs;
+    private readonly JobProgressHubClient _hub;
+    private bool _liveSubscribed;
 
     public AutomationScopeKind[] Scopes { get; } = Enum.GetValues<AutomationScopeKind>();
 
@@ -174,10 +176,11 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
         new("Zakázané", Automations.Count(a => !a.Enabled)) { Tone = StatTone.Paused },
     ];
 
-    public AutomationDefinitionsViewModel(ServerSession session, DialogService dialogs)
+    public AutomationDefinitionsViewModel(ServerSession session, DialogService dialogs, JobProgressHubClient hub)
     {
         _session = session;
         _dialogs = dialogs;
+        _hub = hub;
         Steps.Add(new AutomationStepRowViewModel());
         SelectedScheduleKind = ScheduleKinds[0];   // "Bez časového plánu" until a template / edit sets the cadence
         SelectedWeekday = Weekdays[0];              // Pondělí
@@ -185,10 +188,59 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
 
     public Task ActivateAsync() => RunAsync(async () =>
     {
+        if (!_liveSubscribed)
+        {
+            _hub.SystemEventReceived += OnSystemEvent;
+            _liveSubscribed = true;
+        }
+        // System events are pushed to the scope group; join it so finished runs refresh the page live.
+        try { await _hub.JoinScopeAsync(); } catch { /* realtime is best-effort */ }
+
         await LoadBranchOptionsAsync();
         await LoadAsync();
         if (TemplateGroups.Count == 0) await LoadTemplatesAsync();
     });
+
+    public Task DeactivateAsync()
+    {
+        if (_liveSubscribed)
+        {
+            _hub.SystemEventReceived -= OnSystemEvent;
+            _liveSubscribed = false;
+        }
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Finished automation runs refresh the list + the open run history live — no F5 needed.</summary>
+    private void OnSystemEvent(SystemEvent e)
+    {
+        if (e.Type.StartsWith("automation.", StringComparison.Ordinal))
+            _ = LiveRefreshAsync();
+    }
+
+    // The live refresh preserves the selection (by id) and never touches the editor fields — those are only
+    // (re)filled by an explicit Edit/New, so a background event cannot wipe an in-progress edit. A burst of
+    // events (engine tick finishing several automations) coalesces into one refresh via the in-flight gate.
+    private bool _liveRefreshRunning;
+
+    private async Task LiveRefreshAsync()
+    {
+        if (_liveRefreshRunning) return;
+        _liveRefreshRunning = true;
+        try
+        {
+            var selectedId = Selected?.Id;
+            var fresh = await _session.Require().ListAutomationsAsync();
+            Automations.Clear();
+            foreach (var a in fresh) Automations.Add(a);
+            HasNoAutomations = Automations.Count == 0;
+            OnPropertyChanged(nameof(Summary));
+            if (selectedId is { } id)
+                Selected = Automations.FirstOrDefault(a => a.Id == id); // re-select → OnSelectedChanged reloads runs
+        }
+        catch { /* best-effort live refresh; the next event or F5 retries */ }
+        finally { _liveRefreshRunning = false; }
+    }
 
     // Branch keys for the scope dropdown — loaded once (and on F5 refresh); selecting a branch cascades its instances.
     private async Task LoadBranchOptionsAsync()

@@ -76,6 +76,21 @@ public sealed class JobEntity
     public Guid? SourceAutomationId { get; set; }
 }
 
+/// <summary>Append-only system event log row (Seq = bigint identity cursor); see SystemEvent.</summary>
+public sealed class SystemEventEntity
+{
+    public long Seq { get; set; }
+    public string Type { get; set; } = string.Empty;
+    public string Severity { get; set; } = "Info";
+    public string? BranchKey { get; set; }
+    public string? InstanceKey { get; set; }
+    public Guid? JobId { get; set; }
+    public Guid? AutomationId { get; set; }
+    public string Message { get; set; } = string.Empty;
+    public string? Detail { get; set; }
+    public DateTimeOffset OccurredAt { get; set; } = DateTimeOffset.UtcNow;
+}
+
 /// <summary>Notification outbox row — an e-mail awaiting (or after) delivery; see NotificationDelivery.</summary>
 public sealed class NotificationDeliveryEntity
 {

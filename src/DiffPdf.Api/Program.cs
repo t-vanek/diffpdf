@@ -143,6 +143,10 @@ builder.Services.AddSignalR();
 builder.Services.AddSingleton<IJobProgressPublisher, SignalRJobProgressPublisher>();
 builder.Services.AddSingleton<ITriggerEventPublisher, SignalRTriggerEventPublisher>();
 builder.Services.AddSingleton<IBranchQueueStatePublisher, SignalRBranchQueueStatePublisher>();
+builder.Services.AddSingleton<ISystemEventPublisher, SignalRSystemEventPublisher>();
+// Append-only system event log (job outcomes, automation runs, dead-letters, recovery zásahy) + realtime
+// push; the store is provider-specific (registered below), the log itself is provider-agnostic.
+builder.Services.AddScoped<ISystemEventLog, SystemEventLog>();
 
 builder.Services.AddDiffPdf();
 builder.Services.AddDiffPdfWorker();
@@ -174,6 +178,7 @@ else
     builder.Services.AddSingleton<IInstanceStore, InMemoryInstanceStore>();
     builder.Services.AddSingleton<ISubscriptionStore, InMemorySubscriptionStore>();
     builder.Services.AddSingleton<INotificationDeliveryStore, InMemoryNotificationDeliveryStore>();
+    builder.Services.AddSingleton<ISystemEventStore, InMemorySystemEventStore>();
     builder.Services.AddSingleton<IEmailSettingsStore, InMemoryEmailSettingsStore>();
     builder.Services.AddSingleton<IAutomationStore, InMemoryAutomationStore>();
     builder.Services.AddSingleton<IAutomationRunStore, InMemoryAutomationRunStore>();
@@ -292,6 +297,7 @@ api.MapScopeSyncEndpoints();
 api.MapSubscriptionEndpoints();
 api.MapEmailSettingsEndpoints();
 api.MapNotificationDeliveryEndpoints();
+api.MapSystemEventEndpoints();
 api.MapJobEndpoints();
 api.MapDiscoveryEndpoints();
 api.MapTriggerEndpoints();

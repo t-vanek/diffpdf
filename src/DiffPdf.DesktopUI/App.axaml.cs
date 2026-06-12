@@ -53,6 +53,7 @@ public partial class App : Application
         services.AddSingleton<ClientSettingsStore>();
         services.AddSingleton<TokenSource>();
         services.AddSingleton<JobProgressHubClient>();
+        services.AddSingleton<NotificationCenterService>();
         services.AddSingleton<ToastService>();
         services.AddSingleton<DialogService>();
         services.AddSingleton<NavigationService>();

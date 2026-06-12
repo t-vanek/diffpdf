@@ -69,6 +69,7 @@ public sealed class NotificationDeliveryService(
             scope.ServiceProvider.GetRequiredService<INotificationDeliveryStore>(),
             scope.ServiceProvider.GetRequiredService<EmailSettingsResolver>(),
             scope.ServiceProvider.GetRequiredService<IEmailSender>(),
+            scope.ServiceProvider.GetService<ISystemEventLog>() ?? new NullSystemEventLog(),
             metrics, opts, logger);
         await pump.DeliverDueAsync(DateTimeOffset.UtcNow, ct);
     }

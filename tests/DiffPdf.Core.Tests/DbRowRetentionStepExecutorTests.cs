@@ -73,7 +73,8 @@ public class DbRowRetentionStepExecutorTests
         await automationRuns.AddAsync(new AutomationRun { Id = Guid.NewGuid(), AutomationId = automationId, StartedAt = Now.AddDays(-200) });
         await automationRuns.AddAsync(new AutomationRun { Id = Guid.NewGuid(), AutomationId = automationId, StartedAt = Now.AddDays(-10) });
 
-        var executor = new DbRowRetentionStepExecutor(jobs, tasks, runs, audit, automationRuns, NullLogger<DbRowRetentionStepExecutor>.Instance);
+        var executor = new DbRowRetentionStepExecutor(jobs, tasks, runs, audit, automationRuns,
+            new InMemorySystemEventStore(), new InMemoryNotificationDeliveryStore(), NullLogger<DbRowRetentionStepExecutor>.Instance);
         var (automation, step) = Subject(90);
         var result = await executor.ExecuteAsync(automation, step, CancellationToken.None);
 
@@ -103,7 +104,8 @@ public class DbRowRetentionStepExecutorTests
     {
         var executor = new DbRowRetentionStepExecutor(
             new InMemoryJobStore(), new InMemoryFilePairTaskStore(), new InMemoryTriggerRunStore(),
-            new InMemoryAuditLogStore(), new InMemoryAutomationRunStore(), NullLogger<DbRowRetentionStepExecutor>.Instance);
+            new InMemoryAuditLogStore(), new InMemoryAutomationRunStore(),
+            new InMemorySystemEventStore(), new InMemoryNotificationDeliveryStore(), NullLogger<DbRowRetentionStepExecutor>.Instance);
 
         var (automation, step) = Subject(90);
         var result = await executor.ExecuteAsync(automation, step, CancellationToken.None);

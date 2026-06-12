@@ -1,4 +1,6 @@
+using DiffPdf.Application.Abstractions;
 using DiffPdf.Core.Abstractions;
+using DiffPdf.Core.Models;
 using DiffPdf.Messaging.Messages;
 using DiffPdf.Persistence;
 using DiffPdf.Worker;
@@ -60,6 +62,15 @@ public sealed class WorkerLifecycleService(
                 // next progress push as it re-compares).
                 await jobStore.MarkRecoveredAsync(reclaimed.Select(r => r.JobId).Distinct().ToList(), cancellationToken);
                 logger.LogInformation("Reclaimed {Count} orphaned in-flight pair(s) at startup", reclaimed.Count);
+
+                // The previous process died hard — record the intervention in the event trail.
+                if (scope.ServiceProvider.GetService<ISystemEventLog>() is { } events)
+                    await events.AppendAsync(new SystemEvent
+                    {
+                        Type = SystemEventTypes.RecoveryOrphans,
+                        Severity = SystemEventSeverity.Warning,
+                        Message = $"Server po pádu obnovil {reclaimed.Count} rozpracovaných párů (vráceny do fronty).",
+                    }, cancellationToken);
             }
         }
         catch (Exception ex)

@@ -21,6 +21,7 @@ public sealed class FinalizeBatchHandler
         IFilePairTaskStore taskStore,
         IJobProgressPublisher progressPublisher,
         ITriggerEventPublisher triggerEvents,
+        ISystemEventLog systemEvents,
         DiffPdfMetrics metrics,
         ILogger<FinalizeBatchHandler> logger,
         CancellationToken ct)
@@ -84,6 +85,25 @@ public sealed class FinalizeBatchHandler
             {
                 logger.LogWarning(ex, "Job {JobId}: realtime publish after completion failed; continuing the cascade.", job.Id);
             }
+
+            // Durable trail (+ notification-center push); AppendAsync is best-effort by contract.
+            await systemEvents.AppendAsync(new SystemEvent
+            {
+                Type = !report.Passed ? SystemEventTypes.JobGateViolated
+                    : report.Errors > 0 ? SystemEventTypes.JobCompletedWithErrors
+                    : SystemEventTypes.JobCompleted,
+                Severity = report.Passed && report.Errors == 0 ? SystemEventSeverity.Info : SystemEventSeverity.Warning,
+                BranchKey = job.BranchKey,
+                InstanceKey = job.InstanceKey,
+                JobId = completed.Id,
+                Message = !report.Passed
+                    ? $"Porovnání {job.BranchKey}/{job.InstanceKey} porušilo bránu ({report.Differing} odlišných z {report.Total})."
+                    : report.Errors > 0
+                        ? $"Porovnání {job.BranchKey}/{job.InstanceKey} dokončeno s chybami ({report.Errors} chyb, {report.Differing} odlišných z {report.Total})."
+                        : $"Porovnání {job.BranchKey}/{job.InstanceKey} dokončeno ({report.Differing} odlišných z {report.Total}).",
+                Detail = report.GateViolations.Count > 0 ? string.Join("\n", report.GateViolations) : null,
+                OccurredAt = report.CompletedAt,
+            }, CancellationToken.None);
 
             logger.LogInformation("Job {JobId} finalized: {Total} files, {Diff} differing.",
                 completed.Id, report.Total, report.Differing);

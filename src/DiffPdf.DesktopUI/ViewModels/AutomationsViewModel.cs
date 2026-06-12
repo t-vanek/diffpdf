@@ -9,6 +9,9 @@ namespace DiffPdf.DesktopUI.ViewModels;
 public interface IAutomationContent
 {
     Task ActivateAsync();
+
+    /// <summary>Called when the hosting page deactivates (navigation away) — stop live subscriptions.</summary>
+    Task DeactivateAsync() => Task.CompletedTask;
 }
 
 /// <summary>One kind of automation in the Automatizace section. <see cref="Content"/> manages that type and
@@ -42,6 +45,8 @@ public partial class AutomationsViewModel : PageViewModel
     }
 
     public override Task ActivateAsync() => SelectedType?.Content.ActivateAsync() ?? Task.CompletedTask;
+
+    public override Task DeactivateAsync() => SelectedType?.Content.DeactivateAsync() ?? Task.CompletedTask;
 
     partial void OnSelectedTypeChanged(AutomationType? value) => _ = (value?.Content.ActivateAsync() ?? Task.CompletedTask);
 }

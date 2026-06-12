@@ -26,6 +26,7 @@ public sealed class AutomationRunner(
     IAutomationRunStore runs,
     INotificationDispatcher dispatcher,
     IAutomationEventSink eventSink,
+    ISystemEventLog systemEvents,
     AutomationMetrics metrics,
     ILogger<AutomationRunner> logger) : IAutomationRunner
 {
@@ -79,6 +80,31 @@ public sealed class AutomationRunner(
 
         logger.LogInformation("Automation {Key} ran ({Trigger}): {Outcome}.", automation.Key, trigger, finalOutcome);
         await NotifyAsync(automation, lastRun, consecutiveFailures, chainDepth, ct);
+
+        // Durable trail (+ notification-center push) for every finished run; severity mirrors the outcome
+        // (the client badges only Warning/Error, so routine Ok runs do not spam the bell). Best-effort.
+        await systemEvents.AppendAsync(new SystemEvent
+        {
+            Type = SystemEventTypes.AutomationRunFinished,
+            Severity = finalOutcome switch
+            {
+                AutomationRunOutcome.Failed => SystemEventSeverity.Error,
+                AutomationRunOutcome.Warning => SystemEventSeverity.Warning,
+                _ => SystemEventSeverity.Info,
+            },
+            BranchKey = automation.BranchKey,
+            InstanceKey = automation.InstanceKey,
+            AutomationId = automation.Id,
+            Message = finalOutcome switch
+            {
+                AutomationRunOutcome.Failed => $"Automatizace „{automation.Name}“ selhala.",
+                AutomationRunOutcome.Warning => $"Automatizace „{automation.Name}“ skončila s varováním.",
+                _ => $"Automatizace „{automation.Name}“ proběhla v pořádku.",
+            },
+            Detail = lastRun.Detail,
+            OccurredAt = lastRun.CompletedAt ?? DateTimeOffset.UtcNow,
+        }, CancellationToken.None);
+
         return lastRun;
     }
 

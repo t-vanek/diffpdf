@@ -266,6 +266,35 @@ public sealed record UpdateSubscriptionRequest
     public required long Version { get; init; }
 }
 
+/// <summary>One system event log row as returned by GET /api/v1/events (Seq = the replay cursor).</summary>
+public sealed record SystemEventResponse
+{
+    public required long Seq { get; init; }
+    public required string Type { get; init; }
+    public SystemEventSeverity Severity { get; init; }
+    public string? BranchKey { get; init; }
+    public string? InstanceKey { get; init; }
+    public Guid? JobId { get; init; }
+    public Guid? AutomationId { get; init; }
+    public required string Message { get; init; }
+    public string? Detail { get; init; }
+    public DateTimeOffset OccurredAt { get; init; }
+
+    public static SystemEventResponse From(SystemEvent e) => new()
+    {
+        Seq = e.Seq,
+        Type = e.Type,
+        Severity = e.Severity,
+        BranchKey = e.BranchKey,
+        InstanceKey = e.InstanceKey,
+        JobId = e.JobId,
+        AutomationId = e.AutomationId,
+        Message = e.Message,
+        Detail = e.Detail,
+        OccurredAt = e.OccurredAt,
+    };
+}
+
 /// <summary>One notification outbox row — the delivery history surfaced in Konfigurace → E-mail.</summary>
 public sealed record NotificationDeliveryResponse
 {

@@ -41,6 +41,24 @@ public sealed class ClientSettingsStore(string? filePath = null)
     public void SaveSendRecipients(string recipients) => Merge(doc =>
         doc["SendDiffs"] = new JsonObject { ["Recipients"] = Clean(recipients) });
 
+    /// <summary>Persists the notification-center "read up to here" watermark (the highest seen event Seq).</summary>
+    public void SaveLastSeenEventSeq(long seq) => Merge(doc =>
+        doc["Notifications"] = new JsonObject { ["LastSeenEventSeq"] = seq });
+
+    /// <summary>The persisted read watermark, or 0 when absent/unreadable.</summary>
+    public long LoadLastSeenEventSeq()
+    {
+        try
+        {
+            if (!File.Exists(FilePath)) return 0;
+            return JsonNode.Parse(File.ReadAllText(FilePath))?["Notifications"]?["LastSeenEventSeq"]?.GetValue<long>() ?? 0;
+        }
+        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException or InvalidOperationException or FormatException)
+        {
+            return 0;
+        }
+    }
+
     /// <summary>The remembered diff-send recipients, or null when absent/unreadable.</summary>
     public string? LoadSendRecipients()
     {

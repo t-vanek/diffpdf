@@ -22,6 +22,7 @@ public sealed class IndexBatchHandler
         IFilePairTaskStore taskStore,
         IStorageProvisioner provisioner,
         ITriggerEventPublisher triggerEvents,
+        ISystemEventLog systemEvents,
         IMessageBus bus,
         DiffPdfMetrics metrics,
         ILogger<IndexBatchHandler> logger,
@@ -98,6 +99,19 @@ public sealed class IndexBatchHandler
             {
                 logger.LogWarning(pushEx, "Job {JobId}: realtime publish after failure failed; continuing the cascade.", job.Id);
             }
+
+            // Durable trail (+ notification-center push); AppendAsync is best-effort by contract.
+            await systemEvents.AppendAsync(new SystemEvent
+            {
+                Type = SystemEventTypes.JobFailed,
+                Severity = SystemEventSeverity.Error,
+                BranchKey = job.BranchKey,
+                InstanceKey = job.InstanceKey,
+                JobId = job.Id,
+                Message = $"Porovnání {job.BranchKey}/{job.InstanceKey} selhalo.",
+                Detail = ex.Message,
+                OccurredAt = now,
+            }, CancellationToken.None);
 
             return new BatchFailed(job.Id, job.BranchKey, job.InstanceKey, ex.Message, now, job.SourceAutomationId);
         }

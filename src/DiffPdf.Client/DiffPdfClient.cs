@@ -446,6 +446,18 @@ public sealed class DiffPdfClient(HttpClient http)
         using var resp = await SendRawAsync(HttpMethod.Delete, $"/api/v1/subscriptions/{id}", null, ct);
     }
 
+    // ---------------- System events (the durable event trail) ----------------
+
+    /// <summary>
+    /// Reads the system event log. With <paramref name="sinceSeq"/> replays everything newer than the cursor
+    /// (oldest first) — call it after a reconnect with the highest Seq seen to catch up on missed events;
+    /// without it returns the newest events (newest first) — the initial notification-center fill.
+    /// </summary>
+    public Task<IReadOnlyList<SystemEvent>> ListSystemEventsAsync(
+        long? sinceSeq = null, int limit = 200, SystemEventSeverity? minSeverity = null, CancellationToken ct = default) =>
+        JsonAsync<IReadOnlyList<SystemEvent>>(HttpMethod.Get,
+            $"/api/v1/events?limit={limit}{(sinceSeq is { } s ? $"&sinceSeq={s}" : "")}{(minSeverity is { } m ? $"&minSeverity={m}" : "")}", null, ct);
+
     // ---------------- Notification deliveries (outbox history) ----------------
 
     /// <summary>Recent notification e-mail deliveries, newest first; optional status filter (Pending/Sent/Failed/DeadLetter).</summary>

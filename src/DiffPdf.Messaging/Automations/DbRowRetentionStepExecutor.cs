@@ -19,6 +19,8 @@ public sealed class DbRowRetentionStepExecutor(
     ITriggerRunStore triggerRuns,
     IAuditLogStore auditLog,
     IAutomationRunStore automationRuns,
+    ISystemEventStore systemEvents,
+    INotificationDeliveryStore notificationDeliveries,
     ILogger<DbRowRetentionStepExecutor> logger) : IAutomationStepExecutor
 {
     public AutomationStepType Type => AutomationStepType.DbRowRetention;
@@ -42,14 +44,16 @@ public sealed class DbRowRetentionStepExecutor(
         int runRows = await triggerRuns.DeleteStartedBeforeAsync(cutoff, ct);
         int auditRows = await auditLog.DeleteBeforeAsync(cutoff, ct);
         int automationRunRows = await automationRuns.DeleteStartedBeforeAsync(cutoff, ct);
+        int eventRows = await systemEvents.DeleteOlderThanAsync(cutoff, ct);
+        int deliveryRows = await notificationDeliveries.DeleteOlderThanAsync(cutoff, ct);
 
-        if (taskRows + jobRows + runRows + auditRows + automationRunRows == 0)
+        if (taskRows + jobRows + runRows + auditRows + automationRunRows + eventRows + deliveryRows == 0)
             return StepResult.Ok($"nothing to prune (older than {retentionDays} d).");
 
         logger.LogInformation(
-            "DB-row retention: pruned {Jobs} job(s), {Tasks} task(s), {Runs} trigger-run(s), {Audit} audit row(s), {AutomationRuns} automation run(s) before {Cutoff:u}.",
-            jobRows, taskRows, runRows, auditRows, automationRunRows, cutoff);
+            "DB-row retention: pruned {Jobs} job(s), {Tasks} task(s), {Runs} trigger-run(s), {Audit} audit row(s), {AutomationRuns} automation run(s), {Events} system event(s), {Deliveries} delivery row(s) before {Cutoff:u}.",
+            jobRows, taskRows, runRows, auditRows, automationRunRows, eventRows, deliveryRows, cutoff);
         return StepResult.Ok(
-            $"pruned {jobRows} job(s), {taskRows} task(s), {runRows} trigger-run(s), {auditRows} audit row(s), {automationRunRows} automation run(s) before {cutoff:u}.");
+            $"pruned {jobRows} job(s), {taskRows} task(s), {runRows} trigger-run(s), {auditRows} audit row(s), {automationRunRows} automation run(s), {eventRows} system event(s), {deliveryRows} delivery row(s) before {cutoff:u}.");
     }
 }
