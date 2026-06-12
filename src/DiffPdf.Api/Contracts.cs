@@ -266,6 +266,41 @@ public sealed record UpdateSubscriptionRequest
     public required long Version { get; init; }
 }
 
+/// <summary>One notification outbox row — the delivery history surfaced in Konfigurace → E-mail.</summary>
+public sealed record NotificationDeliveryResponse
+{
+    public required Guid Id { get; init; }
+    public required string Event { get; init; }
+    public string? BranchKey { get; init; }
+    public string? InstanceKey { get; init; }
+    public string RuleName { get; init; } = "";
+    public required IReadOnlyList<string> Recipients { get; init; }
+    public required string Subject { get; init; }
+    public required string Status { get; init; }
+    public int AttemptCount { get; init; }
+    public DateTimeOffset? NextAttemptAt { get; init; }
+    public string? LastError { get; init; }
+    public DateTimeOffset CreatedAt { get; init; }
+    public DateTimeOffset? SentAt { get; init; }
+
+    public static NotificationDeliveryResponse From(NotificationDelivery d) => new()
+    {
+        Id = d.Id,
+        Event = d.Event.ToString(),
+        BranchKey = d.BranchKey,
+        InstanceKey = d.InstanceKey,
+        RuleName = d.RuleName,
+        Recipients = d.Recipients,
+        Subject = d.Subject,
+        Status = d.Status.ToString(),
+        AttemptCount = d.AttemptCount,
+        NextAttemptAt = d.NextAttemptAt,
+        LastError = d.LastError,
+        CreatedAt = d.CreatedAt,
+        SentAt = d.SentAt,
+    };
+}
+
 /// <summary>An e-mail notification rule as returned by the API.</summary>
 public sealed record SubscriptionResponse
 {

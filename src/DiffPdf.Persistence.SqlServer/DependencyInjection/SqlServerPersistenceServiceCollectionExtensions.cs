@@ -21,6 +21,7 @@ public static class SqlServerPersistenceServiceCollectionExtensions
         services.AddScoped<IBranchStore, SqlServerBranchStore>();
         services.AddScoped<IInstanceStore, SqlServerInstanceStore>();
         services.AddScoped<ISubscriptionStore, SqlServerSubscriptionStore>();
+        services.AddScoped<INotificationDeliveryStore, SqlServerNotificationDeliveryStore>();
         services.AddScoped<IEmailSettingsStore, SqlServerEmailSettingsStore>();
         services.AddScoped<IAutomationStore, SqlServerAutomationStore>();
         services.AddScoped<IAutomationRunStore, SqlServerAutomationRunStore>();

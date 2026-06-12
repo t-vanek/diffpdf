@@ -543,6 +543,26 @@ public sealed record AutomationRunResponse
     public IReadOnlyList<AutomationStepResultResponse> StepResults { get; init; } = [];
 }
 
+/// <summary>One notification outbox row — the e-mail delivery history (sent / retrying / dead-lettered).</summary>
+public sealed record NotificationDeliveryResponse
+{
+    public Guid Id { get; init; }
+    /// <summary>Event name (e.g. "GateViolated") — a string so a newer server's events still display.</summary>
+    public string Event { get; init; } = "";
+    public string? BranchKey { get; init; }
+    public string? InstanceKey { get; init; }
+    public string RuleName { get; init; } = "";
+    public IReadOnlyList<string> Recipients { get; init; } = [];
+    public string Subject { get; init; } = "";
+    /// <summary>Pending | Sent | Failed | DeadLetter (string for forward compatibility).</summary>
+    public string Status { get; init; } = "";
+    public int AttemptCount { get; init; }
+    public DateTimeOffset? NextAttemptAt { get; init; }
+    public string? LastError { get; init; }
+    public DateTimeOffset CreatedAt { get; init; }
+    public DateTimeOffset? SentAt { get; init; }
+}
+
 /// <summary>An e-mail notification rule as returned by the API.</summary>
 public sealed record SubscriptionResponse
 {

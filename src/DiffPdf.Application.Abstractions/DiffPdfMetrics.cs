@@ -18,9 +18,12 @@ public sealed class DiffPdfMetrics : IDisposable
     private readonly Meter _meter;
     private readonly Histogram<double> _jobDuration;
     private readonly Counter<long> _jobsFinished;
+    private readonly Counter<long> _notificationDeliveries;
     private readonly ConcurrentDictionary<Guid, BranchDepth> _depths = new();
     private volatile int _stuckJobs;
     private volatile int _activeTasks;
+    private volatile int _notificationDeadLetter;
+    private volatile int _notificationPending;
 
     public DiffPdfMetrics()
     {
@@ -40,6 +43,15 @@ public sealed class DiffPdfMetrics : IDisposable
         _meter.CreateObservableGauge(
             "diffpdf.tasks.active", () => _activeTasks, unit: "{task}",
             description: "Active (Queued or Running) file-pair tasks across all jobs — the comparison backlog.");
+        _notificationDeliveries = _meter.CreateCounter<long>(
+            "diffpdf.notifications.deliveries", unit: "{delivery}",
+            description: "Notification e-mail delivery attempts, tagged by result (sent | failed | deadletter).");
+        _meter.CreateObservableGauge(
+            "diffpdf.notifications.deadletter", () => _notificationDeadLetter, unit: "{delivery}",
+            description: "Notification e-mails that exhausted their retries — operator attention needed.");
+        _meter.CreateObservableGauge(
+            "diffpdf.notifications.pending", () => _notificationPending, unit: "{delivery}",
+            description: "Notification e-mails waiting for delivery (incl. scheduled retries).");
     }
 
     /// <summary>Refreshes the queue-depth snapshot for a branch (called by the dispatcher on every state publish).</summary>
@@ -54,6 +66,17 @@ public sealed class DiffPdfMetrics : IDisposable
 
     /// <summary>Refreshes the active-task backlog gauge (fed by the watchdog tick — Queued+Running file-pair tasks).</summary>
     public void RecordActiveTasks(int count) => _activeTasks = count;
+
+    /// <summary>Records one notification delivery attempt. <paramref name="result"/> is <c>sent</c> | <c>failed</c> | <c>deadletter</c>.</summary>
+    public void RecordNotificationDelivery(string result) =>
+        _notificationDeliveries.Add(1, new KeyValuePair<string, object?>("result", result));
+
+    /// <summary>Refreshes the outbox backlog gauges (fed by the delivery service tick).</summary>
+    public void RecordNotificationBacklog(int deadLetter, int pending)
+    {
+        _notificationDeadLetter = deadLetter;
+        _notificationPending = pending;
+    }
 
     /// <summary>Records a job that reached a terminal state. <paramref name="result"/> is <c>passed</c> | <c>gate_violated</c> | <c>failed</c>.</summary>
     public void RecordJobFinished(string result, TimeSpan duration)

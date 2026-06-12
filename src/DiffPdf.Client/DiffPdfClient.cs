@@ -446,6 +446,18 @@ public sealed class DiffPdfClient(HttpClient http)
         using var resp = await SendRawAsync(HttpMethod.Delete, $"/api/v1/subscriptions/{id}", null, ct);
     }
 
+    // ---------------- Notification deliveries (outbox history) ----------------
+
+    /// <summary>Recent notification e-mail deliveries, newest first; optional status filter (Pending/Sent/Failed/DeadLetter).</summary>
+    public Task<IReadOnlyList<NotificationDeliveryResponse>> ListNotificationDeliveriesAsync(
+        NotificationDeliveryStatus? status = null, int limit = 100, CancellationToken ct = default) =>
+        JsonAsync<IReadOnlyList<NotificationDeliveryResponse>>(HttpMethod.Get,
+            $"/api/v1/notifications/deliveries?limit={limit}{(status is { } s ? $"&status={s}" : "")}", null, ct);
+
+    /// <summary>Re-queues a failed/dead-lettered delivery for sending now. Throws 404 if unknown, 409 if already sent.</summary>
+    public Task<NotificationDeliveryResponse> ResendNotificationDeliveryAsync(Guid id, CancellationToken ct = default) =>
+        JsonAsync<NotificationDeliveryResponse>(HttpMethod.Post, $"/api/v1/notifications/deliveries/{id}/resend", null, ct);
+
     // ---------------- E-mail (SMTP) settings ----------------
 
     public Task<EmailSettingsResponse> GetEmailSettingsAsync(CancellationToken ct = default) =>

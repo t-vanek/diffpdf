@@ -18,6 +18,7 @@ using DiffPdf.Messaging.Automations;
 using DiffPdf.Messaging.Observability;
 using DiffPdf.Messaging.Scheduling;
 using DiffPdf.Messaging.ScopeSync;
+using DiffPdf.Notifications;
 using DiffPdf.Notifications.DependencyInjection;
 using DiffPdf.Pdf.DependencyInjection;
 using DiffPdf.Pdf.Rendering;
@@ -172,6 +173,7 @@ else
     builder.Services.AddSingleton<IBranchStore, InMemoryBranchStore>();
     builder.Services.AddSingleton<IInstanceStore, InMemoryInstanceStore>();
     builder.Services.AddSingleton<ISubscriptionStore, InMemorySubscriptionStore>();
+    builder.Services.AddSingleton<INotificationDeliveryStore, InMemoryNotificationDeliveryStore>();
     builder.Services.AddSingleton<IEmailSettingsStore, InMemoryEmailSettingsStore>();
     builder.Services.AddSingleton<IAutomationStore, InMemoryAutomationStore>();
     builder.Services.AddSingleton<IAutomationRunStore, InMemoryAutomationRunStore>();
@@ -217,6 +219,15 @@ builder.Services.AddHostedService<InstanceStructureHostedService>();
 
 // Outbound notifications (DB-backed subscriptions) + the on-demand batch launcher used by the triggers.
 builder.Services.AddDiffPdfNotifications(builder.Configuration);
+// Notification outbox sender: the dispatcher only appends rows; this leader-gated service e-mails them
+// with retries/backoff and parks exhausted rows as DeadLetter (visible + re-sendable in the client).
+builder.Services.AddOptions<NotificationDeliveryOptions>()
+    .Bind(builder.Configuration.GetSection(NotificationDeliveryOptions.SectionName))
+    .Validate(o => o.IntervalSeconds > 0, "NotificationDelivery:IntervalSeconds must be > 0.")
+    .Validate(o => o.MaxAttempts > 0, "NotificationDelivery:MaxAttempts must be > 0.")
+    .Validate(o => o.BatchSize > 0, "NotificationDelivery:BatchSize must be > 0.")
+    .ValidateOnStart();
+builder.Services.AddHostedService<NotificationDeliveryService>();
 builder.Services.AddScoped<IBatchLauncher, BatchLauncher>();
 builder.Services.AddScoped<IFilePairRequeueDispatcher, FilePairRequeueDispatcher>();
 // Application layer: scope/job/check/subscription/trigger/config orchestration (drives the endpoints).
@@ -280,6 +291,7 @@ api.MapScopeEndpoints();
 api.MapScopeSyncEndpoints();
 api.MapSubscriptionEndpoints();
 api.MapEmailSettingsEndpoints();
+api.MapNotificationDeliveryEndpoints();
 api.MapJobEndpoints();
 api.MapDiscoveryEndpoints();
 api.MapTriggerEndpoints();

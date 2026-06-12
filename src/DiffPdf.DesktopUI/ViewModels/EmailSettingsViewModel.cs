@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DiffPdf.Client;
@@ -8,11 +9,24 @@ namespace DiffPdf.DesktopUI.ViewModels;
 /// <summary>
 /// SMTP server + odesílací účet pro e-mailové notifikace (záložka v Konfiguraci). Heslo se ze serveru nikdy
 /// nevrací — jen příznak, že je nastavené; prázdné heslo při uložení ponechá to uložené. Umožní i poslat
-/// testovací e-mail pro ověření.
+/// testovací e-mail pro ověření a zobrazuje historii doručení (outbox) s možností znovu poslat selhané.
 /// </summary>
 public partial class EmailSettingsViewModel : ViewModelBase
 {
     private readonly ServerSession _session;
+
+    /// <summary>Historie doručení notifikací (nejnovější první).</summary>
+    public ObservableCollection<DeliveryRowViewModel> Deliveries { get; } = [];
+
+    [ObservableProperty] private bool _onlyProblemDeliveries;
+    [ObservableProperty] private bool _hasNoDeliveries;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasDeadLetters))]
+    private int _deadLetterCount;
+
+    public bool HasDeadLetters => DeadLetterCount > 0;
+
+    partial void OnOnlyProblemDeliveriesChanged(bool value) => _ = RunAsync(LoadDeliveriesAsync);
 
     [ObservableProperty] private string _host = string.Empty;
     [ObservableProperty] private int _port = 587;
@@ -45,6 +59,36 @@ public partial class EmailSettingsViewModel : ViewModelBase
         FromAddress = s.FromAddress;
         FromName = s.FromName ?? string.Empty;
         Version = s.Version;
+        await LoadDeliveriesAsync();
+    });
+
+    private async Task LoadDeliveriesAsync()
+    {
+        var client = _session.Require();
+        var rows = OnlyProblemDeliveries
+            // Selhané + nedoručené dohromady (server filtruje po jednom stavu, tak dvě levná čtení).
+            ? (await client.ListNotificationDeliveriesAsync(NotificationDeliveryStatus.DeadLetter, 100))
+              .Concat(await client.ListNotificationDeliveriesAsync(NotificationDeliveryStatus.Failed, 100))
+              .OrderByDescending(d => d.CreatedAt).ToList()
+            : (await client.ListNotificationDeliveriesAsync(limit: 100)).ToList();
+
+        Deliveries.Clear();
+        foreach (var d in rows)
+            Deliveries.Add(new DeliveryRowViewModel(d));
+        HasNoDeliveries = Deliveries.Count == 0;
+        DeadLetterCount = rows.Count(d => d.Status == "DeadLetter");
+    }
+
+    [RelayCommand]
+    private Task RefreshDeliveriesAsync() => RunAsync(LoadDeliveriesAsync);
+
+    [RelayCommand]
+    private Task ResendDeliveryAsync(DeliveryRowViewModel? row) => RunAsync(async () =>
+    {
+        if (row is null) return;
+        await _session.Require().ResendNotificationDeliveryAsync(row.Id);
+        await LoadDeliveriesAsync();
+        ToastSink?.Show("Notifikace zařazena k novému odeslání.", ToastKind.Success);
     });
 
     [RelayCommand]

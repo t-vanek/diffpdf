@@ -76,6 +76,26 @@ public sealed class JobEntity
     public Guid? SourceAutomationId { get; set; }
 }
 
+/// <summary>Notification outbox row — an e-mail awaiting (or after) delivery; see NotificationDelivery.</summary>
+public sealed class NotificationDeliveryEntity
+{
+    public Guid Id { get; set; }
+    public string Event { get; set; } = string.Empty;
+    public string? BranchKey { get; set; }
+    public string? InstanceKey { get; set; }
+    public Guid? SubscriptionId { get; set; }
+    public string RuleName { get; set; } = string.Empty;
+    public string RecipientsJson { get; set; } = "[]";
+    public string Subject { get; set; } = string.Empty;
+    public string Body { get; set; } = string.Empty;
+    public string Status { get; set; } = "Pending";
+    public int AttemptCount { get; set; }
+    public DateTimeOffset? NextAttemptAt { get; set; }
+    public string? LastError { get; set; }
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? SentAt { get; set; }
+}
+
 public sealed class SubscriptionEntity
 {
     public Guid Id { get; set; }
