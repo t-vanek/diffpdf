@@ -1,5 +1,9 @@
 # Deploying DiffPdf API as a Windows Service
 
+> **Kompletní provozní runbook pro ICT** (česky — požadavky, SQL Server, service účet,
+> firewall, konfigurace, monitoring, zálohy, řešení potíží) je v **[../docs/NASAZENI.md](../docs/NASAZENI.md)**.
+> Tento soubor je jen stručná referenční příručka k deployment skriptům.
+
 The API runs as a normal console app and also supports the Windows Service Control Manager
 (`AddWindowsService` in `Program.cs`). These scripts register it as an **auto-starting** service.
 

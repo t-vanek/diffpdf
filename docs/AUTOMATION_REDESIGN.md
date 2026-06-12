@@ -203,7 +203,7 @@ dopočítané `displayName` / `icon`.
    `?fromTemplate=`, `?category=`.
 4. Provisioning: přejmenovat baseline na lidské názvy, navázat kategorii a účel.
 5. UI: galerie šablon + seskupený seznam + typovaná pole.
-6. Dokumentace: přepsat sekci o automatizacích v `README.md` a `docs/DEVELOPMENT.md`.
+6. Dokumentace: přepsat sekci o automatizacích v `README.md`.
 
 **Fáze 1 (P2):** `QueueHealth`, `ComparisonFreshness`, `GateCheck`, `ReRunFailed`,
 `TempCleanup`, `FolderSync`, `ResultExport` — každý jako samostatný executor + šablona.
