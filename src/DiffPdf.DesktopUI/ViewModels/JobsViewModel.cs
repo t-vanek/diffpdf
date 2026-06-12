@@ -509,10 +509,23 @@ public partial class JobsViewModel : PageViewModel
         Summary.Add(new("Chyby v obsahu", s.FilesWithContentErrors) { Tone = StatTone.Warning });
     }
 
+    // Pauza/pokračování/opakování jsou vratné — běží bez potvrzení, ať akce sedí na jeden klik.
     [RelayCommand] private Task PauseAsync() => ActAsync(c => c.PauseJobAsync(SelectedJob!.Id));
     [RelayCommand] private Task ResumeAsync() => ActAsync(c => c.ResumeJobAsync(SelectedJob!.Id));
-    [RelayCommand] private Task CancelAsync() => ActAsync(c => c.CancelJobAsync(SelectedJob!.Id));
     [RelayCommand] private Task RetryAsync() => ActAsync(c => c.RetryJobAsync(SelectedJob!.Id));
+
+    /// <summary>Zrušení je jediná nevratná akce nad během úlohy — proto jako jediné chce potvrzení.</summary>
+    [RelayCommand]
+    private async Task CancelAsync()
+    {
+        if (SelectedJob is not { } job) return;
+        if (!await _dialogs.ConfirmAsync("Zrušit úlohu",
+                $"Úloha {job.Job.BranchKey}/{job.Job.InstanceKey} se zastaví a označí jako zrušená. " +
+                "Porovnání se nedokončí a nepůjde na něj navázat — úloha by se musela spustit znovu od začátku.",
+                confirmText: "Zrušit úlohu", cancelText: "Nechat běžet", danger: true))
+            return;
+        await ActAsync(c => c.CancelJobAsync(SelectedJob!.Id));
+    }
 
     /// <summary>Smaže jednu úlohu přímo z řádku seznamu (jen Hotovo/Zrušeno), s potvrzením.</summary>
     [RelayCommand]
@@ -521,7 +534,8 @@ public partial class JobsViewModel : PageViewModel
         if (row is null || !row.CanDelete) return;
         string created = row.Job.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm");
         if (!await _dialogs.ConfirmAsync("Smazat úlohu",
-            $"Opravdu trvale smazat úlohu {row.Job.BranchKey}/{row.Job.InstanceKey} z {created}?\nSmaže se včetně výsledků porovnání a diff PDF."))
+            $"Úloha {row.Job.BranchKey}/{row.Job.InstanceKey} z {created} se trvale smaže, včetně výsledků porovnání a diff PDF.",
+            confirmText: "Smazat", danger: true))
             return;
         await DeleteRowsAsync([row]);
     });
@@ -531,9 +545,10 @@ public partial class JobsViewModel : PageViewModel
     private Task DeleteSelectedAsync() => RunAsync(async () =>
     {
         var rows = Jobs.Where(r => r.IsSelected && r.CanDelete).ToList();
-        if (rows.Count == 0) { Info = "Nevybral jsi žádnou úlohu."; return; }
+        if (rows.Count == 0) { Info = UiText.NothingSelected("úlohu"); return; }
         if (!await _dialogs.ConfirmAsync("Smazat vybrané úlohy",
-            $"Opravdu trvale smazat vybrané úlohy ({rows.Count})?\nSmažou se včetně výsledků porovnání a diff PDF."))
+            $"Vybrané úlohy ({rows.Count}) se trvale smažou, včetně výsledků porovnání a diff PDF.",
+            confirmText: "Smazat", danger: true))
             return;
         await DeleteRowsAsync(rows);
     });
@@ -562,7 +577,7 @@ public partial class JobsViewModel : PageViewModel
         OnPropertyChanged(nameof(MoreJobsAvailable));
         Info = failed.Count == 0
             ? Format.Plural(deleted, "úloha smazána", "úlohy smazány", "úloh smazáno") + "."
-            : $"Smazáno {deleted}, nešlo smazat {failed.Count}: {string.Join("; ", failed)}";
+            : UiText.PartialFailure("Smazáno", deleted, failed);
     }
 
     [RelayCommand]
@@ -588,7 +603,7 @@ public partial class JobsViewModel : PageViewModel
         OnPropertyChanged(nameof(SelectedSummary));
         OnPropertyChanged(nameof(CanPause)); OnPropertyChanged(nameof(CanResume));
         OnPropertyChanged(nameof(CanCancel)); OnPropertyChanged(nameof(CanRetry)); OnPropertyChanged(nameof(CanSendDiffs));
-        Info = $"Úloha: {updated.Status}.";
+        Info = $"Úloha: {SelectedJob.StatusText.ToLowerInvariant()}.";
     });
 
     /// <summary>Double-clicking a file row opens its full detail (and diff preview / save actions) in a separate

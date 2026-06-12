@@ -46,7 +46,7 @@ public sealed class OkLabelConverter : IValueConverter
 
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
-        string trueLabel = "OK", falseLabel = "Chyba";
+        string trueLabel = "V pořádku", falseLabel = "Chyba";
         if (parameter is string p)
         {
             int bar = p.IndexOf('|');
@@ -95,7 +95,7 @@ public sealed class AutomationOutcomeLabelConverter : IValueConverter
 
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => value switch
     {
-        AutomationRunOutcome.Ok => "OK",
+        AutomationRunOutcome.Ok => "V pořádku",
         AutomationRunOutcome.Warning => "Varování",
         AutomationRunOutcome.Failed => "Selhalo",
         _ => "—",

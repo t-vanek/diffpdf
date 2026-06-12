@@ -146,6 +146,35 @@
   <Style Selector="Button.destructive">
     <Setter Property="Foreground" Value="{DynamicResource Bad}"/>
   </Style>
+
+  <!-- Filled destructive primary — the confirm button of a danger dialog ("Smazat", "Zrušit úlohu").
+       Red fill so the irreversible choice is unmistakable; per-state template overrides for the same
+       reason as Button.accent above. -->
+  <Style Selector="Button.dangerAccent /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Bad}"/>
+    <Setter Property="Foreground" Value="{DynamicResource OnBad}"/>
+  </Style>
+  <Style Selector="Button.dangerAccent:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource BadHover}"/>
+    <Setter Property="Foreground" Value="{DynamicResource OnBad}"/>
+  </Style>
+  <Style Selector="Button.dangerAccent:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Bad}"/>
+    <Setter Property="Foreground" Value="{DynamicResource OnBad}"/>
+  </Style>
+
+  <!-- Micro-interaction: every button dips slightly while pressed — a tactile "it took" cue. -->
+  <Style Selector="Button">
+    <Setter Property="RenderTransform" Value="scale(1)"/>
+    <Setter Property="Transitions">
+      <Transitions>
+        <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.08" Easing="CubicEaseOut"/>
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Button:pressed">
+    <Setter Property="RenderTransform" Value="scale(0.97)"/>
+  </Style>
   <!-- Ghost: borderless secondary action; keeps FluentTheme's hover overlay. (On the dark Mica title bar the
        default overlay reads as a bright white box, so the MainWindow header locally overrides the
        ButtonBackgroundPointerOver/Pressed resources to a subtle value.) -->

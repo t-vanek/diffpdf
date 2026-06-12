@@ -22,7 +22,7 @@ public class BranchFormViewModelTests
         await form.SaveCommand.ExecuteAsync(null);
 
         Assert.False(form.Saved);
-        Assert.Contains("klíčem 'alfa'", form.ValidationError);
+        Assert.Contains("klíčem „alfa“", form.ValidationError);
     }
 
     [Fact]
@@ -66,6 +66,6 @@ public class BranchFormViewModelTests
         await form.SaveCommand.ExecuteAsync(null);
 
         Assert.False(form.Saved);
-        Assert.Contains("názvem 'Beta'", form.ValidationError);
+        Assert.Contains("názvem „Beta“", form.ValidationError);
     }
 }

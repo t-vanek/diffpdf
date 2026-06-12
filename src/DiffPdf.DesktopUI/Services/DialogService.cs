@@ -37,8 +37,14 @@ public sealed class DialogService
         }
     }
 
-    /// <summary>Modal yes/no confirmation. Returns true only if the user confirms.</summary>
-    public async Task<bool> ConfirmAsync(string title, string message)
+    /// <summary>
+    /// Modal confirmation. Returns true only if the user confirms. The confirm button carries the action
+    /// verb ("Smazat", "Zastavit"…) instead of a bare "Ano", so the choice is readable without the message.
+    /// <paramref name="danger"/> marks an irreversible action: the confirm button turns red and Enter
+    /// defaults to the safe choice (cancel), so a destructive step always takes a deliberate click.
+    /// </summary>
+    public async Task<bool> ConfirmAsync(string title, string message,
+        string confirmText = "Pokračovat", string cancelText = "Zrušit", bool danger = false)
     {
         if (Owner is null) return false;
 
@@ -46,33 +52,38 @@ public sealed class DialogService
         var dialog = new Window
         {
             Title = title,
-            Width = 420,
+            Width = 440,
             SizeToContent = SizeToContent.Height,
             CanResize = false,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
         };
 
-        var yes = new Button { Content = "Ano", MinWidth = 80, IsDefault = true };
-        var no = new Button { Content = "Ne", MinWidth = 80, IsCancel = true };
-        yes.Click += (_, _) => { result = true; dialog.Close(); };
-        no.Click += (_, _) => { result = false; dialog.Close(); };
+        var confirm = new Button { Content = confirmText, MinWidth = 96, IsDefault = !danger };
+        confirm.Classes.Add(danger ? "dangerAccent" : "accent");
+        var cancel = new Button { Content = cancelText, MinWidth = 88, IsCancel = true, IsDefault = danger };
+        confirm.Click += (_, _) => { result = true; dialog.Close(); };
+        cancel.Click += (_, _) => { result = false; dialog.Close(); };
 
-        dialog.Content = new StackPanel
+        var content = new StackPanel
         {
-            Margin = new Thickness(18),
-            Spacing = 16,
+            Margin = new Thickness(20, 18),
+            Spacing = 14,
             Children =
             {
+                new TextBlock { Text = title, Classes = { "headline" } },
                 new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap },
                 new StackPanel
                 {
                     Orientation = Orientation.Horizontal,
                     Spacing = 8,
                     HorizontalAlignment = HorizontalAlignment.Right,
-                    Children = { yes, no },
+                    // Cancel left, action right — the eye lands on the verb that commits the action.
+                    Children = { cancel, confirm },
                 },
             },
         };
+        content.Classes.Add("fadeIn");
+        dialog.Content = content;
 
         await dialog.ShowDialog(Owner);
         return result;

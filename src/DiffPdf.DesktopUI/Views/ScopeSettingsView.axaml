@@ -90,7 +90,7 @@
 
     <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,10,0,0">
       <ProgressBar IsIndeterminate="True" Width="80" Height="4" VerticalAlignment="Center" IsVisible="{Binding IsBusy}"/>
-      <Button Content="Uložit" Classes="accent" Command="{Binding SaveCommand}"/>
+      <Button Content="Uložit" Classes="accent" Command="{Binding SaveCommand}" IsEnabled="{Binding !IsBusy}"/>
       <Button Content="Zavřít" Command="{Binding CancelCommand}" IsVisible="{Binding IsModal}"/>
     </StackPanel>
   </Grid>

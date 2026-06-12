@@ -169,8 +169,8 @@
           </ContentControl>
         </StackPanel>
 
-        <!-- Stavově řízené akce -->
-        <WrapPanel>
+        <!-- Stavově řízené akce — po dobu probíhajícího volání zamčené proti dvojkliku -->
+        <WrapPanel IsEnabled="{Binding !IsBusy}">
           <Button Content="‖ Pozastavit" Classes="ghost" Command="{Binding PauseCommand}" IsVisible="{Binding CanPause}" Margin="0,0,6,6"/>
           <Button Content="↻ Pokračovat" Classes="ghost" Command="{Binding ResumeCommand}" IsVisible="{Binding CanResume}" Margin="0,0,6,6"/>
           <Button Content="■ Zrušit" Classes="ghost destructive" Command="{Binding CancelCommand}" IsVisible="{Binding CanCancel}" Margin="0,0,6,6"/>

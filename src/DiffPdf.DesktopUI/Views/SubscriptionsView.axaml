@@ -142,7 +142,7 @@
           </StackPanel>
 
           <CheckBox Content="Pravidlo aktivní" IsChecked="{Binding Enabled}"/>
-          <Button Content="Uložit pravidlo" Classes="accent" Command="{Binding SaveCommand}" HorizontalAlignment="Left"/>
+          <Button Content="Uložit pravidlo" Classes="accent" Command="{Binding SaveCommand}" HorizontalAlignment="Left" IsEnabled="{Binding !IsBusy}"/>
         </StackPanel>
       </ScrollViewer>
     </Grid>

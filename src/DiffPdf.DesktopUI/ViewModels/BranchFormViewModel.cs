@@ -92,6 +92,15 @@ public partial class BranchFormViewModel : ViewModelBase, IModalViewModel
     [RelayCommand]
     private void Cancel() => CloseRequested?.Invoke();
 
+    // Živá re-validace: jakmile uložení jednou selže, chybová hláška se s každou úpravou přepočítá,
+    // takže zmizí přesně ve chvíli, kdy uživatel problém opraví — nemusí znovu zkoušet Uložit naslepo.
+    partial void OnKeyChanged(string value) => RevalidateIfInvalid();
+    partial void OnNameChanged(string value) => RevalidateIfInvalid();
+    private void RevalidateIfInvalid()
+    {
+        if (ValidationError is not null) ValidationError = Validate();
+    }
+
     /// <summary>Klientská kontrola: povinná pole + unikátnost (klíč case-sensitive jako na serveru). Null = OK.</summary>
     private string? Validate()
     {
@@ -102,11 +111,11 @@ public partial class BranchFormViewModel : ViewModelBase, IModalViewModel
             if (key.Length == 0) return "Zadej klíč.";
             if (!ScopeKey.IsValid(key)) return ScopeKey.Rule;
             if (_existingKeys.Any(k => string.Equals(k, key, StringComparison.Ordinal)))
-                return $"Větev s klíčem '{key}' už existuje.";
+                return $"Větev s klíčem {UiText.Quote(key)} už existuje.";
         }
         if (name.Length == 0) return "Zadej název.";
         if (_otherNames.Any(n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase)))
-            return $"Větev s názvem '{name}' už existuje.";
+            return $"Větev s názvem {UiText.Quote(name)} už existuje.";
         return null;
     }
 }

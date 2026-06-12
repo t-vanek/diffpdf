@@ -305,7 +305,7 @@
           <CheckBox Content="Nesoulad struktury" IsChecked="{Binding EventStructureDrift}"/>
           <CheckBox Content="Automatizace obnovena" IsChecked="{Binding EventAutomationRecovered}"/>
           <CheckBox Content="Povoleno" IsChecked="{Binding Enabled}"/>
-          <Button Content="Uložit automatizaci" Classes="accent" Command="{Binding SaveCommand}" HorizontalAlignment="Left"/>
+          <Button Content="Uložit automatizaci" Classes="accent" Command="{Binding SaveCommand}" HorizontalAlignment="Left" IsEnabled="{Binding !IsBusy}"/>
         </StackPanel>
       </ScrollViewer>
     </Grid>

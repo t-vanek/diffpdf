@@ -246,7 +246,7 @@ public partial class FileManagerViewModel : PageViewModel
             ? $"„{selection[0].Name}“"
             : Format.Plural(selection.Count, "vybranou položku", "vybrané položky", "vybraných položek");
         string where = ActivePanel.IsServer ? "na serveru" : "na tomto počítači (do koše)";
-        if (!await _dialogs.ConfirmAsync("Smazat", $"Opravdu smazat {what} {where}?"))
+        if (!await _dialogs.ConfirmAsync("Smazat", $"Smaže se {what} {where}.", confirmText: "Smazat", danger: true))
             return;
 
         var backend = ActivePanel.Backend;
@@ -278,7 +278,8 @@ public partial class FileManagerViewModel : PageViewModel
             string folders = string.Join(", ", nonEmptyFolders.Select(f => $"„{f.Name}“"));
             if (await _dialogs.ConfirmAsync(
                     "Složka není prázdná",
-                    $"{folders}: složka obsahuje další položky (i takové, které tento seznam nezobrazuje). Smazat včetně celého obsahu?"))
+                    $"{folders}: složka obsahuje další položky (i takové, které tento seznam nezobrazuje).",
+                    confirmText: "Smazat včetně obsahu", cancelText: "Přeskočit", danger: true))
             {
                 foreach (var folder in nonEmptyFolders)
                 {

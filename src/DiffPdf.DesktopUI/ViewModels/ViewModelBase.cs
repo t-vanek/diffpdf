@@ -34,9 +34,17 @@ public abstract partial class ViewModelBase : ObservableObject
         {
             Error = "Server není dostupný — zkontroluj, že běží, a ověř adresu (⚙ vpravo nahoře).";
         }
+        catch (InvalidOperationException ex)
+        {
+            // View-models throw InvalidOperationException with a ready-to-show Czech guard message
+            // ("Vyber úlohu.") — show it verbatim, it IS the user-facing text.
+            Error = ex.Message;
+        }
         catch (Exception ex)
         {
-            Error = ex.Message;
+            // Unexpected (non-API) failure: keep the technical detail — the users are testers/IT analysts
+            // who will paste it into a ticket — but frame it so it doesn't read like the app's own text.
+            Error = $"Neočekávaná chyba: {ex.Message}";
         }
         finally
         {

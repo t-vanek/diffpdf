@@ -167,7 +167,7 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
     public IReadOnlyList<StatLine> Summary =>
     [
         new("Celkem", Automations.Count),
-        new("OK", Automations.Count(a => a.LastOutcome == AutomationRunOutcome.Ok)) { Tone = StatTone.Good },
+        new("V pořádku", Automations.Count(a => a.LastOutcome == AutomationRunOutcome.Ok)) { Tone = StatTone.Good },
         new("Varování", Automations.Count(a => a.LastOutcome == AutomationRunOutcome.Warning)) { Tone = StatTone.Warning },
         new("Selhané", Automations.Count(a => a.LastOutcome == AutomationRunOutcome.Failed)) { Tone = StatTone.Failed },
         new("Nespuštěné", Automations.Count(a => a.LastOutcome is null)) { Tone = StatTone.Neutral },
@@ -417,10 +417,12 @@ public partial class AutomationDefinitionsViewModel : ViewModelBase, IAutomation
     private Task DeleteAsync() => RunAsync(async () =>
     {
         if (Selected is not { } a) throw new InvalidOperationException("Vyber automatizaci.");
-        if (!await _dialogs.ConfirmAsync("Smazat automatizaci", $"Opravdu smazat automatizaci '{a.Key}'?"))
+        if (!await _dialogs.ConfirmAsync("Smazat automatizaci",
+                $"Automatizace {UiText.Quote(a.Key)} se smaže a její rozvrh se přestane spouštět.",
+                confirmText: "Smazat", danger: true))
             return;
         await _session.Require().DeleteAutomationAsync(a.Id);
-        Info = "Smazáno.";
+        Info = "Automatizace smazána.";
         await LoadAsync();
         _dialogs.ShowToast("Automatizace smazána.", ToastKind.Success);
     });

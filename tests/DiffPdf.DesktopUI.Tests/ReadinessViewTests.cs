@@ -33,7 +33,7 @@ public class ReadinessViewTests
 
         // Folders read as counts / OK — no raw "Present (654 pdf)".
         Assert.Equal("654 PDF", v.Folders.Single(f => f.Name == "old").Value);
-        Assert.Equal("OK", v.Folders.Single(f => f.Name == "reports").Value);
+        Assert.Equal("V pořádku", v.Folders.Single(f => f.Name == "reports").Value);
 
         // Pairing sentences bake the count in.
         Assert.Contains(v.Pairing, p => p.Text == "536 párů k porovnání");

@@ -54,7 +54,7 @@ public partial class SendDiffsDialogViewModel : ViewModelBase, IModalViewModel
     {
         var parsed = ParseRecipients(Recipients);
         ValidationError = parsed.Count == 0 ? "Zadej alespoň jednoho příjemce."
-            : parsed.FirstOrDefault(r => !r.Contains('@')) is { } invalid ? $"'{invalid}' není e-mailová adresa."
+            : parsed.FirstOrDefault(r => !r.Contains('@')) is { } invalid ? $"{UiText.Quote(invalid)} není e-mailová adresa."
             : null;
         if (ValidationError is not null) return;
 

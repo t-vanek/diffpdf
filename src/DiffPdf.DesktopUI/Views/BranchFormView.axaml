@@ -31,7 +31,9 @@
                IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"/>
 
     <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
-      <Button Content="{Binding SaveButtonText}" Classes="accent" Command="{Binding SaveCommand}" IsDefault="True" MinWidth="100"/>
+      <Ellipse Classes="spinner" IsVisible="{Binding IsBusy}" VerticalAlignment="Center"/>
+      <Button Content="{Binding SaveButtonText}" Classes="accent" Command="{Binding SaveCommand}" IsDefault="True" MinWidth="100"
+              IsEnabled="{Binding !IsBusy}"/>
       <Button Content="Zrušit" Command="{Binding CancelCommand}" IsCancel="True" MinWidth="80"/>
     </StackPanel>
   </StackPanel>

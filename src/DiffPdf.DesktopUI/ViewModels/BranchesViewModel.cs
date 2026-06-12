@@ -231,7 +231,19 @@ public partial class BranchesViewModel : PageViewModel
     [RelayCommand] private Task EnqueueBranch(BranchRowViewModel row) => QueueBranchAsync(row, QueueAction.Enqueue);
     [RelayCommand] private Task PauseBranch(BranchRowViewModel row) => QueueBranchAsync(row, QueueAction.Pause);
     [RelayCommand] private Task ResumeBranch(BranchRowViewModel row) => QueueBranchAsync(row, QueueAction.Resume);
-    [RelayCommand] private Task StopBranch(BranchRowViewModel row) => QueueBranchAsync(row, QueueAction.Stop);
+
+    /// <summary>Stop větve zruší rozběhnutou úlohu a vyčistí celou frontu větve (nevratně) — chce potvrzení.</summary>
+    [RelayCommand]
+    private async Task StopBranch(BranchRowViewModel row)
+    {
+        if (row is null) return;
+        if (!await _dialogs.ConfirmAsync("Zastavit větev",
+                $"Větev {UiText.Quote(row.Branch.Key)} — rozběhnuté porovnání se zruší a čekající úlohy se " +
+                "z fronty odstraní. Pokud chceš jen dočasně přerušit, použij Pozastavit.",
+                confirmText: "Zastavit", cancelText: "Nechat běžet", danger: true))
+            return;
+        await QueueBranchAsync(row, QueueAction.Stop);
+    }
 
     private Task QueueBranchAsync(BranchRowViewModel? row, QueueAction action) => RunAsync(async () =>
     {
@@ -260,7 +272,7 @@ public partial class BranchesViewModel : PageViewModel
         var form = BranchFormViewModel.ForCreate(_session, ScopeRoot, keys, names);
         if (await _dialogs.ShowBranchFormAsync(form))
         {
-            Info = $"Větev '{form.Key.Trim()}' vytvořena.";
+            Info = $"Větev {UiText.Quote(form.Key.Trim())} vytvořena.";
             await RunAsync(LoadAsync);
         }
     }
@@ -274,7 +286,7 @@ public partial class BranchesViewModel : PageViewModel
         var form = BranchFormViewModel.ForEdit(_session, b, otherNames);
         if (await _dialogs.ShowBranchFormAsync(form))
         {
-            Info = $"Větev '{b.Key}' uložena.";
+            Info = $"Větev {UiText.Quote(b.Key)} uložena.";
             await RunAsync(LoadAsync);
         }
     }
@@ -287,12 +299,12 @@ public partial class BranchesViewModel : PageViewModel
         // A branch with instances can't be plainly deleted (409). Offer the cascade up front instead.
         bool cascade = row.InstanceCount > 0;
         var message = cascade
-            ? $"Větev '{b.Key}' má {row.InstanceCount} instancí. Smazat větev včetně všech instancí a jejich úloh?"
-            : $"Opravdu smazat větev '{b.Key}'?";
-        if (!await _dialogs.ConfirmAsync("Smazat větev", message))
+            ? $"Větev {UiText.Quote(b.Key)} má {row.InstanceCount} instancí. Smaže se včetně všech instancí a jejich úloh."
+            : $"Větev {UiText.Quote(b.Key)} se smaže.";
+        if (!await _dialogs.ConfirmAsync("Smazat větev", message, confirmText: "Smazat", danger: true))
             return;
         await _session.Require().DeleteBranchAsync(b.Key, cascade);
-        Info = $"Větev '{b.Key}' smazána.";
+        Info = $"Větev {UiText.Quote(b.Key)} smazána.";
         await LoadAsync();
     });
 
@@ -301,8 +313,9 @@ public partial class BranchesViewModel : PageViewModel
     private Task DeleteSelectedAsync() => RunAsync(async () =>
     {
         var targets = Branches.Where(r => r.IsSelected).Select(r => r.Branch).ToList();
-        if (targets.Count == 0) { Info = "Nevybral jsi žádnou větev."; return; }
-        if (!await _dialogs.ConfirmAsync("Smazat větve", $"Opravdu smazat vybrané větve ({targets.Count})?"))
+        if (targets.Count == 0) { Info = UiText.NothingSelected("větev"); return; }
+        if (!await _dialogs.ConfirmAsync("Smazat větve",
+                $"Vybrané větve ({targets.Count}) se smažou.", confirmText: "Smazat", danger: true))
             return;
 
         var client = _session.Require();
@@ -316,7 +329,7 @@ public partial class BranchesViewModel : PageViewModel
 
         Info = failed.Count == 0
             ? $"Smazáno {deleted} větví."
-            : $"Smazáno {deleted}, nešlo smazat {failed.Count}: {string.Join("; ", failed)}";
+            : UiText.PartialFailure("Smazáno", deleted, failed);
         await LoadAsync();
     });
 
@@ -331,7 +344,7 @@ public partial class BranchesViewModel : PageViewModel
     private Task SetSelectedEnabledAsync(bool enabled) => RunAsync(async () =>
     {
         var targets = Branches.Where(r => r.IsSelected).Select(r => r.Branch).ToList();
-        if (targets.Count == 0) { Info = "Nevybral jsi žádnou větev."; return; }
+        if (targets.Count == 0) { Info = UiText.NothingSelected("větev"); return; }
 
         var client = _session.Require();
         int done = 0;
@@ -344,7 +357,7 @@ public partial class BranchesViewModel : PageViewModel
 
         Info = failed.Count == 0
             ? $"{(enabled ? "Povoleno" : "Zakázáno")}: {done} větví."
-            : $"Hotovo {done}, selhalo {failed.Count}: {string.Join("; ", failed)}";
+            : UiText.PartialFailure("Hotovo", done, failed);
         await LoadAsync();
     });
 }
