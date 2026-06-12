@@ -31,6 +31,10 @@ public interface IAutomationStore
     /// </summary>
     Task<Automation> UpdateAsync(Automation automation, long expectedVersion, CancellationToken ct = default);
 
+    /// <summary>Quick mute toggle for the automation's notifications. Does not bump the Version (it must not
+    /// conflict with an open editor); returns the updated automation, or null when unknown.</summary>
+    Task<Automation?> SetNotificationsEnabledAsync(Guid id, bool enabled, CancellationToken ct = default);
+
     Task<bool> DeleteAsync(Guid id, CancellationToken ct = default);
 
     /// <summary>

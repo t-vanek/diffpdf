@@ -11,16 +11,17 @@ public interface INotificationDispatcher
 }
 
 /// <summary>
-/// Best-effort dispatcher: reads the enabled rules, keeps those whose <see cref="NotificationSubscription.Events"/>
-/// include the event and whose branch/instance filters match (empty filter = any), then e-mails each rule's
-/// recipients via <see cref="IEmailSender"/>. A failure on one rule is logged and never blocks the others.
-/// Registered Scoped so its scoped <see cref="ISubscriptionStore"/> resolves in the same per-message DI scope as
-/// the Wolverine handler that invokes it.
+/// Outbox dispatcher: reads the enabled rules, keeps those whose <see cref="NotificationSubscription.Events"/>
+/// include the event and whose branch/instance filters match (empty filter = any), then APPENDS one
+/// <see cref="NotificationDelivery"/> row per matching rule instead of sending inline. The background
+/// <c>NotificationDeliveryService</c> sends with retries/backoff and parks exhausted rows as DeadLetter —
+/// so an SMTP outage or missing configuration can no longer silently swallow an alert (the old inline
+/// dispatcher logged a warning and dropped the mail). Registered Scoped so its scoped stores resolve in the
+/// same per-message DI scope as the Wolverine handler that invokes it.
 /// </summary>
 public sealed class NotificationDispatcher(
     ISubscriptionStore subscriptions,
-    EmailSettingsResolver settingsResolver,
-    IEmailSender sender,
+    INotificationDeliveryStore deliveries,
     ILogger<NotificationDispatcher> logger) : INotificationDispatcher
 {
     public async Task DispatchAsync(INotification notification, CancellationToken ct = default)
@@ -29,27 +30,25 @@ public sealed class NotificationDispatcher(
         if (rules.Count == 0)
             return;
 
-        var settings = await settingsResolver.ResolveAsync(ct);
-        if (settings is not { IsConfigured: true })
+        var now = DateTimeOffset.UtcNow;
+        var rows = rules.Select(rule => new NotificationDelivery
         {
-            logger.LogWarning(
-                "E-mail is not configured (Konfigurace → E-mail, or Notifications:Smtp); skipping {Count} matching rule(s) for {Event}.",
-                rules.Count, notification.Event);
-            return;
-        }
+            Id = Guid.NewGuid(),
+            Event = notification.Event,
+            BranchKey = notification.BranchKey,
+            InstanceKey = notification.InstanceKey,
+            SubscriptionId = rule.Id,
+            RuleName = rule.Name,
+            Recipients = rule.Recipients,
+            Subject = notification.Title,
+            Body = notification.Summary,
+            Status = NotificationDeliveryStatus.Pending,
+            NextAttemptAt = now,
+            CreatedAt = now,
+        }).ToList();
 
-        foreach (var rule in rules)
-        {
-            try
-            {
-                await sender.SendAsync(settings, rule.Recipients, notification.Title, notification.Summary, ct: ct);
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning(ex, "E-mail notification failed for event {Event} (rule '{Rule}', recipients: {Recipients}).",
-                    notification.Event, rule.Name, string.Join(", ", rule.Recipients));
-            }
-        }
+        await deliveries.AddRangeAsync(rows, ct);
+        logger.LogInformation("Queued {Count} e-mail delivery(ies) for {Event}.", rows.Count, notification.Event);
     }
 
     /// <summary>A rule matches when it lists the event and its branch/instance filters allow it (empty = any).</summary>

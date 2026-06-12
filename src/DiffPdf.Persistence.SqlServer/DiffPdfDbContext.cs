@@ -10,6 +10,8 @@ public sealed class DiffPdfDbContext(DbContextOptions<DiffPdfDbContext> options)
     public DbSet<JobEntity> Jobs => Set<JobEntity>();
     public DbSet<FilePairTaskEntity> FilePairTasks => Set<FilePairTaskEntity>();
     public DbSet<SubscriptionEntity> Subscriptions => Set<SubscriptionEntity>();
+    public DbSet<NotificationDeliveryEntity> NotificationDeliveries => Set<NotificationDeliveryEntity>();
+    public DbSet<SystemEventEntity> SystemEvents => Set<SystemEventEntity>();
     public DbSet<AutomationEntity> Automations => Set<AutomationEntity>();
     public DbSet<AutomationRunEntity> AutomationRuns => Set<AutomationRunEntity>();
     public DbSet<TriggerEntity> Triggers => Set<TriggerEntity>();
@@ -76,6 +78,7 @@ public sealed class DiffPdfDbContext(DbContextOptions<DiffPdfDbContext> options)
             e.Property(x => x.TriggerId).HasColumnName("trigger_id");
             e.Property(x => x.Source).HasColumnName("source").HasMaxLength(32);
             e.Property(x => x.Priority).HasColumnName("priority");
+            e.Property(x => x.SourceAutomationId).HasColumnName("source_automation_id");
             e.HasIndex(x => new { x.BranchId, x.InstanceId, x.CreatedAt });
             e.HasIndex(x => new { x.Status, x.CreatedAt });
             e.HasIndex(x => new { x.BranchId, x.Status });
@@ -124,6 +127,47 @@ public sealed class DiffPdfDbContext(DbContextOptions<DiffPdfDbContext> options)
             e.HasIndex(x => x.Enabled);
         });
 
+        b.Entity<SystemEventEntity>(e =>
+        {
+            e.ToTable("system_events");
+            e.HasKey(x => x.Seq); // clustered identity → ListSince (Seq > cursor ORDER BY Seq) is an index seek
+            e.Property(x => x.Seq).HasColumnName("seq").ValueGeneratedOnAdd();
+            e.Property(x => x.Type).HasColumnName("type").HasMaxLength(64);
+            e.Property(x => x.Severity).HasColumnName("severity").HasMaxLength(16);
+            e.Property(x => x.BranchKey).HasColumnName("branch_key").HasMaxLength(256);
+            e.Property(x => x.InstanceKey).HasColumnName("instance_key").HasMaxLength(256);
+            e.Property(x => x.JobId).HasColumnName("job_id");
+            e.Property(x => x.AutomationId).HasColumnName("automation_id");
+            e.Property(x => x.Message).HasColumnName("message");
+            e.Property(x => x.Detail).HasColumnName("detail");
+            e.Property(x => x.OccurredAt).HasColumnName("occurred_at");
+            e.HasIndex(x => x.OccurredAt); // retention prune
+            e.HasIndex(x => x.JobId);      // stall-alert dedup lookup
+        });
+
+        b.Entity<NotificationDeliveryEntity>(e =>
+        {
+            e.ToTable("notification_deliveries");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.Event).HasColumnName("event").HasMaxLength(64);
+            e.Property(x => x.BranchKey).HasColumnName("branch_key").HasMaxLength(256);
+            e.Property(x => x.InstanceKey).HasColumnName("instance_key").HasMaxLength(256);
+            e.Property(x => x.SubscriptionId).HasColumnName("subscription_id");
+            e.Property(x => x.RuleName).HasColumnName("rule_name").HasMaxLength(256);
+            e.Property(x => x.RecipientsJson).HasColumnName("recipients_json");
+            e.Property(x => x.Subject).HasColumnName("subject");
+            e.Property(x => x.Body).HasColumnName("body");
+            e.Property(x => x.Status).HasColumnName("status").HasMaxLength(16);
+            e.Property(x => x.AttemptCount).HasColumnName("attempt_count");
+            e.Property(x => x.NextAttemptAt).HasColumnName("next_attempt_at");
+            e.Property(x => x.LastError).HasColumnName("last_error");
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.Property(x => x.SentAt).HasColumnName("sent_at");
+            e.HasIndex(x => new { x.Status, x.NextAttemptAt }); // the delivery service's due-scan
+            e.HasIndex(x => x.CreatedAt);                       // the UI history (newest first)
+        });
+
         b.Entity<EmailSettingsEntity>(e =>
         {
             e.ToTable("email_settings");
@@ -161,6 +205,7 @@ public sealed class DiffPdfDbContext(DbContextOptions<DiffPdfDbContext> options)
             e.Property(x => x.FailureThreshold).HasColumnName("failure_threshold");
             e.Property(x => x.EventsJson).HasColumnName("events_json");
             e.Property(x => x.Enabled).HasColumnName("enabled");
+            e.Property(x => x.NotificationsEnabled).HasColumnName("notifications_enabled").HasDefaultValue(true);
             e.Property(x => x.NextRunAt).HasColumnName("next_run_at");
             e.Property(x => x.RunningSince).HasColumnName("running_since");
             e.Property(x => x.ConsecutiveFailures).HasColumnName("consecutive_failures");

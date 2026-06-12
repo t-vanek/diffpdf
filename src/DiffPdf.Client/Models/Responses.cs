@@ -472,6 +472,9 @@ public sealed record AutomationResponse
     public AutomationRunOutcome? LastOutcome { get; init; }
     public long Version { get; init; }
 
+    /// <summary>False = outbound notifications are muted (the automation still runs).</summary>
+    public bool NotificationsEnabled { get; init; } = true;
+
     /// <summary>The category this automation belongs to (derived from its dominant step).</summary>
     public AutomationCategory Category { get; init; }
 
@@ -541,6 +544,46 @@ public sealed record AutomationRunResponse
     public AutomationRunOutcome Outcome { get; init; }
     public string? Detail { get; init; }
     public IReadOnlyList<AutomationStepResultResponse> StepResults { get; init; } = [];
+}
+
+/// <summary>
+/// One system event log row — the durable trail behind the notification center. <see cref="Seq"/> is the
+/// replay cursor: remember the highest one seen and pass it as <c>sinceSeq</c> after a reconnect to catch
+/// up on everything missed. Delivered both by <c>GET /api/v1/events</c> and the SignalR <c>systemEvent</c> push.
+/// </summary>
+public sealed record SystemEvent
+{
+    public long Seq { get; init; }
+    /// <summary>Dotted machine type, e.g. "job.completed", "automation.run.finished" (prefix-filterable).</summary>
+    public string Type { get; init; } = "";
+    public SystemEventSeverity Severity { get; init; }
+    public string? BranchKey { get; init; }
+    public string? InstanceKey { get; init; }
+    public Guid? JobId { get; init; }
+    public Guid? AutomationId { get; init; }
+    public string Message { get; init; } = "";
+    public string? Detail { get; init; }
+    public DateTimeOffset OccurredAt { get; init; }
+}
+
+/// <summary>One notification outbox row — the e-mail delivery history (sent / retrying / dead-lettered).</summary>
+public sealed record NotificationDeliveryResponse
+{
+    public Guid Id { get; init; }
+    /// <summary>Event name (e.g. "GateViolated") — a string so a newer server's events still display.</summary>
+    public string Event { get; init; } = "";
+    public string? BranchKey { get; init; }
+    public string? InstanceKey { get; init; }
+    public string RuleName { get; init; } = "";
+    public IReadOnlyList<string> Recipients { get; init; } = [];
+    public string Subject { get; init; } = "";
+    /// <summary>Pending | Sent | Failed | DeadLetter (string for forward compatibility).</summary>
+    public string Status { get; init; } = "";
+    public int AttemptCount { get; init; }
+    public DateTimeOffset? NextAttemptAt { get; init; }
+    public string? LastError { get; init; }
+    public DateTimeOffset CreatedAt { get; init; }
+    public DateTimeOffset? SentAt { get; init; }
 }
 
 /// <summary>An e-mail notification rule as returned by the API.</summary>

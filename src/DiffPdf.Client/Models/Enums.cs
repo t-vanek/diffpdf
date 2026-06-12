@@ -79,6 +79,23 @@ public enum IgnoreUnit
     Points,
 }
 
+/// <summary>Severity of a system event log row.</summary>
+public enum SystemEventSeverity
+{
+    Info,
+    Warning,
+    Error,
+}
+
+/// <summary>Delivery state of one notification outbox row.</summary>
+public enum NotificationDeliveryStatus
+{
+    Pending,
+    Sent,
+    Failed,
+    DeadLetter,
+}
+
 /// <summary>The kind of event a notification subscription can fire on (batch outcome or automation result).</summary>
 public enum NotificationEvent
 {

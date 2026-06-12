@@ -32,10 +32,23 @@ public sealed class JobProgressHubClient(ServerSession session, TokenSource toke
     /// <summary>Raised (on the UI thread) for each per-branch run-queue state push.</summary>
     public event Action<BranchQueueState>? QueueStateReceived;
 
+    /// <summary>Raised (on the UI thread) for each system event push (the notification-center feed).</summary>
+    public event Action<SystemEvent>? SystemEventReceived;
+
     /// <summary>Raised (on the UI thread) after an automatic reconnect re-joins groups — listeners should reload to catch anything missed while disconnected.</summary>
     public event Action? Reconnected;
 
+    /// <summary>
+    /// Raised (on the UI thread) when realtime connectivity changes: <c>false</c> while the hub is down or
+    /// retrying (pushes are being missed — data may be stale), <c>true</c> once (re)connected. Drives the
+    /// shell's degraded-connection badge so the user knows the lists may lag behind the server.
+    /// </summary>
+    public event Action<bool>? RealtimeStateChanged;
+
     public bool IsConnected => _connection is { State: HubConnectionState.Connected };
+
+    private void RaiseRealtimeState(bool up) =>
+        Dispatcher.UIThread.Post(() => RealtimeStateChanged?.Invoke(up));
 
     public Task EnsureStartedAsync()
     {
@@ -58,13 +71,21 @@ public sealed class JobProgressHubClient(ServerSession session, TokenSource toke
         conn.On<BranchQueueState>("queueState", s =>
             Dispatcher.UIThread.Post(() => QueueStateReceived?.Invoke(s)));
 
+        conn.On<SystemEvent>("systemEvent", e =>
+            Dispatcher.UIThread.Post(() => SystemEventReceived?.Invoke(e)));
+
         // After an automatic reconnect the server-side groups are gone (new connection id) — re-join everything
         // we track, then tell listeners to reload (they may have missed events while the connection was down).
         conn.Reconnected += async _ =>
         {
             await RejoinAllAsync();
+            RaiseRealtimeState(true);
             Dispatcher.UIThread.Post(() => Reconnected?.Invoke());
         };
+
+        // Surface connectivity transitions so the shell can show a degraded badge while pushes are missed.
+        conn.Reconnecting += _ => { RaiseRealtimeState(false); return Task.CompletedTask; };
+        conn.Closed += _ => { RaiseRealtimeState(false); return Task.CompletedTask; };
 
         _connection = conn;
         // Connect in the background and KEEP RETRYING the initial connect. WithAutomaticReconnect only revives an
@@ -116,10 +137,12 @@ public sealed class JobProgressHubClient(ServerSession session, TokenSource toke
             catch
             {
                 if (_connection != conn) return; // replaced / stopped meanwhile
+                RaiseRealtimeState(false); // initial connect failing — pushes are not flowing yet
                 await Task.Delay(TimeSpan.FromSeconds(attempt < 5 ? 2 : 15));
                 continue;
             }
             await RejoinAllAsync(); // apply the group memberships requested before we were connected
+            RaiseRealtimeState(true);
             if (attempt > 0) Dispatcher.UIThread.Post(() => Reconnected?.Invoke()); // recovered → listeners resync
             return;
         }
@@ -197,6 +220,7 @@ public sealed class JobProgressHubClient(ServerSession session, TokenSource toke
         {
             await _connection.DisposeAsync();
             _connection = null;
+            RaiseRealtimeState(false);
         }
     }
 

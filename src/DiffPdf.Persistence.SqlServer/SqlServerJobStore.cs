@@ -408,6 +408,7 @@ public sealed class SqlServerJobStore(DiffPdfDbContext db, EntityMapper mapper) 
         TriggerId = job.TriggerId,
         Source = job.Source.ToString(),
         Priority = job.Priority,
+        SourceAutomationId = job.SourceAutomationId,
         Version = 1,
     };
 }

@@ -12,7 +12,8 @@ public sealed record LaunchSpec(
     int MaxDegreeOfParallelism,
     Guid? TriggerId = null,
     JobSource Source = JobSource.System,
-    int Priority = 0)
+    int Priority = 0,
+    Guid? SourceAutomationId = null)
 {
     /// <summary>Default knobs (default options, no gate, all *.pdf recursively) — used by the on-demand triggers.</summary>
     public static LaunchSpec Default { get; } = new(new ComparisonOptions(), null, "*.pdf", true, 0);
@@ -23,9 +24,9 @@ public sealed record LaunchSpec(
     /// the per-scope inheritance actually drives a run. <paramref name="priority"/> is the per-branch queue
     /// priority (0 = enqueue at back, 100 = run now / jump ahead).
     /// </summary>
-    public static LaunchSpec FromEffective(EffectiveConfiguration eff, Guid? triggerId = null, JobSource source = JobSource.System, int priority = 0) =>
+    public static LaunchSpec FromEffective(EffectiveConfiguration eff, Guid? triggerId = null, JobSource source = JobSource.System, int priority = 0, Guid? sourceAutomationId = null) =>
         new(eff.ComparisonOptions, eff.TriggerConfig.Gate, eff.TriggerConfig.SearchPattern,
-            eff.TriggerConfig.Recursive, eff.TriggerConfig.MaxDegreeOfParallelism, triggerId, source, priority);
+            eff.TriggerConfig.Recursive, eff.TriggerConfig.MaxDegreeOfParallelism, triggerId, source, priority, sourceAutomationId);
 }
 
 /// <summary>Why a launch did or did not happen.</summary>

@@ -95,6 +95,8 @@ public sealed record CreateAutomationRequest
     public int FailureThreshold { get; init; } = 3;
     public IReadOnlyList<NotificationEvent>? Events { get; init; }
     public bool Enabled { get; init; } = true;
+    /// <summary>False = mute outbound notifications (the automation still runs; runs stay in history).</summary>
+    public bool NotificationsEnabled { get; init; } = true;
 }
 
 /// <summary>Update an automation. <see cref="Version"/> guards against concurrent edits (409 on mismatch).</summary>
@@ -117,6 +119,8 @@ public sealed record UpdateAutomationRequest
     public int FailureThreshold { get; init; } = 3;
     public IReadOnlyList<NotificationEvent>? Events { get; init; }
     public bool Enabled { get; init; } = true;
+    /// <summary>False = mute outbound notifications (the automation still runs; runs stay in history).</summary>
+    public bool NotificationsEnabled { get; init; } = true;
 }
 
 /// <summary>Create an e-mail notification rule (recipients + events + optional branch/instance scope; empty = any).</summary>

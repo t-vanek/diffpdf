@@ -30,6 +30,11 @@ public sealed partial class EntityMapper
     [MapProperty(nameof(SubscriptionEntity.InstanceKeysJson), nameof(NotificationSubscription.InstanceKeys))]
     public partial NotificationSubscription ToDomain(SubscriptionEntity entity);
 
+    [MapProperty(nameof(NotificationDeliveryEntity.RecipientsJson), nameof(NotificationDelivery.Recipients))]
+    public partial NotificationDelivery ToDomain(NotificationDeliveryEntity entity);
+
+    public partial SystemEvent ToDomain(SystemEventEntity entity);
+
     [MapperIgnoreSource(nameof(EmailSettingsEntity.Id))] // single-row settings; the domain model has no Id
     public partial EmailSettings ToDomain(EmailSettingsEntity entity);
 
@@ -86,4 +91,17 @@ public sealed partial class EntityMapper
     // so an unknown value safely degrades to System. Used for ComparisonJob.Source and TriggerRun.Source.
     private static JobSource MapJobSource(string source) =>
         Enum.TryParse<JobSource>(source, ignoreCase: true, out var parsed) ? parsed : JobSource.System;
+
+    // An unknown delivery status degrades to DeadLetter — the safe terminal: the row is never auto-sent
+    // and stays visible to the operator (a parse default of Pending could resurrect garbage rows).
+    private static NotificationDeliveryStatus MapDeliveryStatus(string status) =>
+        Enum.TryParse<NotificationDeliveryStatus>(status, ignoreCase: true, out var parsed) ? parsed : NotificationDeliveryStatus.DeadLetter;
+
+    // Unknown event names (older server reading a newer row) degrade to Completed — informational only.
+    private static NotificationEvent MapNotificationEvent(string @event) =>
+        Enum.TryParse<NotificationEvent>(@event, ignoreCase: true, out var parsed) ? parsed : NotificationEvent.Completed;
+
+    // Unknown severities degrade to Info — display metadata only.
+    private static SystemEventSeverity MapSystemEventSeverity(string severity) =>
+        Enum.TryParse<SystemEventSeverity>(severity, ignoreCase: true, out var parsed) ? parsed : SystemEventSeverity.Info;
 }

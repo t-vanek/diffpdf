@@ -73,6 +73,42 @@ public sealed class JobEntity
     public Guid? TriggerId { get; set; }
     public string Source { get; set; } = "System";
     public int Priority { get; set; }
+    public Guid? SourceAutomationId { get; set; }
+}
+
+/// <summary>Append-only system event log row (Seq = bigint identity cursor); see SystemEvent.</summary>
+public sealed class SystemEventEntity
+{
+    public long Seq { get; set; }
+    public string Type { get; set; } = string.Empty;
+    public string Severity { get; set; } = "Info";
+    public string? BranchKey { get; set; }
+    public string? InstanceKey { get; set; }
+    public Guid? JobId { get; set; }
+    public Guid? AutomationId { get; set; }
+    public string Message { get; set; } = string.Empty;
+    public string? Detail { get; set; }
+    public DateTimeOffset OccurredAt { get; set; } = DateTimeOffset.UtcNow;
+}
+
+/// <summary>Notification outbox row — an e-mail awaiting (or after) delivery; see NotificationDelivery.</summary>
+public sealed class NotificationDeliveryEntity
+{
+    public Guid Id { get; set; }
+    public string Event { get; set; } = string.Empty;
+    public string? BranchKey { get; set; }
+    public string? InstanceKey { get; set; }
+    public Guid? SubscriptionId { get; set; }
+    public string RuleName { get; set; } = string.Empty;
+    public string RecipientsJson { get; set; } = "[]";
+    public string Subject { get; set; } = string.Empty;
+    public string Body { get; set; } = string.Empty;
+    public string Status { get; set; } = "Pending";
+    public int AttemptCount { get; set; }
+    public DateTimeOffset? NextAttemptAt { get; set; }
+    public string? LastError { get; set; }
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? SentAt { get; set; }
 }
 
 public sealed class SubscriptionEntity
@@ -123,6 +159,7 @@ public sealed class AutomationEntity
     public int FailureThreshold { get; set; } = 3;
     public string EventsJson { get; set; } = "[]";
     public bool Enabled { get; set; } = true;
+    public bool NotificationsEnabled { get; set; } = true;
     public DateTimeOffset? NextRunAt { get; set; }
     public DateTimeOffset? RunningSince { get; set; }
     public int ConsecutiveFailures { get; set; }

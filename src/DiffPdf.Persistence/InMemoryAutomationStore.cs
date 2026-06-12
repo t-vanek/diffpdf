@@ -57,6 +57,19 @@ public sealed class InMemoryAutomationStore : IAutomationStore
         }
     }
 
+    public Task<Automation?> SetNotificationsEnabledAsync(Guid id, bool enabled, CancellationToken ct = default)
+    {
+        lock (_gate)
+        {
+            if (!_byId.TryGetValue(id, out var existing))
+                return Task.FromResult<Automation?>(null);
+            // No Version bump: the toggle must not conflict with an editor holding the current version.
+            var updated = existing with { NotificationsEnabled = enabled, UpdatedAt = DateTimeOffset.UtcNow };
+            _byId[id] = updated;
+            return Task.FromResult<Automation?>(updated);
+        }
+    }
+
     public Task<bool> DeleteAsync(Guid id, CancellationToken ct = default) =>
         Task.FromResult(_byId.TryRemove(id, out _));
 

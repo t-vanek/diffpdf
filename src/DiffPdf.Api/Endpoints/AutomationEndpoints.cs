@@ -1,6 +1,7 @@
 using DiffPdf.Application.Automations;
 using DiffPdf.Core.Models;
 using DiffPdf.Core.Storage;
+using DiffPdf.Persistence;
 
 namespace DiffPdf.Api.Endpoints;
 
@@ -66,6 +67,19 @@ public static class AutomationEndpoints
             await automations.DeleteAsync(id, ct) ? Results.NoContent() : Results.NotFound())
             .WithSummary("Delete an automation").Produces(StatusCodes.Status204NoContent).ProducesProblem(StatusCodes.Status404NotFound);
 
+        // Quick mute toggle — no Version handshake, so it never conflicts with an open editor.
+        group.MapPost("/{id:guid}/notifications/enable", async (Guid id, IAutomationStore store, CancellationToken ct) =>
+            await store.SetNotificationsEnabledAsync(id, true, ct) is { } a
+                ? Results.Ok(AutomationResponse.From(a)) : Results.NotFound())
+            .WithSummary("Unmute the automation's outbound notifications")
+            .Produces<AutomationResponse>().ProducesProblem(StatusCodes.Status404NotFound);
+
+        group.MapPost("/{id:guid}/notifications/disable", async (Guid id, IAutomationStore store, CancellationToken ct) =>
+            await store.SetNotificationsEnabledAsync(id, false, ct) is { } a
+                ? Results.Ok(AutomationResponse.From(a)) : Results.NotFound())
+            .WithSummary("Mute the automation's outbound notifications (it keeps running; runs stay in history)")
+            .Produces<AutomationResponse>().ProducesProblem(StatusCodes.Status404NotFound);
+
         group.MapPost("/{id:guid}/run", (Guid id, IAutomationService automations, CancellationToken ct) =>
             Run(async () =>
                 await automations.RunNowAsync(id, ct) is { } run ? Results.Ok(AutomationRunResponse.From(run)) : Results.NotFound()))
@@ -85,12 +99,14 @@ public static class AutomationEndpoints
     private static AutomationInput ToInput(CreateAutomationRequest r) => new(
         r.Key, r.Name, r.ScopeKind, r.BranchKey, r.InstanceKey, r.Cron, r.IntervalSeconds,
         r.EventTriggers, r.EventDebounceSeconds, r.Steps?.Select(s => s.ToStep()).ToList(),
-        r.TimeoutSeconds, r.MaxAttempts, r.RetryDelaySeconds, r.FailureThreshold, r.Events, r.Enabled);
+        r.TimeoutSeconds, r.MaxAttempts, r.RetryDelaySeconds, r.FailureThreshold, r.Events, r.Enabled,
+        r.NotificationsEnabled);
 
     private static AutomationInput ToInput(UpdateAutomationRequest r) => new(
         r.Key, r.Name, r.ScopeKind, r.BranchKey, r.InstanceKey, r.Cron, r.IntervalSeconds,
         r.EventTriggers, r.EventDebounceSeconds, r.Steps?.Select(s => s.ToStep()).ToList(),
-        r.TimeoutSeconds, r.MaxAttempts, r.RetryDelaySeconds, r.FailureThreshold, r.Events, r.Enabled);
+        r.TimeoutSeconds, r.MaxAttempts, r.RetryDelaySeconds, r.FailureThreshold, r.Events, r.Enabled,
+        r.NotificationsEnabled);
 
     /// <summary>Maps the service's validation/conflict outcomes to HTTP.</summary>
     private static async Task<IResult> Run(Func<Task<IResult>> action)
@@ -178,7 +194,8 @@ public sealed record CreateAutomationRequest(
     int RetryDelaySeconds = 30,
     int FailureThreshold = 3,
     IReadOnlyList<NotificationEvent>? Events = null,
-    bool Enabled = true);
+    bool Enabled = true,
+    bool NotificationsEnabled = true);
 
 /// <summary>Update an automation (optimistic concurrency via <see cref="Version"/>).</summary>
 public sealed record UpdateAutomationRequest(
@@ -198,7 +215,8 @@ public sealed record UpdateAutomationRequest(
     int RetryDelaySeconds = 30,
     int FailureThreshold = 3,
     IReadOnlyList<NotificationEvent>? Events = null,
-    bool Enabled = true);
+    bool Enabled = true,
+    bool NotificationsEnabled = true);
 
 /// <summary>An automation as returned by the API. <c>NextRunAt</c> / <c>RunningSince</c> /
 /// <c>ConsecutiveFailures</c> are engine state — read-only.</summary>
@@ -220,6 +238,7 @@ public sealed record AutomationResponse(
     int FailureThreshold,
     IReadOnlyList<NotificationEvent> Events,
     bool Enabled,
+    bool NotificationsEnabled,
     DateTimeOffset? NextRunAt,
     DateTimeOffset? RunningSince,
     int ConsecutiveFailures,
@@ -235,6 +254,7 @@ public sealed record AutomationResponse(
         a.Id, a.Key, a.Name, a.ScopeKind, a.BranchKey, a.InstanceKey, a.Cron, a.IntervalSeconds,
         a.EventTriggers, a.EventDebounceSeconds, a.Steps.Select(AutomationStepDto.From).ToList(),
         a.TimeoutSeconds, a.MaxAttempts, a.RetryDelaySeconds, a.FailureThreshold, a.Events, a.Enabled,
+        a.NotificationsEnabled,
         a.NextRunAt, a.RunningSince, a.ConsecutiveFailures,
         a.CreatedAt, a.UpdatedAt, a.LastRunAt, a.LastOutcome, a.Version,
         AutomationCatalog.CategoryOf(a), AutomationCatalog.PurposeFor(a));

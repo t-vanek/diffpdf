@@ -86,7 +86,7 @@ public class IndexBatchIdempotencyTests : IDisposable
     private Task<BatchFailed?> Index(ComparisonJob job, IJobStore jobStore, IFilePairTaskStore taskStore, IMessageBus bus) =>
         IndexBatchHandler.Handle(
             new IndexBatch(job.Id), jobStore, taskStore, new NoopStorageProvisioner(),
-            new NullTriggerEventPublisher(), bus, _metrics,
+            new NullTriggerEventPublisher(), new NullSystemEventLog(), bus, _metrics,
             NullLogger<IndexBatchHandler>.Instance, CancellationToken.None);
 
     [Fact]

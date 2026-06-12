@@ -85,6 +85,7 @@ public sealed class SqlServerAutomationStore(DiffPdfDbContext db, EntityMapper m
                     .SetProperty(x => x.FailureThreshold, automation.FailureThreshold)
                     .SetProperty(x => x.EventsJson, eventsJson)
                     .SetProperty(x => x.Enabled, automation.Enabled)
+                    .SetProperty(x => x.NotificationsEnabled, automation.NotificationsEnabled)
                     .SetProperty(x => x.NextRunAt, automation.NextRunAt)
                     .SetProperty(x => x.UpdatedAt, now)
                     .SetProperty(x => x.Version, x => x.Version + 1), ct);
@@ -103,6 +104,16 @@ public sealed class SqlServerAutomationStore(DiffPdfDbContext db, EntityMapper m
     {
         int rows = await db.Automations.Where(x => x.Id == id).ExecuteDeleteAsync(ct);
         return rows > 0;
+    }
+
+    public async Task<Automation?> SetNotificationsEnabledAsync(Guid id, bool enabled, CancellationToken ct = default)
+    {
+        // No Version bump: the toggle must not conflict with an editor holding the current version.
+        int rows = await db.Automations.Where(x => x.Id == id)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(x => x.NotificationsEnabled, enabled)
+                .SetProperty(x => x.UpdatedAt, DateTimeOffset.UtcNow), ct);
+        return rows == 0 ? null : await GetAsync(id, ct);
     }
 
     public async Task<bool> TryBeginRunAsync(Guid id, DateTimeOffset now, DateTimeOffset? advanceNextRunAtTo, TimeSpan staleAfter, CancellationToken ct = default)
@@ -161,6 +172,7 @@ public sealed class SqlServerAutomationStore(DiffPdfDbContext db, EntityMapper m
         FailureThreshold = a.FailureThreshold,
         EventsJson = DiffPdfJson.Serialize(a.Events),
         Enabled = a.Enabled,
+        NotificationsEnabled = a.NotificationsEnabled,
         NextRunAt = a.NextRunAt,
         RunningSince = a.RunningSince,
         ConsecutiveFailures = a.ConsecutiveFailures,

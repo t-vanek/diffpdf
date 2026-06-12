@@ -1,4 +1,6 @@
+using DiffPdf.Application.Abstractions;
 using DiffPdf.Core.Abstractions;
+using DiffPdf.Core.Models;
 using DiffPdf.Messaging.Messages;
 using DiffPdf.Persistence;
 using DiffPdf.Worker;
@@ -45,8 +47,28 @@ public sealed class StaleTaskRecoveryService(
                 {
                     // Flag the affected jobs so the client shows an "Obnoveno" chip; the flag rides the next
                     // natural progress push when each re-dispatched pair completes (and a toast fires there).
-                    await jobStore.MarkRecoveredAsync(recovered.Select(r => r.JobId).Distinct().ToList(), stoppingToken);
+                    var recoveredJobIds = recovered.Select(r => r.JobId).Distinct().ToList();
+                    await jobStore.MarkRecoveredAsync(recoveredJobIds, stoppingToken);
                     logger.LogInformation("Recovered {Count} stale file-pair task(s)", recovered.Count);
+
+                    // Recovery interventions belong in the event trail — they mean a worker died mid-comparison.
+                    if (scope.ServiceProvider.GetService<ISystemEventLog>() is { } events)
+                        foreach (var jobId in recoveredJobIds)
+                        {
+                            var job = await jobStore.GetAsync(jobId, stoppingToken);
+                            await events.AppendAsync(new SystemEvent
+                            {
+                                Type = SystemEventTypes.JobRecovered,
+                                Severity = SystemEventSeverity.Warning,
+                                BranchKey = job?.BranchKey,
+                                InstanceKey = job?.InstanceKey,
+                                JobId = jobId,
+                                Message = job is null
+                                    ? "Porovnání bylo po přerušení obnoveno (vypršela zámková lhůta workeru)."
+                                    : $"Porovnání {job.BranchKey}/{job.InstanceKey} bylo po přerušení obnoveno (vypršela zámková lhůta workeru).",
+                                Detail = $"{recovered.Count(r => r.JobId == jobId)} párů vráceno do fronty.",
+                            }, stoppingToken);
+                        }
                 }
 
                 // Heal pairs stranded Queued under a now-terminal (Cancelled/Failed/Completed) job. Runs AFTER the

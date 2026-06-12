@@ -2,35 +2,16 @@ using DiffPdf.Core.Models;
 using DiffPdf.Notifications;
 using DiffPdf.Persistence;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 
 namespace DiffPdf.Core.Tests;
 
+/// <summary>
+/// The dispatcher is an outbox appender: it matches enabled rules (event + scope) and queues one
+/// <see cref="NotificationDelivery"/> row per match — it never sends inline (the delivery service does,
+/// with retries). These tests pin the matching semantics and the queued row's shape.
+/// </summary>
 public class NotificationDispatcherTests
 {
-    private sealed class RecordingSender : IEmailSender
-    {
-        public List<(IReadOnlyList<string> Recipients, string Subject)> Sent { get; } = [];
-        public Func<IReadOnlyList<string>, bool>? ThrowFor { get; init; }
-
-        public Task SendAsync(EmailSettings settings, IEnumerable<string> recipients, string subject, string body,
-            IReadOnlyList<EmailAttachment>? attachments = null, CancellationToken ct = default)
-        {
-            var list = recipients.ToList();
-            if (ThrowFor is not null && ThrowFor(list)) throw new InvalidOperationException("boom");
-            Sent.Add((list, subject));
-            return Task.CompletedTask;
-        }
-    }
-
-    private sealed class FakeEmailSettingsStore(EmailSettings? settings) : IEmailSettingsStore
-    {
-        public Task<EmailSettings?> GetAsync(CancellationToken ct = default) => Task.FromResult(settings);
-        public Task<EmailSettings> SaveAsync(EmailSettings s, long v, CancellationToken ct = default) => Task.FromResult(s);
-    }
-
-    private static readonly EmailSettings Configured = new() { Host = "smtp.test", FromAddress = "diffpdf@test" };
-
     private static BatchNotification Notification(
         NotificationEvent ev = NotificationEvent.Completed, string branch = "alfa", string instance = "lama") =>
         new(ev, Guid.NewGuid(), branch, instance, 10, 7, 3, 0, 0,
@@ -38,10 +19,12 @@ public class NotificationDispatcherTests
 
     private static NotificationSubscription Rule(
         IReadOnlyList<string> recipients, NotificationEvent[] events,
-        IReadOnlyList<string>? branches = null, IReadOnlyList<string>? instances = null, bool enabled = true) =>
+        IReadOnlyList<string>? branches = null, IReadOnlyList<string>? instances = null, bool enabled = true,
+        string name = "rule") =>
         new()
         {
             Id = Guid.NewGuid(),
+            Name = name,
             Recipients = recipients,
             Events = events,
             BranchKeys = branches ?? [],
@@ -49,115 +32,109 @@ public class NotificationDispatcherTests
             Enabled = enabled,
         };
 
-    private static async Task<NotificationDispatcher> DispatcherAsync(
-        IEnumerable<NotificationSubscription> rules, IEmailSender sender, EmailSettings? settings = null)
+    private static async Task<(NotificationDispatcher Dispatcher, InMemoryNotificationDeliveryStore Outbox)> DispatcherAsync(
+        IEnumerable<NotificationSubscription> rules)
     {
         var store = new InMemorySubscriptionStore();
         foreach (var r in rules) await store.CreateAsync(r);
-        var resolver = new EmailSettingsResolver(new FakeEmailSettingsStore(settings ?? Configured), Options.Create(new NotificationOptions()));
-        return new NotificationDispatcher(store, resolver, sender, NullLogger<NotificationDispatcher>.Instance);
+        var outbox = new InMemoryNotificationDeliveryStore();
+        return (new NotificationDispatcher(store, outbox, NullLogger<NotificationDispatcher>.Instance), outbox);
+    }
+
+    private static Task<IReadOnlyList<NotificationDelivery>> RowsAsync(InMemoryNotificationDeliveryStore outbox) =>
+        outbox.ListRecentAsync(100);
+
+    [Fact]
+    public async Task DisabledRule_QueuesNothing()
+    {
+        var (dispatcher, outbox) = await DispatcherAsync([Rule(["qa@x"], [NotificationEvent.Completed], enabled: false)]);
+        await dispatcher.DispatchAsync(Notification());
+        Assert.Empty(await RowsAsync(outbox));
     }
 
     [Fact]
-    public async Task DisabledRule_DispatchesNothing()
+    public async Task NoRules_QueuesNothing()
     {
-        var sender = new RecordingSender();
-        var rule = Rule(["qa@x"], [NotificationEvent.Completed], enabled: false);
-
-        await (await DispatcherAsync([rule], sender)).DispatchAsync(Notification());
-
-        Assert.Empty(sender.Sent);
-    }
-
-    [Fact]
-    public async Task NoRules_DispatchesNothing()
-    {
-        var sender = new RecordingSender();
-        await (await DispatcherAsync([], sender)).DispatchAsync(Notification());
-        Assert.Empty(sender.Sent);
+        var (dispatcher, outbox) = await DispatcherAsync([]);
+        await dispatcher.DispatchAsync(Notification());
+        Assert.Empty(await RowsAsync(outbox));
     }
 
     [Fact]
     public async Task FiltersByEvent()
     {
-        var sender = new RecordingSender();
-        var rule = Rule(["qa@x"], [NotificationEvent.Completed]);
-
-        await (await DispatcherAsync([rule], sender)).DispatchAsync(Notification(NotificationEvent.Failed));
-
-        Assert.Empty(sender.Sent);
+        var (dispatcher, outbox) = await DispatcherAsync([Rule(["qa@x"], [NotificationEvent.Completed])]);
+        await dispatcher.DispatchAsync(Notification(NotificationEvent.Failed));
+        Assert.Empty(await RowsAsync(outbox));
     }
 
     [Fact]
     public async Task FiltersByBranch()
     {
-        var sender = new RecordingSender();
-        var rule = Rule(["qa@x"], [NotificationEvent.Completed], branches: ["beta"]);
-
-        await (await DispatcherAsync([rule], sender)).DispatchAsync(Notification(branch: "alfa"));
-
-        Assert.Empty(sender.Sent);
+        var (dispatcher, outbox) = await DispatcherAsync([Rule(["qa@x"], [NotificationEvent.Completed], branches: ["beta"])]);
+        await dispatcher.DispatchAsync(Notification(branch: "alfa"));
+        Assert.Empty(await RowsAsync(outbox));
     }
 
     [Fact]
     public async Task FiltersByInstance()
     {
-        var sender = new RecordingSender();
-        var rule = Rule(["qa@x"], [NotificationEvent.Completed], instances: ["other"]);
-
-        await (await DispatcherAsync([rule], sender)).DispatchAsync(Notification(instance: "lama"));
-
-        Assert.Empty(sender.Sent);
+        var (dispatcher, outbox) = await DispatcherAsync([Rule(["qa@x"], [NotificationEvent.Completed], instances: ["other"])]);
+        await dispatcher.DispatchAsync(Notification(instance: "lama"));
+        Assert.Empty(await RowsAsync(outbox));
     }
 
     [Fact]
-    public async Task MatchingRule_SendsToAllRecipients()
+    public async Task MatchingRule_QueuesOneRowWithSnapshot()
     {
-        var sender = new RecordingSender();
-        var rule = Rule(["qa@x", "dev@x"], [NotificationEvent.Completed], branches: ["alfa"], instances: ["lama"]);
+        var rule = Rule(["qa@x", "dev@x"], [NotificationEvent.Completed], branches: ["alfa"], instances: ["lama"], name: "QA tým");
+        var (dispatcher, outbox) = await DispatcherAsync([rule]);
 
-        await (await DispatcherAsync([rule], sender)).DispatchAsync(Notification(branch: "alfa", instance: "lama"));
+        await dispatcher.DispatchAsync(Notification(branch: "alfa", instance: "lama"));
 
-        Assert.Single(sender.Sent);
-        Assert.Equal(["qa@x", "dev@x"], sender.Sent[0].Recipients);
+        var row = Assert.Single(await RowsAsync(outbox));
+        Assert.Equal(NotificationDeliveryStatus.Pending, row.Status);
+        Assert.Equal(["qa@x", "dev@x"], row.Recipients);
+        Assert.Equal(rule.Id, row.SubscriptionId);
+        Assert.Equal("QA tým", row.RuleName);
+        Assert.Equal(NotificationEvent.Completed, row.Event);
+        Assert.Equal("alfa", row.BranchKey);
+        Assert.Equal("lama", row.InstanceKey);
+        Assert.NotNull(row.NextAttemptAt);            // due immediately
+        Assert.False(string.IsNullOrWhiteSpace(row.Subject));
+        Assert.False(string.IsNullOrWhiteSpace(row.Body));
     }
 
     [Fact]
     public async Task EmptyScope_MatchesAnyBranchAndInstance()
     {
-        var sender = new RecordingSender();
-        var rule = Rule(["qa@x"], [NotificationEvent.Completed]); // no branch/instance filter
-
-        await (await DispatcherAsync([rule], sender)).DispatchAsync(Notification(branch: "whatever", instance: "any"));
-
-        Assert.Single(sender.Sent);
+        var (dispatcher, outbox) = await DispatcherAsync([Rule(["qa@x"], [NotificationEvent.Completed])]);
+        await dispatcher.DispatchAsync(Notification(branch: "whatever", instance: "any"));
+        Assert.Single(await RowsAsync(outbox));
     }
 
     [Fact]
-    public async Task NotConfigured_DispatchesNothing()
+    public async Task TwoMatchingRules_QueueTwoRows()
     {
-        var sender = new RecordingSender();
-        var rule = Rule(["qa@x"], [NotificationEvent.Completed]);
+        var (dispatcher, outbox) = await DispatcherAsync(
+        [
+            Rule(["qa@x"], [NotificationEvent.Completed]),
+            Rule(["dev@x"], [NotificationEvent.Completed]),
+        ]);
 
-        // No stored settings and an empty NotificationOptions => resolver returns not-configured.
-        await (await DispatcherAsync([rule], sender, settings: new EmailSettings())).DispatchAsync(Notification());
+        await dispatcher.DispatchAsync(Notification());
 
-        Assert.Empty(sender.Sent);
+        Assert.Equal(2, (await RowsAsync(outbox)).Count);
     }
 
     [Fact]
-    public async Task OneFailingRule_DoesNotBlockOthers()
+    public async Task QueuesEvenWhenSmtpIsNotConfigured()
     {
-        var sender = new RecordingSender { ThrowFor = r => r.Contains("boom@x") };
-        var rules = new[]
-        {
-            Rule(["boom@x"], [NotificationEvent.Completed]),
-            Rule(["ok@x"], [NotificationEvent.Completed]),
-        };
-
-        await (await DispatcherAsync(rules, sender)).DispatchAsync(Notification());
-
-        Assert.Single(sender.Sent); // the failing rule is logged; the other still delivers
-        Assert.Equal(["ok@x"], sender.Sent[0].Recipients);
+        // The old inline dispatcher silently dropped notifications when SMTP was not configured. The outbox
+        // queues them regardless — the delivery service fails the attempts and parks the rows as DeadLetter,
+        // which makes the misconfiguration visible (and the rows re-sendable once SMTP is fixed).
+        var (dispatcher, outbox) = await DispatcherAsync([Rule(["qa@x"], [NotificationEvent.Completed])]);
+        await dispatcher.DispatchAsync(Notification());
+        Assert.Single(await RowsAsync(outbox));
     }
 }

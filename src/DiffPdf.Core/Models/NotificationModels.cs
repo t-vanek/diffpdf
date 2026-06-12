@@ -98,3 +98,62 @@ public sealed record EmailSettings
     /// <summary>True when an SMTP host is configured — the transport is usable.</summary>
     public bool IsConfigured => !string.IsNullOrWhiteSpace(Host);
 }
+
+/// <summary>Delivery state of one outbox row (see <see cref="NotificationDelivery"/>).</summary>
+public enum NotificationDeliveryStatus
+{
+    /// <summary>Waiting for its (first) send attempt.</summary>
+    Pending,
+
+    /// <summary>Delivered to the SMTP server.</summary>
+    Sent,
+
+    /// <summary>The last attempt failed; a retry is scheduled at <see cref="NotificationDelivery.NextAttemptAt"/>.</summary>
+    Failed,
+
+    /// <summary>All attempts exhausted — kept for the operator to inspect and optionally re-send.</summary>
+    DeadLetter,
+}
+
+/// <summary>
+/// One e-mail notification awaiting (or after) delivery — the notification outbox. The dispatcher writes a row
+/// per matching subscription rule instead of sending inline, and a background delivery service sends with
+/// retries and exponential backoff; exhausted rows park as <see cref="NotificationDeliveryStatus.DeadLetter"/>.
+/// This makes every notification durable, observable (delivery history in the UI) and re-sendable — a dropped
+/// SMTP connection or missing configuration can no longer silently swallow an alert.
+/// </summary>
+public sealed record NotificationDelivery
+{
+    public required Guid Id { get; init; }
+
+    /// <summary>The event the e-mail announces (for filtering the history).</summary>
+    public required NotificationEvent Event { get; init; }
+
+    public string? BranchKey { get; init; }
+    public string? InstanceKey { get; init; }
+
+    /// <summary>The subscription rule that matched (informational; the rule may be edited/deleted later).</summary>
+    public Guid? SubscriptionId { get; init; }
+    public string RuleName { get; init; } = string.Empty;
+
+    /// <summary>Recipient addresses snapshotted from the rule at dispatch time.</summary>
+    public required IReadOnlyList<string> Recipients { get; init; }
+
+    /// <summary>Rendered e-mail subject/body snapshotted at dispatch time.</summary>
+    public required string Subject { get; init; }
+    public required string Body { get; init; }
+
+    public NotificationDeliveryStatus Status { get; init; } = NotificationDeliveryStatus.Pending;
+
+    /// <summary>Completed send attempts so far.</summary>
+    public int AttemptCount { get; init; }
+
+    /// <summary>When the next attempt is due (Pending/Failed); null once Sent or DeadLetter.</summary>
+    public DateTimeOffset? NextAttemptAt { get; init; }
+
+    /// <summary>The last attempt's failure, shown in the delivery history.</summary>
+    public string? LastError { get; init; }
+
+    public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? SentAt { get; init; }
+}

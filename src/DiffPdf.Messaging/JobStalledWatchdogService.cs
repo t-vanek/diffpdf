@@ -28,10 +28,6 @@ public sealed class JobStalledWatchdogService(
 {
     private const string ServiceName = "stuck-job-watchdog";
 
-    // Jobs already alerted as stalled, so a still-stalled job is not re-notified every tick. Mutated only on the
-    // single-threaded leader tick. In-memory: a leadership change re-alerts currently-stalled jobs once (accepted).
-    private readonly HashSet<Guid> _alerted = [];
-
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var opts = options.Value;
@@ -73,26 +69,48 @@ public sealed class JobStalledWatchdogService(
         var jobs = scope.ServiceProvider.GetRequiredService<IJobStore>();
         var tasks = scope.ServiceProvider.GetRequiredService<IFilePairTaskStore>();
         var dispatcher = scope.ServiceProvider.GetRequiredService<INotificationDispatcher>();
+        var automationEvents = scope.ServiceProvider.GetRequiredService<IAutomationEventSink>();
+        var eventStore = scope.ServiceProvider.GetRequiredService<ISystemEventStore>();
+        var systemEvents = scope.ServiceProvider.GetRequiredService<ISystemEventLog>();
 
         var now = DateTimeOffset.UtcNow;
         var running = await jobs.ListAsync(new JobListQuery { Status = JobStatus.Running, Limit = 1000 }, ct);
         var stalled = StuckJobDetector.FindStalled(running, now, threshold);
 
-        // Notify once per newly-stalled job (dedup against the in-memory set); then replace the set with the
-        // current stalled ids — drops recovered jobs (no re-alert) and keeps still-stalled ones silent.
+        // Notify once per stall: the dedup is the event log itself — a job.stalled event newer than the job's
+        // last progress means this stall was already announced. Durable, so a restart or a leadership change
+        // no longer re-alerts (the old in-memory set did); a job that progresses and stalls again alerts again
+        // (its last-progress timestamp moved past the recorded event). If the event append fails (best-effort),
+        // the worst case is one duplicate alert on the next tick.
         foreach (var job in stalled)
         {
-            if (!_alerted.Add(job.Id))
-                continue;
             var lastProgress = StuckJobDetector.LastProgress(job);
+            if (await eventStore.ExistsForJobAsync(SystemEventTypes.JobStalled, job.Id, lastProgress, ct))
+                continue;
+
             logger.LogWarning(
                 "Job {JobId} ({Branch}/{Instance}) stalled: {Processed}/{Total} pairs, no progress for {Minutes:0} min.",
                 job.Id, job.BranchKey, job.InstanceKey, job.ProcessedCount, job.TotalCount, (now - lastProgress).TotalMinutes);
+            await systemEvents.AppendAsync(new SystemEvent
+            {
+                Type = SystemEventTypes.JobStalled,
+                Severity = SystemEventSeverity.Warning,
+                BranchKey = job.BranchKey,
+                InstanceKey = job.InstanceKey,
+                JobId = job.Id,
+                Message = $"Porovnání {job.BranchKey}/{job.InstanceKey} se zaseklo: {job.ProcessedCount}/{job.TotalCount} párů, bez postupu {(now - lastProgress).TotalMinutes:0} min.",
+            }, ct);
             await dispatcher.DispatchAsync(new JobStalledNotification(
                 job.Id, job.BranchKey, job.InstanceKey, job.ProcessedCount, job.TotalCount,
                 now - lastProgress, lastProgress, now), ct);
+            // Stalls also fire event-triggered automations (JobStalled is offered as a spouštěč); the
+            // launching automation is excluded so it cannot re-trigger itself off its own stalled batch.
+            await automationEvents.PublishAsync(
+                NotificationEvent.JobStalled, job.BranchKey, job.InstanceKey,
+                $"{job.BranchKey}/{job.InstanceKey}: {job.ProcessedCount}/{job.TotalCount} párů, bez postupu {(now - lastProgress).TotalMinutes:0} min",
+                sourceAutomationId: job.SourceAutomationId,
+                chainDepth: job.SourceAutomationId is null ? 0 : 1, ct);
         }
-        _alerted.IntersectWith(stalled.Select(j => j.Id)); // forget recovered jobs so they can alert again later
 
         metrics.RecordStuckJobs(stalled.Count);
         metrics.RecordActiveTasks(await tasks.CountActiveAsync(ct));

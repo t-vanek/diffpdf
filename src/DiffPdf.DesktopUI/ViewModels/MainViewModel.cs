@@ -14,11 +14,15 @@ public partial class MainViewModel : ViewModelBase
     private readonly ServerDiscoveryClient _discovery;
     private readonly ClientSettingsStore _settings;
     private readonly ToastService _toasts;
+    private readonly NotificationCenterService _notificationCenter;
 
     public IReadOnlyList<PageViewModel> Pages { get; }
 
     /// <summary>Backs the transient toast overlay in the shell window.</summary>
     public ToastService Toasts => _toasts;
+
+    /// <summary>Backs the bell button + event feed flyout in the title bar.</summary>
+    public NotificationCenterService NotificationCenter => _notificationCenter;
 
     [ObservableProperty] private PageViewModel? _selectedPage;
     [ObservableProperty] private string _serverUrl = "http://localhost:5275";
@@ -28,13 +32,16 @@ public partial class MainViewModel : ViewModelBase
     // Drives visibility of the ClientId/Secret fields — only shown when the connected server requires auth.
     [ObservableProperty] private bool _authEnabled;
     [ObservableProperty] private string _connectionStatus = "Nepřipojeno";
+    // True while the REST session is up but the realtime hub is down/retrying — pushes are being missed,
+    // so the shell shows a warning badge ("data se mohou opožďovat") until the hub reconnects.
+    [ObservableProperty] private bool _realtimeDegraded;
     // Persist + auto-connect on next start (the connection gear's "remember" toggle).
     [ObservableProperty] private bool _autoConnect = true;
     [ObservableProperty] private string? _saveNote;
 
     public MainViewModel(ServerSession session, JobProgressHubClient hub, NavigationService navigation,
         ClientConfig config, ServerDiscoveryClient discovery, ClientSettingsStore settings, ToastService toasts,
-        IEnumerable<PageViewModel> pages)
+        NotificationCenterService notificationCenter, IEnumerable<PageViewModel> pages)
     {
         _session = session;
         _hub = hub;
@@ -42,8 +49,11 @@ public partial class MainViewModel : ViewModelBase
         _discovery = discovery;
         _settings = settings;
         _toasts = toasts;
+        _notificationCenter = notificationCenter;
         Pages = pages.OrderBy(p => p.NavOrder).ToList();
         navigation.Navigated += page => SelectedPage = page;
+        // Degraded only while a REST session exists — when fully disconnected the shell overlay says it all.
+        hub.RealtimeStateChanged += up => RealtimeDegraded = IsConnected && !up;
 
         // Seed the connection settings from config: explicit URL + optional credentials + the auto-connect flag.
         if (!string.IsNullOrWhiteSpace(config.Server.Url))
@@ -97,11 +107,15 @@ public partial class MainViewModel : ViewModelBase
             string.IsNullOrWhiteSpace(ClientSecret) ? null : ClientSecret);
 
         IsConnected = true;
+        RealtimeDegraded = false; // optimistic — the hub start below corrects it within seconds if it fails
         AuthEnabled = _session.ServerRequiresAuth;
         ConnectionStatus = $"Připojeno: {ServerUrl}";
         _toasts.Show($"Připojeno k {ServerUrl}.", ToastKind.Success);
 
         try { await _hub.EnsureStartedAsync(); } catch { /* live progress is best-effort */ }
+        // The event feed (bell): initial history fill + scope-group join for live pushes. Best-effort —
+        // a feed hiccup must not fail the connect; the next reconnect replay catches up.
+        try { await _notificationCenter.InitializeAsync(); } catch { /* feed is best-effort */ }
 
         SelectedPage ??= Pages.FirstOrDefault();
         if (SelectedPage is not null)
@@ -113,7 +127,9 @@ public partial class MainViewModel : ViewModelBase
     {
         await _hub.StopAsync();
         _session.Disconnect();
+        _notificationCenter.Reset();
         IsConnected = false;
+        RealtimeDegraded = false;
         ConnectionStatus = "Nepřipojeno";
         _toasts.Show("Odpojeno od serveru.", ToastKind.Info);
     });

@@ -82,7 +82,7 @@ public class AutomationRunnerTests
         var sink = new RecordingEventSink();
         using var metrics = new AutomationMetrics();
         var runner = new AutomationRunner(
-            executors, store, runs, dispatcher, sink, metrics, NullLogger<AutomationRunner>.Instance);
+            executors, store, runs, dispatcher, sink, new NullSystemEventLog(), metrics, NullLogger<AutomationRunner>.Instance);
         return (runner, dispatcher, sink, store, runs);
     }
 
@@ -256,6 +256,24 @@ public class AutomationRunnerTests
         Assert.Equal(NotificationEvent.HealthDegraded, published.Event);
         Assert.Equal(automation.Id, published.SourceId);
         Assert.Equal(2, published.ChainDepth); // caller depth + 1
+    }
+
+    [Theory]
+    [InlineData(NotificationEvent.ReadinessFailed)]
+    [InlineData(NotificationEvent.StructureDrift)]
+    [InlineData(NotificationEvent.HealthDegraded)]
+    public async Task EveryConfiguredEventKind_IsRaisedToDispatcherAndSink(NotificationEvent configured)
+    {
+        // Closes the audit gap "7 of 10 NotificationEvent types untested": the runner raises exactly the
+        // configured event kinds on a non-Ok outcome, into both channels (e-mail dispatcher + event sink).
+        var (runner, dispatcher, sink, store, _) = Build(
+            new StubExecutor(AutomationStepType.Health, StepResult.Failed("down")));
+        var automation = await store.CreateAsync(Auto() with { Events = [configured] });
+
+        await runner.RunAsync(automation, AutomationTriggerKind.Schedule, null, 0);
+
+        Assert.Equal(configured, Assert.Single(dispatcher.Sent).Event);
+        Assert.Equal(configured, Assert.Single(sink.Published).Event);
     }
 
     [Fact]

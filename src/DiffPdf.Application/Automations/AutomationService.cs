@@ -22,7 +22,8 @@ public sealed record AutomationInput(
     int RetryDelaySeconds,
     int FailureThreshold,
     IReadOnlyList<NotificationEvent>? Events,
-    bool Enabled);
+    bool Enabled,
+    bool NotificationsEnabled = true);
 
 /// <summary>Invalid automation input (bad key, missing scope keys, bad cadence, no steps, out-of-range
 /// policy). Maps to 400 at the endpoint.</summary>
@@ -81,6 +82,7 @@ public sealed class AutomationService(
             FailureThreshold = input.FailureThreshold,
             Events = input.Events ?? [],
             Enabled = input.Enabled,
+            NotificationsEnabled = input.NotificationsEnabled,
             // Seed the persisted schedule at creation — never firing immediately; the first due time is
             // the next occurrence. Manual/event-only automations keep null.
             NextRunAt = ComputeNextOrThrow(input.Cron, input.IntervalSeconds),
@@ -123,6 +125,7 @@ public sealed class AutomationService(
             FailureThreshold = input.FailureThreshold,
             Events = input.Events ?? [],
             Enabled = input.Enabled,
+            NotificationsEnabled = input.NotificationsEnabled,
             NextRunAt = nextRunAt,
         };
         return await store.UpdateAsync(updated, version, ct);

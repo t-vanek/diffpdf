@@ -162,6 +162,12 @@ namespace DiffPdf.Persistence.SqlServer.Migrations
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("next_run_at");
 
+                    b.Property<bool>("NotificationsEnabled")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true)
+                        .HasColumnName("notifications_enabled");
+
                     b.Property<int>("RetryDelaySeconds")
                         .HasColumnType("int")
                         .HasColumnName("retry_delay_seconds");
@@ -567,6 +573,10 @@ namespace DiffPdf.Persistence.SqlServer.Migrations
                         .HasColumnType("nvarchar(32)")
                         .HasColumnName("source");
 
+                    b.Property<Guid?>("SourceAutomationId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("source_automation_id");
+
                     b.Property<DateTimeOffset?>("StartedAt")
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("started_at");
@@ -604,6 +614,89 @@ namespace DiffPdf.Persistence.SqlServer.Migrations
                     b.HasIndex("BranchId", "InstanceId", "CreatedAt");
 
                     b.ToTable("jobs", (string)null);
+                });
+
+            modelBuilder.Entity("DiffPdf.Persistence.SqlServer.Entities.NotificationDeliveryEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("id");
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("int")
+                        .HasColumnName("attempt_count");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("body");
+
+                    b.Property<string>("BranchKey")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)")
+                        .HasColumnName("branch_key");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Event")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .HasColumnName("event");
+
+                    b.Property<string>("InstanceKey")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)")
+                        .HasColumnName("instance_key");
+
+                    b.Property<string>("LastError")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("last_error");
+
+                    b.Property<DateTimeOffset?>("NextAttemptAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("next_attempt_at");
+
+                    b.Property<string>("RecipientsJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("recipients_json");
+
+                    b.Property<string>("RuleName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)")
+                        .HasColumnName("rule_name");
+
+                    b.Property<DateTimeOffset?>("SentAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("sent_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("subject");
+
+                    b.Property<Guid?>("SubscriptionId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("subscription_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("Status", "NextAttemptAt");
+
+                    b.ToTable("notification_deliveries", (string)null);
                 });
 
             modelBuilder.Entity("DiffPdf.Persistence.SqlServer.Entities.ScopeConfigurationEntity", b =>
@@ -731,6 +824,67 @@ namespace DiffPdf.Persistence.SqlServer.Migrations
                     b.HasIndex("Enabled");
 
                     b.ToTable("notification_subscriptions", (string)null);
+                });
+
+            modelBuilder.Entity("DiffPdf.Persistence.SqlServer.Entities.SystemEventEntity", b =>
+                {
+                    b.Property<long>("Seq")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("seq");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Seq"));
+
+                    b.Property<Guid?>("AutomationId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("automation_id");
+
+                    b.Property<string>("BranchKey")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)")
+                        .HasColumnName("branch_key");
+
+                    b.Property<string>("Detail")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("detail");
+
+                    b.Property<string>("InstanceKey")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)")
+                        .HasColumnName("instance_key");
+
+                    b.Property<Guid?>("JobId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("job_id");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("message");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("occurred_at");
+
+                    b.Property<string>("Severity")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)")
+                        .HasColumnName("severity");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .HasColumnName("type");
+
+                    b.HasKey("Seq");
+
+                    b.HasIndex("JobId");
+
+                    b.HasIndex("OccurredAt");
+
+                    b.ToTable("system_events", (string)null);
                 });
 
             modelBuilder.Entity("DiffPdf.Persistence.SqlServer.Entities.TriggerEntity", b =>
