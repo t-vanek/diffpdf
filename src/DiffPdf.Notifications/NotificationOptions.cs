@@ -15,6 +15,10 @@ public sealed class NotificationOptions
     /// <summary>SMTP server settings; required only when a subscription uses the <c>smtp</c> channel.</summary>
     public SmtpOptions? Smtp { get; set; }
 
+    /// <summary>Upper bound for the total attachment payload of one outgoing mail (diff PDF send), in MB.
+    /// Oversized requests are rejected with 413 instead of being bounced by the SMTP server. 0 = no limit.</summary>
+    public int MaxMailAttachmentMb { get; set; } = 20;
+
     /// <summary>A deep link to the job resource (status + report) when <see cref="BaseUrl"/> is set; null otherwise.</summary>
     public string? JobLink(Guid jobId) =>
         string.IsNullOrWhiteSpace(BaseUrl) ? null : $"{BaseUrl.TrimEnd('/')}/api/v1/jobs/{jobId}";

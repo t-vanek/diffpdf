@@ -37,6 +37,24 @@ public sealed class ClientSettingsStore(string? filePath = null)
     public void SaveFileManagerPanels(FileManagerPanelsState state) => Merge(doc =>
         doc["FileManager"] = JsonSerializer.SerializeToNode(state, Options));
 
+    /// <summary>Remembers the recipients of the last diff-PDF send, so the next dialog is pre-filled.</summary>
+    public void SaveSendRecipients(string recipients) => Merge(doc =>
+        doc["SendDiffs"] = new JsonObject { ["Recipients"] = Clean(recipients) });
+
+    /// <summary>The remembered diff-send recipients, or null when absent/unreadable.</summary>
+    public string? LoadSendRecipients()
+    {
+        try
+        {
+            if (!File.Exists(FilePath)) return null;
+            return JsonNode.Parse(File.ReadAllText(FilePath))?["SendDiffs"]?["Recipients"]?.GetValue<string>();
+        }
+        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>The persisted panel layout, or null when absent/unreadable (a broken file must not block startup).</summary>
     public FileManagerPanelsState? LoadFileManagerPanels()
     {

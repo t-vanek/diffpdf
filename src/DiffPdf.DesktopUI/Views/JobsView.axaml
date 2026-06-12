@@ -175,6 +175,8 @@
           <Button Content="↻ Pokračovat" Classes="ghost" Command="{Binding ResumeCommand}" IsVisible="{Binding CanResume}" Margin="0,0,6,6"/>
           <Button Content="■ Zrušit" Classes="ghost destructive" Command="{Binding CancelCommand}" IsVisible="{Binding CanCancel}" Margin="0,0,6,6"/>
           <Button Content="↺ Opakovat" Classes="ghost" Command="{Binding RetryCommand}" IsVisible="{Binding CanRetry}" Margin="0,0,6,6"/>
+          <Button Content="✉ Odeslat odlišné" Classes="ghost" Command="{Binding SendDiffsCommand}" IsVisible="{Binding CanSendDiffs}" Margin="0,0,6,6"
+                  ToolTip.Tip="Pošle e-mailem zvýrazněná diff PDF všech odlišných dvojic této dávky"/>
         </WrapPanel>
 
         <!-- Souhrn (barevné chipy) -->

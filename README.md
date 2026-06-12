@@ -174,7 +174,7 @@ dotnet run --project src/DiffPdf.Api        # server
 dotnet run --project src/DiffPdf.DesktopUI  # GUI klient
 ```
 
-Připojení nastavíš v **ozubeném kolečku (⚙) vpravo nahoře** — URL serveru (a ClientId/Secret, je-li zapnutá autentizace) se **uloží** a klient se příště **připojí sám**. Levé menu: **Přehled · Větve · Instance · Automatizace · Úlohy · Jednorázové porovnání · Notifikace · Sdílené složky · Konfigurace**. Sekce **Úlohy** ukazuje živý progress (SignalR), verdikty a stažení zvýrazněných diff-PDF; synchronizaci složek se scope stromem najdeš ve **Větvích**.
+Připojení nastavíš v **ozubeném kolečku (⚙) vpravo nahoře** — URL serveru (a ClientId/Secret, je-li zapnutá autentizace) se **uloží** a klient se příště **připojí sám**. Levé menu: **Přehled · Větve · Instance · Automatizace · Úlohy · Jednorázové porovnání · Notifikace · Sdílené složky · Konfigurace**. Sekce **Úlohy** ukazuje živý progress (SignalR), verdikty, stažení zvýrazněných diff-PDF a jejich **odeslání e-mailem** — jednotlivý soubor z detailu dvojice, nebo tlačítkem **„Odeslat odlišné"** celou dávku najednou (větší množství se sbalí do ZIP); synchronizaci složek se scope stromem najdeš ve **Větvích**.
 
 ### Konfigurace ve zkratce
 

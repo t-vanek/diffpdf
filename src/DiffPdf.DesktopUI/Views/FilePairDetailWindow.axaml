@@ -22,6 +22,8 @@
                      IsVisible="{Binding Status, Converter={x:Static ObjectConverters.IsNotNull}}"/>
           <Button Content="Kopírovat ID" Classes="ghost" Command="{Binding CopyJobIdCommand}"
                   ToolTip.Tip="{Binding JobId, StringFormat='ID úlohy: {0}'}"/>
+          <Button Content="✉ Odeslat" Classes="ghost" Command="{Binding SendCommand}" IsVisible="{Binding HasDiff}"
+                  ToolTip.Tip="Pošle toto diff PDF e-mailem (např. tiskaři, který sestavu opravuje)"/>
           <Button Content="Uložit PDF" Classes="accent" Command="{Binding SaveCommand}" IsVisible="{Binding HasDiff}"/>
         </StackPanel>
         <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">

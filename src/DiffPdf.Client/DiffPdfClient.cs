@@ -162,6 +162,13 @@ public sealed class DiffPdfClient(HttpClient http)
     public async Task<JobSummary> RetryJobAsync(Guid id, CancellationToken ct = default) =>
         (await JsonAsync<JobActionResult>(HttpMethod.Post, $"/api/v1/jobs/{id}/retry", null, ct)).Job;
 
+    /// <summary>E-mails the job's highlighted diff PDFs — one pair, a chosen set, or (with <c>Files</c> null/empty)
+    /// every differing pair; the server packs many/large attachments into a ZIP. Throws DiffPdfApiException with
+    /// 400 when SMTP is not configured / nothing differs, 409 while the report is not ready, 413 when over the
+    /// attachment size limit and 502 when the SMTP send itself fails.</summary>
+    public Task<SendJobDiffsResponse> SendJobDiffsAsync(Guid id, SendJobDiffsRequest request, CancellationToken ct = default) =>
+        JsonAsync<SendJobDiffsResponse>(HttpMethod.Post, $"/api/v1/jobs/{id}/send", request, ct);
+
     /// <summary>Permanently deletes a finished (Completed/Cancelled) job incl. its tasks, report and diff
     /// artifacts. Throws DiffPdfApiException 409 while the job is still active (cancel it first); 404 if unknown.</summary>
     public async Task DeleteJobAsync(Guid id, CancellationToken ct = default)

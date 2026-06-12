@@ -13,7 +13,8 @@ public class NotificationDispatcherTests
         public List<(IReadOnlyList<string> Recipients, string Subject)> Sent { get; } = [];
         public Func<IReadOnlyList<string>, bool>? ThrowFor { get; init; }
 
-        public Task SendAsync(EmailSettings settings, IEnumerable<string> recipients, string subject, string body, CancellationToken ct = default)
+        public Task SendAsync(EmailSettings settings, IEnumerable<string> recipients, string subject, string body,
+            IReadOnlyList<EmailAttachment>? attachments = null, CancellationToken ct = default)
         {
             var list = recipients.ToList();
             if (ThrowFor is not null && ThrowFor(list)) throw new InvalidOperationException("boom");

@@ -93,6 +93,16 @@ public sealed partial class FilePairDetailViewModel : ViewModelBase
     [RelayCommand]
     private Task CopyJobIdAsync() => _dialogs.CopyToClipboardAsync(_jobId.ToString(), "ID úlohy zkopírováno.");
 
+    /// <summary>Opens the send dialog for just this pair's diff PDF (e.g. straight to the print operator fixing it).</summary>
+    [RelayCommand]
+    private async Task SendAsync()
+    {
+        if (!HasDiff) return;
+        var vm = new SendDiffsDialogViewModel(_session, _jobId, $"Soubor: {_line.Name}", [_line.Name]);
+        if (await _dialogs.ShowSendDiffsAsync(vm) is { } sent)
+            _dialogs.ShowToast(SendDiffsDialogViewModel.SuccessToast(sent), ToastKind.Success);
+    }
+
     /// <summary>Opens the downloaded diff PDF in the system viewer — the fallback action when the embedded
     /// WebView2 preview is unavailable (missing runtime).</summary>
     [RelayCommand]

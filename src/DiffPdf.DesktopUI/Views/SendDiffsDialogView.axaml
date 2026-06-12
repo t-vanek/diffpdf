@@ -1,0 +1,39 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:DiffPdf.DesktopUI.ViewModels"
+             x:Class="DiffPdf.DesktopUI.Views.SendDiffsDialogView"
+             x:DataType="vm:SendDiffsDialogViewModel">
+
+  <StackPanel Margin="18" Spacing="12">
+    <TextBlock Text="{Binding WindowTitle}" Classes="headline"/>
+
+    <TextBlock Text="{Binding ScopeDescription}" Foreground="{DynamicResource Info}" TextWrapping="Wrap"/>
+
+    <StackPanel Spacing="4">
+      <TextBlock Text="Příjemci" Foreground="{DynamicResource InkDim}"/>
+      <TextBox x:Name="RecipientsBox" Text="{Binding Recipients}" PlaceholderText="tiskar@firma.cz, dalsi@firma.cz"/>
+      <TextBlock Text="Více adres odděl čárkou nebo středníkem. Příjemci se zapamatují pro příští odeslání."
+                 Foreground="{DynamicResource InkFaint}" FontSize="11" TextWrapping="Wrap"/>
+    </StackPanel>
+
+    <StackPanel Spacing="4">
+      <TextBlock Text="Poznámka (volitelná)" Foreground="{DynamicResource InkDim}"/>
+      <TextBox Text="{Binding Note}" PlaceholderText="Např. co je potřeba opravit…"
+               AcceptsReturn="True" MinHeight="64" TextWrapping="Wrap"/>
+    </StackPanel>
+
+    <TextBlock Text="E-mail obsahuje zvýrazněná diff PDF (stará verze vlevo, nová vpravo); větší množství se sbalí do ZIP."
+               Foreground="{DynamicResource InkFaint}" FontSize="11" TextWrapping="Wrap"/>
+
+    <TextBlock Text="{Binding ValidationError}" Foreground="{DynamicResource Bad}" TextWrapping="Wrap"
+               IsVisible="{Binding ValidationError, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+    <TextBlock Text="{Binding Error}" Foreground="{DynamicResource Bad}" TextWrapping="Wrap"
+               IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+
+    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+      <Button Content="✉ Odeslat" Classes="accent" Command="{Binding SendCommand}" IsDefault="True" MinWidth="110"
+              IsEnabled="{Binding !IsBusy}"/>
+      <Button Content="Zrušit" Command="{Binding CancelCommand}" IsCancel="True" MinWidth="80"/>
+    </StackPanel>
+  </StackPanel>
+</UserControl>

@@ -385,6 +385,16 @@ public sealed record JobResultSummary
     public int FilesWithContentErrors { get; init; }
 }
 
+/// <summary>Outcome of a diff-PDF send (from <c>POST /jobs/{id}/send</c>): what went out and what could not be attached.</summary>
+public sealed record SendJobDiffsResponse
+{
+    public int Recipients { get; init; }
+    public int AttachedFiles { get; init; }
+    public bool Zipped { get; init; }
+    public long TotalBytes { get; init; }
+    public IReadOnlyList<string> SkippedFiles { get; init; } = [];
+}
+
 /// <summary>A job's file-pair task view.</summary>
 public sealed record FilePairTaskSummary
 {

@@ -203,6 +203,19 @@ systém chová přesně jako dnes.
    referenci kryje v obou případech. (Doporučení: move + archiv.)
 4. **Granularita auto-approve** — per instance (doporučeno), nebo per větev?
 
+## 12b. Stav implementace
+
+**Hotovo (první krok směrem k pilíři E — cesta k tiskaři):**
+- `POST /api/v1/jobs/{id}/send` — odeslání zvýrazněných diff-PDF e-mailem: jedna dvojice,
+  výběr (`files`), nebo všechny odlišné dvojice dávky. Početné/velké přílohy se
+  automaticky balí do ZIP; limit `Notifications:MaxMailAttachmentMb` (default 20 MB).
+  Tělo mailu nese scope, verdikty, metriky po souborech, volitelnou poznámku a deep link
+  na úlohu (`Notifications:BaseUrl`).
+- `IEmailSender` umí přílohy; výběrová logika je v `DiffMailPlanner` (unit-testovaná).
+- SDK: `SendJobDiffsAsync`. Desktop: tlačítko **„✉ Odeslat odlišné"** v detailu úlohy
+  (celá dávka) a **„✉ Odeslat"** v okně detailu dvojice (jeden soubor); dialog si
+  pamatuje poslední příjemce.
+
 ## 13. Shrnutí
 
 - **Rozhodnutí o rozdílu se stává součástí systému** — triáž Approved/Rejected místo mailů.

@@ -153,6 +153,13 @@ public sealed class DialogService
     public Task ShowFileOperationAsync(ViewModels.FileOperationDialogViewModel vm) =>
         ShowModalAsync(vm, new Views.FileOperationDialogView { DataContext = vm }, width: 420, height: null);
 
+    /// <summary>Opens the "send diff PDFs by e-mail" form as a modal dialog. Returns the send outcome, or null if cancelled.</summary>
+    public async Task<DiffPdf.Client.SendJobDiffsResponse?> ShowSendDiffsAsync(ViewModels.SendDiffsDialogViewModel vm)
+    {
+        await ShowModalAsync(vm, new Views.SendDiffsDialogView { DataContext = vm }, width: 520, height: null);
+        return vm.Result;
+    }
+
     /// <summary>Opens a folder picker and returns the chosen local folder path, or null if cancelled.</summary>
     public async Task<string?> PickFolderAsync(string title)
     {

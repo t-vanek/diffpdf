@@ -46,7 +46,7 @@ public static class EmailSettingsEndpoints
                 {
                     await sender.SendAsync(settings, [request.To],
                         "diffpdf — testovací e-mail",
-                        "Toto je testovací zpráva z DiffPDF Remote Manager. SMTP nastavení funguje.", ct);
+                        "Toto je testovací zpráva z DiffPDF Remote Manager. SMTP nastavení funguje.", ct: ct);
                     return Results.Ok(new { ok = true });
                 }
                 catch (Exception ex)

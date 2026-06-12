@@ -352,6 +352,25 @@ public sealed record SendTestEmailRequest
     public required string To { get; init; }
 }
 
+/// <summary>Send a job's highlighted diff PDFs by e-mail — one pair, a chosen set, or every differing pair.</summary>
+public sealed record SendJobDiffsRequest
+{
+    public required IReadOnlyList<string> Recipients { get; init; }
+
+    /// <summary>Relative paths (report <c>RelativePath</c>) of the pairs to send; null/empty = all differing pairs.</summary>
+    public IReadOnlyList<string>? Files { get; init; }
+
+    /// <summary>Optional free-text note placed at the top of the mail body.</summary>
+    public string? Note { get; init; }
+
+    /// <summary>Pack the attachments into one ZIP; null = automatic (many or large files).</summary>
+    public bool? Zip { get; init; }
+}
+
+/// <summary>Outcome of a diff-PDF send: what went out and what could not be attached.</summary>
+public sealed record SendJobDiffsResponse(
+    int Recipients, int AttachedFiles, bool Zipped, long TotalBytes, IReadOnlyList<string> SkippedFiles);
+
 // ---------------- Automation: on-demand triggers ----------------
 
 /// <summary>Result of triggering a single instance: the launch outcome and the new job id (when launched).</summary>

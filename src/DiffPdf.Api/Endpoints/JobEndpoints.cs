@@ -1,6 +1,9 @@
+using System.IO.Compression;
 using DiffPdf.Application.Jobs;
 using DiffPdf.Core.Models;
+using DiffPdf.Notifications;
 using DiffPdf.Persistence;
+using Microsoft.Extensions.Options;
 
 namespace DiffPdf.Api.Endpoints;
 
@@ -129,6 +132,104 @@ public static class JobEndpoints
             Run(async () => await jobs.DeleteAsync(id, ct) ? Results.NoContent() : Results.NotFound()))
             .WithSummary("Permanently delete a finished (Completed/Cancelled) job incl. its tasks, report and artifacts")
             .Produces(StatusCodes.Status204NoContent).ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict);
+
+        group.MapPost("/{id:guid}/send", async (
+            Guid id, SendJobDiffsRequest request, IJobService jobs, EmailSettingsResolver resolver,
+            IEmailSender sender, IOptions<NotificationOptions> notificationOptions, CancellationToken ct) =>
+        {
+            var recipients = (request.Recipients ?? [])
+                .Select(r => r?.Trim()).Where(r => !string.IsNullOrEmpty(r)).Cast<string>().Distinct().ToList();
+            if (recipients.Count == 0)
+                return Results.Problem("At least one recipient is required.", statusCode: StatusCodes.Status400BadRequest);
+
+            var job = await jobs.GetAsync(id, ct);
+            if (job is null) return Results.NotFound();
+            if (job.Report is null)
+                return Results.Problem("Report not ready.", statusCode: StatusCodes.Status409Conflict);
+
+            var settings = await resolver.ResolveAsync(ct);
+            if (settings is not { IsConfigured: true })
+                return Results.Problem("SMTP is not configured. Save the e-mail settings first.",
+                    statusCode: StatusCodes.Status400BadRequest);
+
+            var plan = DiffMailPlanner.Plan(job.Report, request.Files);
+            if (plan.UnknownFiles.Count > 0)
+                return Results.Problem($"Unknown file pair(s): {string.Join(", ", plan.UnknownFiles)}.",
+                    statusCode: StatusCodes.Status400BadRequest);
+
+            // Re-resolve every artifact through the job's containment check; one pruned by retention since the
+            // report was written degrades to "skipped" instead of failing the whole send.
+            var skipped = plan.SkippedFiles.ToList();
+            var attached = new List<(DiffMailItem Item, string AbsolutePath, long Bytes)>();
+            foreach (var item in plan.Items)
+            {
+                var artifact = await jobs.ResolveArtifactAsync(id, item.ArtifactFileName, ct);
+                if (artifact.Outcome != ArtifactOutcome.Ok) skipped.Add(item.Pair.RelativePath);
+                else attached.Add((item, artifact.AbsolutePath!, new FileInfo(artifact.AbsolutePath!).Length));
+            }
+            if (attached.Count == 0)
+                return Results.Problem("There is no differing pair with a diff PDF to send.",
+                    statusCode: StatusCodes.Status400BadRequest);
+
+            long totalBytes = attached.Sum(a => a.Bytes);
+            bool zip = DiffMailPlanner.ShouldZip(request.Zip, attached.Count, totalBytes);
+            long maxBytes = notificationOptions.Value.MaxMailAttachmentMb * 1024L * 1024L;
+
+            string? tempZip = null;
+            try
+            {
+                IReadOnlyList<EmailAttachment> attachments;
+                if (zip)
+                {
+                    tempZip = Path.Combine(Path.GetTempPath(), $"diffpdf-send-{Guid.NewGuid():N}.zip");
+                    using (var archive = ZipFile.Open(tempZip, ZipArchiveMode.Create))
+                        foreach (var a in attached)
+                            archive.CreateEntryFromFile(a.AbsolutePath, a.Item.ZipEntryName);
+                    totalBytes = new FileInfo(tempZip).Length;
+                    attachments = [new EmailAttachment($"diffpdf-{job.BranchKey}-{job.InstanceKey}.zip", tempZip)];
+                }
+                else
+                {
+                    // The artifact names are flat — prefix the pair's subfolder so two same-named reports from
+                    // different folders stay distinguishable in the mail client.
+                    attachments = attached
+                        .Select(a => new EmailAttachment(a.Item.ZipEntryName.Replace('/', '_'), a.AbsolutePath))
+                        .ToList();
+                }
+
+                if (maxBytes > 0 && totalBytes > maxBytes)
+                    return Results.Problem(
+                        $"Attachments total {totalBytes / (1024.0 * 1024.0):0.0} MB, which exceeds the " +
+                        $"{notificationOptions.Value.MaxMailAttachmentMb} MB limit (Notifications:MaxMailAttachmentMb). " +
+                        "Send fewer pairs, or download the diffs via the artifacts endpoint.",
+                        statusCode: StatusCodes.Status413PayloadTooLarge);
+
+                string subject = attached.Count == 1
+                    ? $"DiffPdf — {job.BranchKey}/{job.InstanceKey}: odlišné PDF {attached[0].Item.Pair.RelativePath}"
+                    : $"DiffPdf — {job.BranchKey}/{job.InstanceKey}: {attached.Count}× odlišné PDF";
+                var finalPlan = new DiffMailPlan(attached.Select(a => a.Item).ToList(), skipped, []);
+                string body = DiffMailPlanner.ComposeBody(job, finalPlan, request.Note, zip,
+                    notificationOptions.Value.JobLink(id));
+
+                try
+                {
+                    await sender.SendAsync(settings, recipients, subject, body, attachments, ct);
+                }
+                catch (Exception ex)
+                {
+                    return Results.Problem($"Odeslání selhalo: {ex.Message}", statusCode: StatusCodes.Status502BadGateway);
+                }
+                return Results.Ok(new SendJobDiffsResponse(recipients.Count, attached.Count, zip, totalBytes, skipped));
+            }
+            finally
+            {
+                if (tempZip is not null)
+                    try { File.Delete(tempZip); } catch (IOException) { /* best-effort temp cleanup */ }
+            }
+        }).WithSummary("E-mail the highlighted diff PDFs of one pair, a chosen set, or every differing pair (auto-ZIP)")
+          .Produces<SendJobDiffsResponse>().ProducesProblem(StatusCodes.Status400BadRequest)
+          .ProducesProblem(StatusCodes.Status404NotFound).ProducesProblem(StatusCodes.Status409Conflict)
+          .ProducesProblem(StatusCodes.Status413PayloadTooLarge).ProducesProblem(StatusCodes.Status502BadGateway);
 
         group.MapGet("/{id:guid}/artifacts/{**relativePath}", async (
             Guid id, string relativePath, IJobService jobs, CancellationToken ct) =>
