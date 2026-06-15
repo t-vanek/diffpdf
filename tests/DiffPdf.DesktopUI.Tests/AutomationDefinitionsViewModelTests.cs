@@ -20,7 +20,8 @@ public class AutomationDefinitionsViewModelTests
             })
             { BaseAddress = new Uri("http://localhost") }),
         };
-        return new(session, new DialogService(new ToastService()));
+        // The hub is constructed but never connected — Activate (which would join groups) is not exercised here.
+        return new(session, new DialogService(new ToastService()), new JobProgressHubClient(session, new TokenSource(session)));
     }
 
     [Fact]
@@ -71,14 +72,21 @@ public class AutomationDefinitionsViewModelTests
     }
 
     [Fact]
-    public void StepRow_parses_parameters_and_blank_name_to_null()
+    public void StepRow_carries_type_blanks_name_and_serializes_parameter_fields()
     {
-        var row = new AutomationStepRowViewModel
-        {
-            Type = AutomationStepType.Retention,
-            Name = "  ",
-            ParametersText = "retentionDays=30\nmaxPerTick=100",
-        };
+        // The editor renders typed parameter fields from the step catalog (here the two Int fields of
+        // „Úklid reportů"); ToInput() blanks a whitespace name and serializes those fields back to key=value.
+        IReadOnlyList<AutomationParameterSpecResponse> SpecsFor(AutomationStepType _) =>
+        [
+            new() { Key = "retentionDays", Label = "Doba uchování", Type = AutomationParameterType.Int },
+            new() { Key = "maxPerTick", Label = "Max. na běh", Type = AutomationParameterType.Int },
+        ];
+
+        var row = new AutomationStepRowViewModel(
+            SpecsFor,
+            AutomationStepType.Retention,
+            name: "  ",
+            parameters: new Dictionary<string, string> { ["retentionDays"] = "30", ["maxPerTick"] = "100" });
 
         var input = row.ToInput();
         Assert.Equal(AutomationStepType.Retention, input.Type);
