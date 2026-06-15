@@ -65,4 +65,4 @@ jobs:
           restore-keys: nuget-${{ runner.os }}-
 
       - name: Build & test
-        run: dotnet test tests/DiffPdf.DesktopUI.Tests/DiffPdf.DesktopUI.Tests.csproj -c Release
+        run: dotnet test tests/DiffPdf.DesktopUI.Tests/DiffPdf.DesktopUI.Tests.csproj -c Release --verbosity normal
