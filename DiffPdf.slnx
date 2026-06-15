@@ -1,14 +1,16 @@
 <Solution>
   <Folder Name="/src/">
-    <Project Path="src/DiffPdf.Api/DiffPdf.Api.csproj" />
+    <Project Path="src/DiffPdf.Api/DiffPdf.Api.csproj">
+      <BuildDependency Project="src/DiffPdf.Client/DiffPdf.Client.csproj" />
+      <BuildDependency Project="src/DiffPdf.DesktopUI/DiffPdf.DesktopUI.csproj" />
+      <BuildDependency Project="tests/DiffPdf.Core.Tests/DiffPdf.Core.Tests.csproj" />
+      <BuildDependency Project="tests/DiffPdf.DesktopUI.Tests/DiffPdf.DesktopUI.Tests.csproj" />
+    </Project>
     <Project Path="src/DiffPdf.Application/DiffPdf.Application.csproj" />
     <Project Path="src/DiffPdf.Application.Abstractions/DiffPdf.Application.Abstractions.csproj" />
     <Project Path="src/DiffPdf.Client/DiffPdf.Client.csproj" />
     <Project Path="src/DiffPdf.Core/DiffPdf.Core.csproj" />
-    <Project Path="src/DiffPdf.DesktopUI/DiffPdf.DesktopUI.csproj">
-      <Build Solution="Debug|*" Project="false" />
-      <Build Solution="Release|*" Project="false" />
-    </Project>
+    <Project Path="src/DiffPdf.DesktopUI/DiffPdf.DesktopUI.csproj" />
     <Project Path="src/DiffPdf.Messaging/DiffPdf.Messaging.csproj" />
     <Project Path="src/DiffPdf.Notifications/DiffPdf.Notifications.csproj" />
     <Project Path="src/DiffPdf.Pdf/DiffPdf.Pdf.csproj" />
@@ -19,11 +21,6 @@
   <Folder Name="/tests/">
     <Project Path="tests/DiffPdf.Client.Tests/DiffPdf.Client.Tests.csproj" />
     <Project Path="tests/DiffPdf.Core.Tests/DiffPdf.Core.Tests.csproj" />
-    <Project Path="tests/DiffPdf.DesktopUI.Tests/DiffPdf.DesktopUI.Tests.csproj">
-      <!-- Mirrors DiffPdf.DesktopUI: the desktop client + its tests are built/run on their own
-           (dotnet test tests/DiffPdf.DesktopUI.Tests), not as part of the server solution build. -->
-      <Build Solution="Debug|*" Project="false" />
-      <Build Solution="Release|*" Project="false" />
-    </Project>
+    <Project Path="tests/DiffPdf.DesktopUI.Tests/DiffPdf.DesktopUI.Tests.csproj" />
   </Folder>
 </Solution>
