@@ -8,7 +8,6 @@
       "applicationUrl": "http://localhost:5275",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
-        "ConnectionStrings__SqlServer": "Server=.;Database=diffpdf;Trusted_Connection=True;TrustServerCertificate=True",
         "ScopeSync__RootPath": "D:\\diffpdf"
       }
     },
@@ -19,7 +18,6 @@
       "applicationUrl": "https://localhost:7016;http://localhost:5275",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
-        "ConnectionStrings__SqlServer": "Server=.;Database=diffpdf;Trusted_Connection=True;TrustServerCertificate=True",
         "ScopeSync__RootPath": "D:\\diffpdf"
       }
     }

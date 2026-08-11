@@ -17,6 +17,11 @@
     .\install-service.ps1 -BinPath 'C:\DiffPdf\app\DiffPdf.Api.exe' `
         -ConnectionString 'Server=.;Database=diffpdf;Trusted_Connection=True;TrustServerCertificate=True' `
         -DependsOn 'MSSQLSERVER'
+
+.EXAMPLE
+    .\install-service.ps1 -BinPath 'C:\DiffPdf\app\DiffPdf.Api.exe' `
+        -Environment Production `
+        -AllowInMemoryProduction
 #>
 [CmdletBinding()]
 param(
@@ -39,10 +44,16 @@ param(
     # Optional connection string, stored as a service-scoped environment variable.
     [string] $ConnectionString,
 
+    # Removes a previously stored service-scoped connection string.
+    [switch] $ClearConnectionString,
+
     # ASP.NET Core environment + bind URL, stored as service-scoped environment variables.
     # Url 0.0.0.0 binds all interfaces so LAN clients can reach the server.
     [string] $Environment = 'Production',
     [string] $Url = 'http://0.0.0.0:5275',
+
+    # Production must normally use SQL Server. This switch permits the in-memory fallback intentionally.
+    [switch] $AllowInMemoryProduction,
 
     # Optional logon account for the service (default: LocalSystem).
     [string] $ServiceAccount,
@@ -121,10 +132,20 @@ foreach ($entry in @($current)) {
 }
 $env['ASPNETCORE_ENVIRONMENT'] = $Environment
 $env['ASPNETCORE_URLS'] = $Url
+if ($ClearConnectionString) { $env.Remove('ConnectionStrings__SqlServer') }
 if (-not [string]::IsNullOrWhiteSpace($ConnectionString)) { $env['ConnectionStrings__SqlServer'] = $ConnectionString }
+$hasConn = $env.Contains('ConnectionStrings__SqlServer') -and -not [string]::IsNullOrWhiteSpace($env['ConnectionStrings__SqlServer'])
+
+if ($Environment -eq 'Production' -and -not $hasConn -and -not $AllowInMemoryProduction) {
+    throw "Production service '$Name' requires a SQL Server connection string. Pass -ConnectionString, keep an existing service-scoped ConnectionStrings__SqlServer, or use -AllowInMemoryProduction only for an intentional non-persistent install."
+}
+
+if ($Environment -eq 'Production' -and $hasConn -and $env['ConnectionStrings__SqlServer'] -match '(?i)(^|;)\s*TrustServerCertificate\s*=\s*True\s*(;|$)') {
+    Write-Warning "The production connection string uses TrustServerCertificate=True. Prefer a SQL Server certificate trusted by this host and remove that flag before long-term operation."
+}
+
 $multi = @($env.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" })
 New-ItemProperty -Path $serviceKey -Name 'Environment' -PropertyType MultiString -Value $multi -Force | Out-Null
-$hasConn = $env.Contains('ConnectionStrings__SqlServer')
 Write-Host "Set service environment: ASPNETCORE_ENVIRONMENT=$Environment, ASPNETCORE_URLS=$Url$(if ($hasConn) { ', ConnectionStrings__SqlServer=***' })." -ForegroundColor Green
 
 if ($NoStart) {

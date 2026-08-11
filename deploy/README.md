@@ -13,6 +13,11 @@ The API runs as a normal console app and also supports the Windows Service Contr
 dotnet publish src/DiffPdf.Api -c Release -o C:\DiffPdf\app
 ```
 
+Admins can also download a ready ZIP from GitHub Actions:
+
+1. Open **Actions** → **Server Bundle** → **Run workflow**.
+2. Download the `DiffPdf-Server-...zip` artifact from the completed workflow run.
+
 ## 2. Install (run from an elevated PowerShell prompt)
 
 ```powershell
@@ -26,6 +31,9 @@ With a connection string and explicit DB dependency:
     -ConnectionString 'Server=.;Database=diffpdf;Trusted_Connection=True;TrustServerCertificate=True' `
     -DependsOn 'MSSQLSERVER'
 ```
+
+For `Production`, the script requires a SQL Server connection string unless you explicitly pass
+`-AllowInMemoryProduction`. This prevents an accidental non-persistent in-memory service.
 
 The service is registered with:
 
@@ -44,7 +52,11 @@ applies EF Core migrations, then begins serving — so a not-yet-ready database 
 | `-Name` | `DiffPdfApi` | Service name. |
 | `-StartupType` | `delayed-auto` | `delayed-auto`, `auto`, or `manual`. |
 | `-DependsOn` | `MSSQLSERVER` | DB service to start first. Named instance: `MSSQL$INSTANCE`. `''` to skip. |
-| `-ConnectionString` | — | Optional; stored as the service-scoped env var `ConnectionStrings__SqlServer`. |
+| `-ConnectionString` | — | Required for `Production` unless already stored on the service or `-AllowInMemoryProduction` is used; stored as `ConnectionStrings__SqlServer`. |
+| `-ClearConnectionString` | (off) | Removes a previously stored service-scoped connection string. |
+| `-Environment` | `Production` | ASP.NET Core environment stored as `ASPNETCORE_ENVIRONMENT`. |
+| `-Url` | `http://0.0.0.0:5275` | Bind URL stored as `ASPNETCORE_URLS`. |
+| `-AllowInMemoryProduction` | (off) | Explicitly permits production startup without SQL Server; intended only for short-lived/lab installs. |
 | `-ServiceAccount` / `-ServicePassword` | LocalSystem | Optional logon account. |
 | `-NoStart` | (off) | Install without starting. |
 
@@ -55,6 +67,8 @@ applies EF Core migrations, then begins serving — so a not-yet-ready database 
   database and the startup gate just verifies reachability.
 - Prefer an install path without spaces (e.g. `C:\DiffPdf\app`).
 - Logs: `<install dir>\logs\diffpdf-*.log` (override with the `DIFFPDF_LOG_DIR` environment variable).
+- Release artifacts created by `publish.ps1` omit `appsettings.Development.json` by default so local dev
+  connection strings are not shipped to servers. Use `-IncludeDevelopmentSettings` only for a deliberate dev artifact.
 
 ## 3. Uninstall
 

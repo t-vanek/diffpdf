@@ -159,11 +159,18 @@ New-NetFirewallRule -DisplayName "DiffPdf discovery (UDP 5276)" -Direction Inbou
 
 ### 4.1 Release artefakty
 
-Server publikuješ na buildovacím stroji (s .NET 10 SDK) skriptem, nebo stáhneš z GitHub Release.
+Server publikuješ na buildovacím stroji (s .NET 10 SDK) skriptem, stáhneš z GitHub Release,
+nebo ručně v GitHub Actions spustíš workflow **Server Bundle**:
+
+1. GitHub → **Actions** → **Server Bundle** → **Run workflow**.
+2. Volitelně vyplň `version`; prázdné pole vytvoří verzi `0.0.0-admin.<run number>`.
+3. Po doběhnutí stáhni artefakt `DiffPdf-Server-...zip` ze stránky běhu workflow.
 
 ```powershell
 # vytvoří publish/DiffPdf-Server-1.2.3-win-x64.zip + DiffPdf-Client-1.2.3-win-x64.zip
 .\deploy\publish.ps1 -Version 1.2.3
+# jen serverový zip pro admin deployment
+.\deploy\publish.ps1 -Version 1.2.3 -ServerOnly
 ```
 
 Server zip obsahuje publikovaný `DiffPdf.Api.exe` (self-contained) + skripty
@@ -171,6 +178,7 @@ Server zip obsahuje publikovaný `DiffPdf.Api.exe` (self-contained) + skripty
 Klient zip je jeden `.exe` pro testery.
 
 > Tag `v*` v Gitu spustí workflow `release.yml`, který oba zipy připne k GitHub Release.
+> Ruční workflow `server-bundle.yml` release nevytváří; ZIP drží jako Actions artefakt 30 dní.
 
 ### 4.2 Instalace služby
 
@@ -190,6 +198,8 @@ PowerShellu** spusť:
 - nastaví **automatický restart** 5 s po každém z prvních tří pádů,
 - uloží **service-scoped env proměnné**: `ASPNETCORE_ENVIRONMENT=Production`,
   `ASPNETCORE_URLS=http://0.0.0.0:5275`, `ConnectionStrings__SqlServer=…`,
+- odmítne produkční instalaci bez SQL connection stringu, pokud výslovně nepovolíš
+  `-AllowInMemoryProduction`,
 - spustí službu (pokud nezadáš `-NoStart`).
 
 > Provozní konfigurace žije v **env proměnných služby**, ne v `appsettings.json` — **přežije
@@ -201,11 +211,13 @@ PowerShellu** spusť:
 | Parametr | Default | Význam |
 |---|---|---|
 | `-BinPath` | (povinný) | Plná cesta k `DiffPdf.Api.exe`. |
-| `-ConnectionString` | — | Uloží se jako `ConnectionStrings__SqlServer`. |
+| `-ConnectionString` | — | V produkci povinný, pokud už není uložený na službě nebo nepoužiješ `-AllowInMemoryProduction`; uloží se jako `ConnectionStrings__SqlServer`. |
+| `-ClearConnectionString` | (vyp.) | Smaže dříve uložený service-scoped connection string. |
 | `-ServiceAccount` / `-ServicePassword` | LocalSystem | Doménový service účet (doporučeno). |
 | `-Name` | `DiffPdfApi` | Název služby v SCM. |
 | `-Url` | `http://0.0.0.0:5275` | Bind adresa (`ASPNETCORE_URLS`). |
 | `-Environment` | `Production` | `ASPNETCORE_ENVIRONMENT`. |
+| `-AllowInMemoryProduction` | (vyp.) | Nouzově/laboratorně povolí produkční start bez SQL Serveru; data nejsou perzistentní. |
 | `-DependsOn` | `MSSQLSERVER` | DB služba, která má startovat dřív. `''` = bez závislosti. |
 | `-StartupType` | `delayed-auto` | `delayed-auto` / `auto` / `manual`. |
 | `-NoStart` | (vyp.) | Nainstaluje bez spuštění. |
