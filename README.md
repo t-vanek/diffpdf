@@ -279,7 +279,7 @@ Server běží jako **Windows služba** (Api hostuje workery in-process; migrace
 ```
 
 Tag `v*` v Gitu spustí `release.yml`, který vytvoří GitHub Release se serverovým i klientským zipem.
-Ručně lze stáhnout ZIP z Actions workflow **Server Bundle** nebo **Client Bundle**.
+Ručně spuštěné workflow **Server Bundle** a **Client Bundle** také vytvoří položku v GitHub Releases.
 
 ---
 
