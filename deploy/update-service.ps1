@@ -7,7 +7,7 @@
     then starts the service and waits until it reports Running. If it fails to start within the timeout,
     the previous files are restored from the backup and the service is started again, so a bad build never
     leaves the server down. Operational config (connection string, environment, bind URL) lives in
-    service-scoped environment variables set by install-service.ps1, so it survives the file update.
+    appsettings.Production.json values set by install-service.ps1, so they survive the file update.
     Must be run from an elevated (Administrator) prompt.
 
 .EXAMPLE
@@ -69,6 +69,58 @@ function Wait-Running {
     return ((Get-Service -Name $ServiceName).Status -eq 'Running')
 }
 
+function ConvertTo-JsonStringLiteral {
+    param([AllowNull()][string] $Value)
+    if ($null -eq $Value) { return 'null' }
+    return ($Value | ConvertTo-Json -Compress)
+}
+
+function ConvertFrom-JsonStringLiteral {
+    param([string] $Literal)
+    if ([string]::IsNullOrWhiteSpace($Literal) -or $Literal -eq 'null') { return $null }
+    return ($Literal | ConvertFrom-Json)
+}
+
+function Get-TopLevelStringSetting {
+    param([string] $Content, [string] $Name)
+    $pattern = '(?m)^\s*"' + [regex]::Escape($Name) + '"\s*:\s*(?<value>"(?:\\.|[^"\\])*"|null)'
+    $match = [regex]::Match($Content, $pattern)
+    if (-not $match.Success) { return $null }
+    return ConvertFrom-JsonStringLiteral $match.Groups['value'].Value
+}
+
+function Set-TopLevelStringSetting {
+    param([string] $Content, [string] $Name, [AllowNull()][string] $Value)
+    $literal = ConvertTo-JsonStringLiteral $Value
+    $pattern = '(?m)^(\s*"' + [regex]::Escape($Name) + '"\s*:\s*)(?:"(?:\\.|[^"\\])*"|null)'
+    $regex = [regex]::new($pattern, [Text.RegularExpressions.RegexOptions]::Multiline)
+    if ($regex.IsMatch($Content)) {
+        return $regex.Replace($Content, "`$1$literal", 1)
+    }
+
+    $insert = "  `"$Name`": $literal,"
+    return [regex]::Replace($Content, '^\s*\{', "{`r`n$insert", [Text.RegularExpressions.RegexOptions]::None)
+}
+
+function Get-SqlServerConnectionString {
+    param([string] $Content)
+    $pattern = '"ConnectionStrings"\s*:\s*\{(?:(?!\}).)*?"SqlServer"\s*:\s*(?<value>"(?:\\.|[^"\\])*"|null)'
+    $match = [regex]::Match($Content, $pattern, [Text.RegularExpressions.RegexOptions]::Singleline)
+    if (-not $match.Success) { return $null }
+    return ConvertFrom-JsonStringLiteral $match.Groups['value'].Value
+}
+
+function Set-SqlServerConnectionString {
+    param([string] $Content, [AllowNull()][string] $Value)
+    $literal = ConvertTo-JsonStringLiteral $Value
+    $pattern = '("ConnectionStrings"\s*:\s*\{(?:(?!\}).)*?"SqlServer"\s*:\s*)(?:"(?:\\.|[^"\\])*"|null)'
+    $regex = [regex]::new($pattern, [Text.RegularExpressions.RegexOptions]::Singleline)
+    if (-not $regex.IsMatch($Content)) {
+        throw "appsettings.Production.json must contain ConnectionStrings:SqlServer."
+    }
+    return $regex.Replace($Content, "`$1$literal", 1)
+}
+
 function Get-ServiceEnvironment {
     param([string] $ServiceName)
 
@@ -86,20 +138,40 @@ Assert-Administrator
 $svc = Get-Service -Name $Name -ErrorAction SilentlyContinue
 if (-not $svc) { throw "Service '$Name' is not installed. Use install-service.ps1 first." }
 
-$serviceEnv = Get-ServiceEnvironment -ServiceName $Name
-$environment = if ($serviceEnv.Contains('ASPNETCORE_ENVIRONMENT') -and -not [string]::IsNullOrWhiteSpace($serviceEnv['ASPNETCORE_ENVIRONMENT'])) { $serviceEnv['ASPNETCORE_ENVIRONMENT'] } else { 'Production' }
-$hasConn = $serviceEnv.Contains('ConnectionStrings__SqlServer') -and -not [string]::IsNullOrWhiteSpace($serviceEnv['ConnectionStrings__SqlServer'])
+$InstallDir = (Resolve-Path -LiteralPath $InstallDir).Path
+if (-not (Test-Path -LiteralPath $InstallDir -PathType Container)) { throw "InstallDir '$InstallDir' not found." }
 
-if ($environment -eq 'Production' -and -not $hasConn -and -not $AllowInMemoryProduction) {
-    throw "Production service '$Name' has no service-scoped ConnectionStrings__SqlServer. Re-run install-service.ps1 with -ConnectionString before updating, or use -AllowInMemoryProduction only for an intentional non-persistent install."
+$configPath = Join-Path $InstallDir 'appsettings.Production.json'
+if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) {
+    throw "appsettings.Production.json was not found in '$InstallDir'. Re-run install-service.ps1 before updating."
 }
 
-if ($environment -eq 'Production' -and $hasConn -and $serviceEnv['ConnectionStrings__SqlServer'] -match '(?i)(^|;)\s*TrustServerCertificate\s*=\s*True\s*(;|$)') {
+$serviceEnv = Get-ServiceEnvironment -ServiceName $Name
+$config = Get-Content -LiteralPath $configPath -Raw
+$configuredUrl = Get-TopLevelStringSetting -Content $config -Name 'Urls'
+if ([string]::IsNullOrWhiteSpace($configuredUrl)) { $configuredUrl = 'http://0.0.0.0:5275' }
+if ($serviceEnv.Contains('ASPNETCORE_URLS')) {
+    $configuredUrl = $serviceEnv['ASPNETCORE_URLS']
+    Write-Host "Migrated existing service-scoped ASPNETCORE_URLS into appsettings.Production.json." -ForegroundColor Cyan
+}
+
+$configuredConnectionString = Get-SqlServerConnectionString $config
+if ([string]::IsNullOrWhiteSpace($configuredConnectionString) -and $serviceEnv.Contains('ConnectionStrings__SqlServer')) {
+    $configuredConnectionString = $serviceEnv['ConnectionStrings__SqlServer']
+    Write-Host "Migrated existing service-scoped ConnectionStrings__SqlServer into appsettings.Production.json." -ForegroundColor Cyan
+}
+
+$hasConn = -not [string]::IsNullOrWhiteSpace($configuredConnectionString)
+if (-not $hasConn -and -not $AllowInMemoryProduction) {
+    throw "Production service '$Name' has no ConnectionStrings:SqlServer in appsettings.Production.json. Re-run install-service.ps1 with -ConnectionString before updating, or use -AllowInMemoryProduction only for an intentional non-persistent install."
+}
+
+if ($hasConn -and $configuredConnectionString -match '(?i)(^|;)\s*TrustServerCertificate\s*=\s*True\s*(;|$)') {
     Write-Warning "The production connection string uses TrustServerCertificate=True. Prefer a SQL Server certificate trusted by this host and remove that flag before long-term operation."
 }
 
-$InstallDir = (Resolve-Path -LiteralPath $InstallDir).Path
-if (-not (Test-Path -LiteralPath $InstallDir -PathType Container)) { throw "InstallDir '$InstallDir' not found." }
+$config = Set-TopLevelStringSetting -Content $config -Name 'Urls' -Value $configuredUrl
+$config = Set-SqlServerConnectionString -Content $config -Value $configuredConnectionString
 
 # Resolve the source to a folder (expanding a .zip into a temp dir if needed).
 $srcResolved = (Resolve-Path -LiteralPath $Source).Path
@@ -132,8 +204,27 @@ try {
     Write-Host "Copying new files into '$InstallDir'." -ForegroundColor Cyan
     Invoke-Robocopy -From $sourceDir -To $InstallDir
 
+    $newConfigPath = Join-Path $InstallDir 'appsettings.Production.json'
+    Set-Content -LiteralPath $newConfigPath -Value $config -Encoding UTF8
+    Write-Host "Preserved appsettings.Production.json, including Urls=$configuredUrl$(if ($hasConn) { ', ConnectionStrings:SqlServer=***' })." -ForegroundColor Cyan
+
+    $serviceKey = "HKLM:\SYSTEM\CurrentControlSet\Services\$Name"
+    $preservedEnv = [ordered]@{}
+    foreach ($entry in $serviceEnv.GetEnumerator()) {
+        if ($entry.Key -notin @('ASPNETCORE_ENVIRONMENT', 'ASPNETCORE_URLS', 'ConnectionStrings__SqlServer')) {
+            $preservedEnv[$entry.Key] = $entry.Value
+        }
+    }
+    if ($preservedEnv.Count -gt 0) {
+        $multi = @($preservedEnv.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" })
+        New-ItemProperty -Path $serviceKey -Name 'Environment' -PropertyType MultiString -Value $multi -Force | Out-Null
+    }
+    else {
+        Remove-ItemProperty -Path $serviceKey -Name 'Environment' -ErrorAction SilentlyContinue
+    }
+
     $developmentSettings = Join-Path $InstallDir 'appsettings.Development.json'
-    if ($environment -ne 'Development' -and -not $KeepDevelopmentSettings -and (Test-Path -LiteralPath $developmentSettings -PathType Leaf)) {
+    if (-not $KeepDevelopmentSettings -and (Test-Path -LiteralPath $developmentSettings -PathType Leaf)) {
         Remove-Item -LiteralPath $developmentSettings -Force
         Write-Host "Removed appsettings.Development.json from the non-development install directory." -ForegroundColor Cyan
     }

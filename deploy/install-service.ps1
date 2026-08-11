@@ -18,10 +18,6 @@
         -ConnectionString 'Server=.;Database=diffpdf;Trusted_Connection=True;TrustServerCertificate=True' `
         -DependsOn 'MSSQLSERVER'
 
-.EXAMPLE
-    .\install-service.ps1 -BinPath 'C:\DiffPdf\app\DiffPdf.Api.exe' `
-        -Environment Production `
-        -AllowInMemoryProduction
 #>
 [CmdletBinding()]
 param(
@@ -41,15 +37,16 @@ param(
     # Use 'MSSQL$INSTANCE' for a named instance, or '' to skip the dependency.
     [string] $DependsOn = 'MSSQLSERVER',
 
-    # Optional connection string, stored as a service-scoped environment variable.
+    # Optional connection string, written to appsettings.Production.json.
     [string] $ConnectionString,
 
-    # Removes a previously stored service-scoped connection string.
+    # Clears the connection string in appsettings.Production.json.
     [switch] $ClearConnectionString,
 
-    # ASP.NET Core environment + bind URL, stored as service-scoped environment variables.
-    # Url 0.0.0.0 binds all interfaces so LAN clients can reach the server.
+    # Kept for compatibility with older command lines. Windows Service hosting uses Production by default.
     [string] $Environment = 'Production',
+
+    # Bind URL written to appsettings.Production.json. 0.0.0.0 binds all interfaces so LAN clients can reach the server.
     [string] $Url = 'http://0.0.0.0:5275',
 
     # Production must normally use SQL Server. This switch permits the in-memory fallback intentionally.
@@ -81,7 +78,63 @@ function Invoke-Sc {
     }
 }
 
+function ConvertTo-JsonStringLiteral {
+    param([AllowNull()][string] $Value)
+    if ($null -eq $Value) { return 'null' }
+    return ($Value | ConvertTo-Json -Compress)
+}
+
+function ConvertFrom-JsonStringLiteral {
+    param([string] $Literal)
+    if ([string]::IsNullOrWhiteSpace($Literal) -or $Literal -eq 'null') { return $null }
+    return ($Literal | ConvertFrom-Json)
+}
+
+function Get-TopLevelStringSetting {
+    param([string] $Content, [string] $Name)
+    $pattern = '(?m)^\s*"' + [regex]::Escape($Name) + '"\s*:\s*(?<value>"(?:\\.|[^"\\])*"|null)'
+    $match = [regex]::Match($Content, $pattern)
+    if (-not $match.Success) { return $null }
+    return ConvertFrom-JsonStringLiteral $match.Groups['value'].Value
+}
+
+function Set-TopLevelStringSetting {
+    param([string] $Content, [string] $Name, [AllowNull()][string] $Value)
+    $literal = ConvertTo-JsonStringLiteral $Value
+    $pattern = '(?m)^(\s*"' + [regex]::Escape($Name) + '"\s*:\s*)(?:"(?:\\.|[^"\\])*"|null)'
+    $regex = [regex]::new($pattern, [Text.RegularExpressions.RegexOptions]::Multiline)
+    if ($regex.IsMatch($Content)) {
+        return $regex.Replace($Content, "`$1$literal", 1)
+    }
+
+    $insert = "  `"$Name`": $literal,"
+    return [regex]::Replace($Content, '^\s*\{', "{`r`n$insert", [Text.RegularExpressions.RegexOptions]::None)
+}
+
+function Get-SqlServerConnectionString {
+    param([string] $Content)
+    $pattern = '"ConnectionStrings"\s*:\s*\{(?:(?!\}).)*?"SqlServer"\s*:\s*(?<value>"(?:\\.|[^"\\])*"|null)'
+    $match = [regex]::Match($Content, $pattern, [Text.RegularExpressions.RegexOptions]::Singleline)
+    if (-not $match.Success) { return $null }
+    return ConvertFrom-JsonStringLiteral $match.Groups['value'].Value
+}
+
+function Set-SqlServerConnectionString {
+    param([string] $Content, [AllowNull()][string] $Value)
+    $literal = ConvertTo-JsonStringLiteral $Value
+    $pattern = '("ConnectionStrings"\s*:\s*\{(?:(?!\}).)*?"SqlServer"\s*:\s*)(?:"(?:\\.|[^"\\])*"|null)'
+    $regex = [regex]::new($pattern, [Text.RegularExpressions.RegexOptions]::Singleline)
+    if (-not $regex.IsMatch($Content)) {
+        throw "appsettings.Production.json must contain ConnectionStrings:SqlServer."
+    }
+    return $regex.Replace($Content, "`$1$literal", 1)
+}
+
 Assert-Administrator
+
+if ($Environment -ne 'Production') {
+    throw "-Environment '$Environment' is no longer written to the service. Windows Service hosting uses Production by default; use dotnet run/launchSettings for non-production hosting."
+}
 
 $resolved = Resolve-Path -LiteralPath $BinPath -ErrorAction SilentlyContinue
 if (-not $resolved -or -not (Test-Path -LiteralPath $resolved.Path -PathType Leaf)) {
@@ -122,31 +175,61 @@ if (-not [string]::IsNullOrWhiteSpace($ServiceAccount)) {
     Write-Host "Service logon account set to '$ServiceAccount'." -ForegroundColor Green
 }
 
-# Service-scoped environment variables (visible only to this service), picked up on next start. Merge with any
-# existing values so re-running without -ConnectionString keeps the previously stored one.
+# Operational configuration lives in appsettings.Production.json next to DiffPdf.Api.exe. Migrate old
+# service-scoped values when present, then remove them so they cannot override the file.
 $serviceKey = "HKLM:\SYSTEM\CurrentControlSet\Services\$Name"
-$env = [ordered]@{}
+$legacyEnv = [ordered]@{}
 $current = (Get-ItemProperty -Path $serviceKey -Name 'Environment' -ErrorAction SilentlyContinue).Environment
 foreach ($entry in @($current)) {
-    if ($entry -match '^(.*?)=(.*)$') { $env[$matches[1]] = $matches[2] }
-}
-$env['ASPNETCORE_ENVIRONMENT'] = $Environment
-$env['ASPNETCORE_URLS'] = $Url
-if ($ClearConnectionString) { $env.Remove('ConnectionStrings__SqlServer') }
-if (-not [string]::IsNullOrWhiteSpace($ConnectionString)) { $env['ConnectionStrings__SqlServer'] = $ConnectionString }
-$hasConn = $env.Contains('ConnectionStrings__SqlServer') -and -not [string]::IsNullOrWhiteSpace($env['ConnectionStrings__SqlServer'])
-
-if ($Environment -eq 'Production' -and -not $hasConn -and -not $AllowInMemoryProduction) {
-    throw "Production service '$Name' requires a SQL Server connection string. Pass -ConnectionString, keep an existing service-scoped ConnectionStrings__SqlServer, or use -AllowInMemoryProduction only for an intentional non-persistent install."
+    if ($entry -match '^(.*?)=(.*)$') { $legacyEnv[$matches[1]] = $matches[2] }
 }
 
-if ($Environment -eq 'Production' -and $hasConn -and $env['ConnectionStrings__SqlServer'] -match '(?i)(^|;)\s*TrustServerCertificate\s*=\s*True\s*(;|$)') {
+$configPath = Join-Path (Split-Path -Parent $BinPath) 'appsettings.Production.json'
+if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) {
+    throw "appsettings.Production.json was not found next to '$BinPath'. Publish the server bundle again."
+}
+
+$config = Get-Content -LiteralPath $configPath -Raw
+$configuredConnectionString = Get-SqlServerConnectionString $config
+if ($ClearConnectionString) {
+    $configuredConnectionString = ''
+}
+elseif (-not [string]::IsNullOrWhiteSpace($ConnectionString)) {
+    $configuredConnectionString = $ConnectionString
+}
+elseif ([string]::IsNullOrWhiteSpace($configuredConnectionString) -and $legacyEnv.Contains('ConnectionStrings__SqlServer')) {
+    $configuredConnectionString = $legacyEnv['ConnectionStrings__SqlServer']
+    Write-Host "Migrated existing service-scoped ConnectionStrings__SqlServer into appsettings.Production.json." -ForegroundColor Cyan
+}
+
+$config = Set-TopLevelStringSetting -Content $config -Name 'Urls' -Value $Url
+$config = Set-SqlServerConnectionString -Content $config -Value $configuredConnectionString
+Set-Content -LiteralPath $configPath -Value $config -Encoding UTF8
+
+$hasConn = -not [string]::IsNullOrWhiteSpace($configuredConnectionString)
+if (-not $hasConn -and -not $AllowInMemoryProduction) {
+    throw "Production service '$Name' requires ConnectionStrings:SqlServer in appsettings.Production.json. Pass -ConnectionString or use -AllowInMemoryProduction only for an intentional non-persistent install."
+}
+
+if ($hasConn -and $configuredConnectionString -match '(?i)(^|;)\s*TrustServerCertificate\s*=\s*True\s*(;|$)') {
     Write-Warning "The production connection string uses TrustServerCertificate=True. Prefer a SQL Server certificate trusted by this host and remove that flag before long-term operation."
 }
 
-$multi = @($env.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" })
-New-ItemProperty -Path $serviceKey -Name 'Environment' -PropertyType MultiString -Value $multi -Force | Out-Null
-Write-Host "Set service environment: ASPNETCORE_ENVIRONMENT=$Environment, ASPNETCORE_URLS=$Url$(if ($hasConn) { ', ConnectionStrings__SqlServer=***' })." -ForegroundColor Green
+$preservedEnv = [ordered]@{}
+foreach ($entry in $legacyEnv.GetEnumerator()) {
+    if ($entry.Key -notin @('ASPNETCORE_ENVIRONMENT', 'ASPNETCORE_URLS', 'ConnectionStrings__SqlServer')) {
+        $preservedEnv[$entry.Key] = $entry.Value
+    }
+}
+if ($preservedEnv.Count -gt 0) {
+    $multi = @($preservedEnv.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" })
+    New-ItemProperty -Path $serviceKey -Name 'Environment' -PropertyType MultiString -Value $multi -Force | Out-Null
+}
+else {
+    Remove-ItemProperty -Path $serviceKey -Name 'Environment' -ErrorAction SilentlyContinue
+}
+
+Write-Host "Updated appsettings.Production.json: Urls=$Url$(if ($hasConn) { ', ConnectionStrings:SqlServer=***' })." -ForegroundColor Green
 
 if ($NoStart) {
     Write-Host "Service '$Name' installed (not started; -NoStart was specified)." -ForegroundColor Green

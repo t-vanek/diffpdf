@@ -146,7 +146,7 @@ cd diffpdf
 dotnet run --project src/DiffPdf.Api        # http://localhost:5275, auth vypnuto
 ```
 
-Bez connection stringu běží **jednoinstanční dev režim** (in-memory úložiště, žádná DB). Pro plný stack nastav `ConnectionStrings__SqlServer` — relační zdroj pravdy + **DB-backed durable local queues** (žádný broker); schéma se vytvoří idempotentně migracemi při startu. Kořen artefaktů přepíšeš přes `DIFFPDF_STORAGE_ROOT`.
+Bez connection stringu běží **jednoinstanční dev režim** (in-memory úložiště, žádná DB). Pro plný stack nastav `ConnectionStrings:SqlServer` v `appsettings.Production.json` — relační zdroj pravdy + **DB-backed durable local queues** (žádný broker); schéma se vytvoří idempotentně migracemi při startu.
 
 ### První porovnání
 
@@ -198,14 +198,14 @@ Levé menu: **Přehled · Větve · Instance · Automatizace · Úlohy · Jednor
 
 ## Konfigurace ve zkratce
 
-Vše přes `appsettings.json` / proměnné prostředí (`__` odděluje sekce, např. `ConnectionStrings__SqlServer`). Plný popis pro provoz v **[docs/NASAZENI.md](docs/NASAZENI.md#konfigurace)**.
+Vše přes `appsettings.json` / `appsettings.Production.json`. Plný popis pro provoz v **[docs/NASAZENI.md](docs/NASAZENI.md#konfigurace)**.
 
 | Oblast | Výchozí | Poznámka |
 |---|---|---|
-| **Databáze** | in-memory (dev) | `ConnectionStrings__SqlServer`. Schéma se vytvoří migracemi při startu; bez DB jede jednoinstanční dev režim. |
-| **Bind / port** | `http://0.0.0.0:5275` | `ASPNETCORE_URLS`. Služba binduje všechna rozhraní, ať klienti v LAN dosáhnou. |
+| **Databáze** | in-memory (dev) | `ConnectionStrings:SqlServer`. Schéma se vytvoří migracemi při startu; bez DB jede jednoinstanční dev režim. |
+| **Bind / port** | `http://0.0.0.0:5275` | `Urls`. Služba binduje všechna rozhraní, ať klienti v LAN dosáhnou. |
 | **Renderer** | Ghostscript (AGPL) | `gs` na `PATH` / `GHOSTSCRIPT_PATH`. Alternativa je **PDFium** (BSD, in-process): volba `renderer = "Pdfium"`. |
-| **Úložiště** | `storage` (rel.) | Kořen složek `old/new/reports`; `DIFFPDF_STORAGE_ROOT` nebo `ScopeSync:RootPath`. |
+| **Úložiště** | `C:\ProgramData\DiffPdf` (prod) | Kořen složek `old/new/reports`; nastav přes `ScopeSync:RootPath` / `Storage:RootPath`. |
 | **Autentizace** | vypnuto | `Auth:Enabled=true` (vyžaduje DB) → každý endpoint chce bearer token (mimo `/health` a OAuth). |
 | **E-mail** | — | SMTP a odběry jsou **runtime resource** (`/api/v1/settings/email`, `/api/v1/subscriptions`); fallback `Notifications:Smtp` v appsettings. |
 | **Síťové složky** | — | `basePath` lokální / UNC (`\\server\share`) / alias `share:<jméno>`; credentialy jako profily v sekci `Network`. |

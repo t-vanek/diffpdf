@@ -129,7 +129,7 @@ service účet** (`CORP\svc_diffpdf`), který má:
 ### 3.4 Úložiště PDF
 
 Server pracuje se stromem `<root>/<větev>/<instance>/{old,new,reports}`. Kořen nastavíš v
-`ScopeSync:RootPath` (default `D:\diffpdf`) nebo env `DIFFPDF_STORAGE_ROOT`. Když je kořen
+`ScopeSync:RootPath` v `appsettings.Production.json`. Když je kořen
 nastavený, **`basePath` instancí se odvodí automaticky** a server složky `old/new/reports`
 sám založí a opraví. Do `reports/` aplikace **zapisuje**, `old/new` jen **čte**.
 
@@ -137,7 +137,7 @@ sám založí a opraví. Do `reports/` aplikace **zapisuje**, `old/new` jen **č
 
 | Port | Směr | Účel |
 |---|---|---|
-| **5275/TCP** | příchozí | REST API + SignalR (`ASPNETCORE_URLS`). Otevři pro stanice klientů v LAN. |
+| **5275/TCP** | příchozí | REST API + SignalR (`Urls` v `appsettings.Production.json`). Otevři pro stanice klientů v LAN. |
 | **5276/UDP** | příchozí | LAN auto-discovery (desktop klient si najde server). Volitelné — lze vypnout `Discovery:Enabled=false`. |
 | **1433/TCP** | odchozí | SQL Server (pokud je na jiném stroji). |
 | **25 / 587/TCP** | odchozí | SMTP relay (pokud používáš e-mailové notifikace). |
@@ -151,7 +151,7 @@ New-NetFirewallRule -DisplayName "DiffPdf discovery (UDP 5276)" -Direction Inbou
 
 > **TLS:** služba binduje **HTTP**. Pro produkci s autentizací postav před server
 > **reverzní proxy** (IIS / nginx) s TLS terminací, nebo nastav HTTPS binding v
-> `ASPNETCORE_URLS`. Viz [§6.3](#63-tls-a-reverzní-proxy).
+> `Urls` / `Kestrel` v `appsettings.Production.json`. Viz [§6.3](#63-tls-a-reverzní-proxy).
 
 ---
 
@@ -200,27 +200,29 @@ PowerShellu** spusť:
 - zaregistruje službu `DiffPdfApi` (display name *DiffPdf API*) s **delayed-auto** startem,
 - nastaví **závislost na SQL Serveru** (`-DependsOn`, default `MSSQLSERVER`; named instance `MSSQL$INSTANCE`),
 - nastaví **automatický restart** 5 s po každém z prvních tří pádů,
-- uloží **service-scoped env proměnné**: `ASPNETCORE_ENVIRONMENT=Production`,
-  `ASPNETCORE_URLS=http://0.0.0.0:5275`, `ConnectionStrings__SqlServer=…`,
+- zapíše provozní hodnoty do `appsettings.Production.json`: `Urls` a `ConnectionStrings:SqlServer`,
+- odstraní staré service-scoped hodnoty `ASPNETCORE_ENVIRONMENT`, `ASPNETCORE_URLS`
+  a `ConnectionStrings__SqlServer`, pokud ve službě zůstaly z dřívější instalace,
 - odmítne produkční instalaci bez SQL connection stringu, pokud výslovně nepovolíš
   `-AllowInMemoryProduction`,
 - spustí službu (pokud nezadáš `-NoStart`).
 
-> Provozní konfigurace žije v **env proměnných služby**, ne v `appsettings.json` — **přežije
-> aktualizaci** (přepis souborů). Skript je idempotentní: opakované spuštění službu jen
-> překonfiguruje a env hodnoty **slučuje** (re-run bez `-ConnectionString` ponechá uložený).
+> Provozní konfigurace žije v **`appsettings.Production.json` vedle `DiffPdf.Api.exe`**.
+> `update-service.ps1` při aktualizaci zachová celý lokální production config a zapíše ho zpět
+> do nové verze instalace. Skript je idempotentní: re-run bez `-ConnectionString`
+> ponechá hodnotu, která už v production configu je.
 
 **Parametry skriptu:**
 
 | Parametr | Default | Význam |
 |---|---|---|
 | `-BinPath` | (povinný) | Plná cesta k `DiffPdf.Api.exe`. |
-| `-ConnectionString` | — | V produkci povinný, pokud už není uložený na službě nebo nepoužiješ `-AllowInMemoryProduction`; uloží se jako `ConnectionStrings__SqlServer`. |
-| `-ClearConnectionString` | (vyp.) | Smaže dříve uložený service-scoped connection string. |
+| `-ConnectionString` | — | V produkci povinný, pokud už není v `appsettings.Production.json` nebo nepoužiješ `-AllowInMemoryProduction`; uloží se jako `ConnectionStrings:SqlServer`. |
+| `-ClearConnectionString` | (vyp.) | Smaže connection string v `appsettings.Production.json`. |
 | `-ServiceAccount` / `-ServicePassword` | LocalSystem | Doménový service účet (doporučeno). |
 | `-Name` | `DiffPdfApi` | Název služby v SCM. |
-| `-Url` | `http://0.0.0.0:5275` | Bind adresa (`ASPNETCORE_URLS`). |
-| `-Environment` | `Production` | `ASPNETCORE_ENVIRONMENT`. |
+| `-Url` | `http://0.0.0.0:5275` | Bind adresa (`Urls` v `appsettings.Production.json`). |
+| `-Environment` | `Production` | Pouze kompatibilita se staršími příkazy; služba používá výchozí `Production`. |
 | `-AllowInMemoryProduction` | (vyp.) | Nouzově/laboratorně povolí produkční start bez SQL Serveru; data nejsou perzistentní. |
 | `-DependsOn` | `MSSQLSERVER` | DB služba, která má startovat dřív. `''` = bez závislosti. |
 | `-StartupType` | `delayed-auto` | `delayed-auto` / `auto` / `manual`. |
@@ -230,10 +232,10 @@ PowerShellu** spusť:
 
 ## 5. Konfigurace
 
-Dvě vrstvy: **env proměnné služby** (provoz — connection string, port, prostředí; nastavuje
-instalační skript) a **`appsettings.json` / `appsettings.Production.json`** (vše ostatní).
-Env proměnné přepisují appsettings; sekce se v env zapisují s `__` (např.
-`ScopeSync__RootPath`).
+Provozní konfigurace je v **`appsettings.Production.json`**. Instalační skript do něj zapisuje
+`Urls` a `ConnectionStrings:SqlServer`; ostatní sekce může upravit admin přímo v souboru.
+Soubor obsahuje i citlivé hodnoty, pokud je tam doplníš, proto omez ACL instalační složky na
+Administrators a service účet.
 
 ### 5.1 Logování (`appsettings.Production.json`)
 
@@ -244,15 +246,14 @@ C:\ProgramData\DiffPdf\logs\diffpdf-YYYYMMDD.log   (14 dní historie)
 ```
 
 Cesta je v `appsettings.Production.json` (sekce `Serilog`). Adresář se vytvoří automaticky;
-chceš-li jinam, uprav `path` v tom souboru (a aktualizaci přežije — patří k binárkám, takže
-po updatu ho případně znovu uprav, nebo drž v env `Serilog__WriteTo__0__Args__path`).
+chceš-li jinam, uprav `path` v tom souboru.
 
 ### 5.2 Přehled konfiguračních sekcí
 
 | Sekce / klíč | Default | Význam |
 |---|---|---|
 | `ConnectionStrings:SqlServer` | — (dev: in-memory) | SQL Server. Bez něj jede neperzistentní dev režim — **v produkci povinné**. |
-| `ASPNETCORE_URLS` | `http://0.0.0.0:5275` | Bind adresa(y) serveru. |
+| `Urls` | `http://0.0.0.0:5275` | Bind adresa(y) serveru. |
 | `Auth:Enabled` | `false` | Zapne OAuth2 (vyžaduje DB). Viz [§6](#6-zabezpečení). |
 | `ScopeSync:RootPath` | `D:\diffpdf` | Kořen úložiště `old/new/reports`. |
 | `ScopeSync:AutoRegister` | `true` | Automaticky registruje větve/instance nalezené na disku. |
@@ -321,11 +322,11 @@ Stropy hot path (env, např. `Worker__MaxFilePairsPerJob=4`):
 Ve výchozím stavu je auth **vypnuté** (API běží anonymně). V produkci doporučeno zapnout:
 
 1. Ujisti se, že je nakonfigurovaná **DB** (auth se aktivuje jen s relačním connection stringem).
-2. Nastav sekci `Auth` (secret **mimo repo** — přes env proměnnou, ne v `appsettings.json`):
+2. Nastav sekci `Auth` v produkčním `appsettings.Production.json`:
    ```json
-   "Auth": { "Enabled": true, "ClientId": "diffpdf-ci", "Scope": "diffpdf.api", "AccessTokenMinutes": 60 }
+   "Auth": { "Enabled": true, "ClientId": "diffpdf-ci", "ClientSecret": "<silné heslo>", "Scope": "diffpdf.api", "AccessTokenMinutes": 60 }
    ```
-   Secret přes env: `Auth__ClientSecret=<silné heslo>` (přidej do env proměnných služby).
+   Soubor obsahuje secret, proto musí být instalační složka chráněná ACL.
 3. Po zapnutí **každý endpoint vyžaduje bearer token**; výjimky jsou `/`, `/health`,
    `/health/ready`, OpenAPI a `/connect/token`.
 
@@ -338,7 +339,8 @@ V desktopovém klientovi zadáš ClientId/Secret v ozubeném kolečku.
 ### 6.2 Doporučení
 
 - **Service účet s minimálními právy** (jen potřebné složky + DB), ne LocalSystem.
-- **Secret a hesla** výhradně v env proměnných / chráněném úložišti, nikdy v repu.
+- **Secret a hesla** pouze v serverovém `appsettings.Production.json` nebo chráněném úložišti,
+  nikdy v repu; instalační složku omez na Administrators + service účet.
 - **Síť:** API vystav jen do interní LAN; veřejně jen za reverzní proxy s TLS a autentizací.
 - **Discovery (UDP 5276)** vypni, pokud ho nepoužíváš (`Discovery:Enabled=false`).
 
@@ -348,8 +350,8 @@ Služba binduje HTTP. Pro šifrovaný provoz:
 
 - **IIS / ARR** nebo **nginx** před serverem s TLS terminací → forward na `http://localhost:5275`.
   Povol forwardování WebSocketů (SignalR `/hubs/jobs`).
-- nebo přímý HTTPS: `ASPNETCORE_URLS=https://0.0.0.0:5275` + certifikát
-  (`ASPNETCORE_Kestrel__Certificates__Default__Path` / `…__Password`).
+- nebo přímý HTTPS: nastav `Urls` / případně sekci `Kestrel` v `appsettings.Production.json`
+  a ulož certifikát na serveru s ACL pro service účet.
 
 ---
 
@@ -393,9 +395,6 @@ automatizace „Úklid databáze". Obojí se spravuje za běhu v sekci **Automat
 | **Úložiště `reports/`** | dle potřeby | Diff-PDF a reporty jsou **reprodukovatelné** (lze přegenerovat); zálohuj jen pokud je potřebuješ jako důkaz. `old/new` jsou vstupy z jiných systémů. |
 | **`appsettings.Production.json`** | s konfigurací serveru | Drobné, ale ušetří rekonstrukci. |
 
-> Env proměnné služby (connection string apod.) jsou v registru
-> `HKLM\SYSTEM\CurrentControlSet\Services\DiffPdfApi\Environment` — případně zazálohuj.
-
 ---
 
 ## 8. Aktualizace serveru
@@ -408,8 +407,8 @@ Bezpečná, s automatickým rollbackem při nenaběhnutí:
 
 **Co skript udělá:** zastaví službu → **zazálohuje** aktuální složku (do `..\backups\…`) →
 nakopíruje novou verzi → spustí a počká na `Running`. Když nová verze do 60 s nenaběhne,
-**vrátí zálohu** a službu nastartuje zpět. Provozní config (env proměnné) zůstává — přežije
-přepis souborů.
+**vrátí zálohu** a službu nastartuje zpět. `appsettings.Production.json` update skript zachová
+celý a přenese ho do nové verze instalace.
 
 > **Migrace DB** se aplikují automaticky při startu nové verze. Před velkou aktualizací
 > v produkci pořiď **zálohu DB** (rollback skriptu vrátí binárky, ne schéma databáze).
