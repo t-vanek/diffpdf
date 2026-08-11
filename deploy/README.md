@@ -53,10 +53,10 @@ applies EF Core migrations, then begins serving — so a not-yet-ready database 
 | `-Name` | `DiffPdfApi` | Service name. |
 | `-StartupType` | `delayed-auto` | `delayed-auto`, `auto`, or `manual`. |
 | `-DependsOn` | `MSSQLSERVER` | DB service to start first. Named instance: `MSSQL$INSTANCE`. `''` to skip. |
-| `-ConnectionString` | — | Required for `Production` unless already stored on the service or `-AllowInMemoryProduction` is used; stored as `ConnectionStrings__SqlServer`. |
-| `-ClearConnectionString` | (off) | Removes a previously stored service-scoped connection string. |
-| `-Environment` | `Production` | ASP.NET Core environment stored as `ASPNETCORE_ENVIRONMENT`. |
-| `-Url` | `http://0.0.0.0:5275` | Bind URL stored as `ASPNETCORE_URLS`. |
+| `-ConnectionString` | — | Required for `Production` unless already stored in `appsettings.Production.json` or `-AllowInMemoryProduction` is used; stored as `ConnectionStrings:SqlServer`. |
+| `-ClearConnectionString` | (off) | Clears `ConnectionStrings:SqlServer` in `appsettings.Production.json`. |
+| `-Environment` | `Production` | Compatibility parameter; Windows Service hosting uses Production by default. |
+| `-Url` | `http://0.0.0.0:5275` | Bind URL stored as `Urls` in `appsettings.Production.json`. |
 | `-AllowInMemoryProduction` | (off) | Explicitly permits production startup without SQL Server; intended only for short-lived/lab installs. |
 | `-ServiceAccount` / `-ServicePassword` | LocalSystem | Optional logon account. |
 | `-NoStart` | (off) | Install without starting. |
@@ -67,7 +67,7 @@ applies EF Core migrations, then begins serving — so a not-yet-ready database 
 - The service account needs **`CREATE DATABASE`** permission (role `dbcreator`), or pre-create the empty
   database and the startup gate just verifies reachability.
 - Prefer an install path without spaces (e.g. `C:\DiffPdf\app`).
-- Logs: `<install dir>\logs\diffpdf-*.log` (override with the `DIFFPDF_LOG_DIR` environment variable).
+- Logs: `C:\ProgramData\DiffPdf\logs\diffpdf-*.log` by default; change `Serilog` in `appsettings.Production.json`.
 - Release artifacts created by `publish.ps1` omit `appsettings.Development.json` by default so local dev
   connection strings are not shipped to servers. Use `-IncludeDevelopmentSettings` only for a deliberate dev artifact.
 
