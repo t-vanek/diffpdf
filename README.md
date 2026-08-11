@@ -266,16 +266,20 @@ Server běží jako **Windows služba** (Api hostuje workery in-process; migrace
 ### Ve zkratce
 
 ```powershell
-# 1. publish (na buildovacím stroji s .NET 10 SDK)
-.\deploy\publish.ps1 -Version 1.2.3          # → publish/DiffPdf-Server-1.2.3-win-x64.zip
-.\deploy\publish.ps1 -Version 1.2.3 -ClientOnly # → publish/DiffPdf-Client-1.2.3-win-x64.zip
+# instalace serveru z posledního GitHub Release (na serveru, elevated PowerShell)
+.\deploy\setup-server.ps1 -Mode Install -Version latest -SqlServer SQLHOST -Database diffpdf
 
-# 2. instalace služby (na serveru, elevated PowerShell, z rozbaleného zipu)
-.\install-service.ps1 -BinPath 'C:\DiffPdf\app\DiffPdf.Api.exe' `
-    -ConnectionString 'Server=.;Database=diffpdf;Trusted_Connection=True;TrustServerCertificate=True'
+# instalace z již staženého server ZIPu
+.\deploy\setup-server.ps1 -Mode Install -SourceZip .\DiffPdf-Server-1.2.3-win-x64.zip -SqlServer SQLHOST -Database diffpdf
 
-# 3. aktualizace (bezpečná, s rollbackem při nenaběhnutí)
-.\update-service.ps1 -InstallDir 'C:\DiffPdf\app' -Source '.\DiffPdf-Server-1.2.3-win-x64.zip'
+# aktualizace serveru z posledního GitHub Release (rollback při nenaběhnutí)
+.\deploy\setup-server.ps1 -Mode Update -Version latest
+
+# aktualizace z již staženého server ZIPu
+.\deploy\setup-server.ps1 -Mode Update -SourceZip .\DiffPdf-Server-1.2.3-win-x64.zip
+
+# diagnostika služby, configu, health endpointů a posledních logů
+.\deploy\setup-server.ps1 -Mode Diagnose
 ```
 
 Tag `v*` v Gitu spustí `release.yml`, který vytvoří GitHub Release se serverovým i klientským zipem.

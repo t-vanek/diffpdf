@@ -21,6 +21,43 @@ Admins can also download a ready ZIP from GitHub Actions:
 
 ## 2. Install (run from an elevated PowerShell prompt)
 
+Recommended admin entry point:
+
+```powershell
+.\deploy\setup-server.ps1 -Mode Install -Version latest -SqlServer SQLHOST -Database diffpdf
+```
+
+This downloads `DiffPdf-Server-<version>-<runtime>.zip` from GitHub Releases in the configured repository.
+
+If you already downloaded a server ZIP, provide the ZIP path explicitly:
+
+```powershell
+.\deploy\setup-server.ps1 -Mode Install -SourceZip '.\DiffPdf-Server-1.2.3-win-x64.zip' -SqlServer SQLHOST -Database diffpdf
+```
+
+`-Source` is kept as a backwards-compatible alias for `-SourceZip`, but local folders are not accepted.
+
+Update from the latest server release:
+
+```powershell
+.\deploy\setup-server.ps1 -Mode Update -Version latest
+```
+
+Update from a downloaded server ZIP:
+
+```powershell
+.\deploy\setup-server.ps1 -Mode Update -SourceZip '.\DiffPdf-Server-1.2.3-win-x64.zip'
+```
+
+Repair/diagnostics:
+
+```powershell
+.\deploy\setup-server.ps1 -Mode Repair
+.\deploy\setup-server.ps1 -Mode Diagnose
+```
+
+Low-level install remains available when files are already in place:
+
 ```powershell
 .\deploy\install-service.ps1 -BinPath 'C:\DiffPdf\app\DiffPdf.Api.exe'
 ```
