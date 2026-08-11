@@ -16,7 +16,8 @@ dotnet publish src/DiffPdf.Api -c Release -o C:\DiffPdf\app
 Admins can also download a ready ZIP from GitHub Actions:
 
 1. Open **Actions** → **Server Bundle** → **Run workflow**.
-2. Download the `DiffPdf-Server-...zip` artifact from the completed workflow run.
+2. Download `DiffPdf-Server-...zip` from GitHub **Releases**; the completed workflow
+   run also keeps the same ZIP as an artifact.
 
 ## 2. Install (run from an elevated PowerShell prompt)
 

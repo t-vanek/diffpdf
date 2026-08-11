@@ -164,8 +164,8 @@ z GitHub Release, nebo ručně v GitHub Actions spustíš samostatný bundle wor
 
 1. GitHub → **Actions** → **Server Bundle** nebo **Client Bundle** → **Run workflow**.
 2. Volitelně vyplň `version`; prázdné pole vytvoří automatickou admin/client verzi.
-3. Po doběhnutí stáhni artefakt `DiffPdf-Server-...zip` nebo `DiffPdf-Client-...zip`
-   ze stránky běhu workflow.
+3. Po doběhnutí stáhni `DiffPdf-Server-...zip` nebo `DiffPdf-Client-...zip` z GitHub
+   **Releases**. Stejný ZIP je dostupný i jako artefakt na stránce běhu workflow.
 
 ```powershell
 # vytvoří publish/DiffPdf-Server-1.2.3-win-x64.zip + DiffPdf-Client-1.2.3-win-x64.zip
@@ -181,8 +181,8 @@ Server zip obsahuje publikovaný `DiffPdf.Api.exe` (self-contained) + skripty
 Klient zip je jeden `.exe` pro testery.
 
 > Tag `v*` v Gitu spustí workflow `release.yml`, který oba zipy připne k GitHub Release.
-> Ruční workflow `server-bundle.yml` a `client-bundle.yml` release nevytváří; ZIP drží
-> jako Actions artefakt 30 dní.
+> Ruční workflow `server-bundle.yml` a `client-bundle.yml` vytvoří vlastní GitHub Release
+> s tagem `server-bundle-v...` nebo `client-bundle-v...`, aby nekolidovaly s oficiálními `v*` releasy.
 
 ### 4.2 Instalace služby
 

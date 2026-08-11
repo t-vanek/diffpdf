@@ -1,7 +1,7 @@
 name: Client Bundle
 
-# Manual package for testers/admins: builds a self-contained desktop client bundle and uploads
-# the ZIP as a workflow artifact. It does not create a GitHub Release.
+# Manual package for testers/admins: builds a self-contained desktop client bundle, publishes
+# it to the GitHub Releases list, and also uploads it as a workflow artifact.
 on:
   workflow_dispatch:
     inputs:
@@ -24,7 +24,7 @@ on:
         type: boolean
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: client-bundle-${{ github.ref }}
@@ -69,6 +69,38 @@ jobs:
               -OutDir publish `
               -SelfContained:$selfContained `
               -ClientOnly
+
+      - name: Publish ZIP to GitHub Releases
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = '${{ steps.ver.outputs.version }}'
+          $runtime = '${{ inputs.runtime }}'
+          $tag = "client-bundle-v$version"
+          $title = "Client Bundle $version"
+          $asset = "publish/DiffPdf-Client-$version-$runtime.zip"
+          $notes = @(
+              "Manual client bundle built from ``$env:GITHUB_SHA``.",
+              "",
+              "Download and run ``DiffPdf-Client-$version-$runtime.zip`` on a Windows workstation."
+          ) -join "`n"
+
+          $releaseExists = $false
+          try {
+              gh release view $tag *> $null
+              $releaseExists = $LASTEXITCODE -eq 0
+          }
+          catch {
+              $releaseExists = $false
+          }
+
+          if ($releaseExists) {
+              gh release upload $tag $asset --clobber
+          }
+          else {
+              gh release create $tag $asset --title $title --notes $notes --target $env:GITHUB_SHA
+          }
 
       - name: Upload client ZIP
         uses: actions/upload-artifact@v4
