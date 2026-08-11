@@ -177,7 +177,7 @@ z GitHub Release, nebo ručně v GitHub Actions spustíš samostatný bundle wor
 ```
 
 Server zip obsahuje publikovaný `DiffPdf.Api.exe` (self-contained) + skripty
-`install-service.ps1`, `uninstall-service.ps1`, `update-service.ps1`.
+`setup-server.ps1`, `install-service.ps1`, `uninstall-service.ps1`, `update-service.ps1`.
 Klient zip je jeden `.exe` pro testery.
 
 > Tag `v*` v Gitu spustí workflow `release.yml`, který oba zipy připne k GitHub Release.
@@ -186,21 +186,38 @@ Klient zip je jeden `.exe` pro testery.
 
 ### 4.2 Instalace služby
 
-Na serveru rozbal server zip (cesta **bez mezer**, např. `C:\DiffPdf\app`) a v **elevated
-PowerShellu** spusť:
+Na serveru v **elevated PowerShellu** spusť hlavní admin skript. Buď necháš skript stáhnout
+server ZIP z GitHub Releases:
 
 ```powershell
-.\install-service.ps1 -BinPath 'C:\DiffPdf\app\DiffPdf.Api.exe' `
-    -ConnectionString 'Server=SQLHOST;Database=diffpdf;Trusted_Connection=True;TrustServerCertificate=True' `
+.\setup-server.ps1 -Mode Install -Version latest `
+    -SqlServer 'SQLHOST' -Database 'diffpdf' `
     -ServiceAccount 'CORP\svc_diffpdf' -ServicePassword (Read-Host -AsSecureString 'Heslo service účtu')
 ```
 
-**Co skript udělá:**
+Nebo použiješ už stažený server ZIP a cestu k němu zadáš explicitně:
 
+```powershell
+.\setup-server.ps1 -Mode Install -SourceZip '.\DiffPdf-Server-1.2.3-win-x64.zip' `
+    -SqlServer 'SQLHOST' -Database 'diffpdf'
+```
+
+`-Source` je zachovaný jen jako kompatibilní alias pro `-SourceZip`. Lokální složka ani
+rozbalený repozitář nejsou podporovaný vstup pro `setup-server.ps1`; admin musí předat
+serverový ZIP vytvořený release/server bundle workflow.
+
+**Co `setup-server.ps1` udělá:**
+
+- stáhne serverový ZIP z GitHub Releases, pokud nezadáš `-SourceZip`,
+- vytvoří `C:\ProgramData\DiffPdf\{data,storage,logs,backups}`,
+- rozbalí/nakopíruje server do `C:\DiffPdf\app`,
 - zaregistruje službu `DiffPdfApi` (display name *DiffPdf API*) s **delayed-auto** startem,
 - nastaví **závislost na SQL Serveru** (`-DependsOn`, default `MSSQLSERVER`; named instance `MSSQL$INSTANCE`),
 - nastaví **automatický restart** 5 s po každém z prvních tří pádů,
 - zapíše provozní hodnoty do `appsettings.Production.json`: `Urls` a `ConnectionStrings:SqlServer`,
+- nastaví storage/log/data cesty podle `-ProgramDataDir`,
+- volitelně přidá firewall pravidlo pro HTTP port,
+- spustí `/health` a `/health/ready`,
 - odstraní staré service-scoped hodnoty `ASPNETCORE_ENVIRONMENT`, `ASPNETCORE_URLS`
   a `ConnectionStrings__SqlServer`, pokud ve službě zůstaly z dřívější instalace,
 - odmítne produkční instalaci bez SQL connection stringu, pokud výslovně nepovolíš
@@ -212,20 +229,26 @@ PowerShellu** spusť:
 > do nové verze instalace. Skript je idempotentní: re-run bez `-ConnectionString`
 > ponechá hodnotu, která už v production configu je.
 
-**Parametry skriptu:**
+`install-service.ps1` zůstává dostupný jako nízkoúrovňový fallback, když už máš soubory
+ručně připravené v instalační složce.
+
+**Hlavní parametry `setup-server.ps1`:**
 
 | Parametr | Default | Význam |
 |---|---|---|
-| `-BinPath` | (povinný) | Plná cesta k `DiffPdf.Api.exe`. |
-| `-ConnectionString` | — | V produkci povinný, pokud už není v `appsettings.Production.json` nebo nepoužiješ `-AllowInMemoryProduction`; uloží se jako `ConnectionStrings:SqlServer`. |
-| `-ClearConnectionString` | (vyp.) | Smaže connection string v `appsettings.Production.json`. |
+| `-Mode` | `Install` | `Install`, `Update`, `Repair`, `Diagnose`. |
+| `-Version` | `latest` | Verze server ZIPu z GitHub Releases; `latest` vybere nejnovější server asset. |
+| `-SourceZip` | — | Lokální server ZIP; když chybí, stáhne se release z GitHubu. `-Source` je kompatibilní alias. |
+| `-InstallDir` | `C:\DiffPdf\app` | Instalační složka služby. |
+| `-ProgramDataDir` | `C:\ProgramData\DiffPdf` | Kořen pro `data`, `storage`, `logs`, `backups`. |
+| `-SqlServer` / `-Database` | — / `diffpdf` | Skript z nich složí `ConnectionStrings:SqlServer`. |
+| `-ConnectionString` | — | Hotový connection string, pokud ho nechceš skládat z parametrů. |
 | `-ServiceAccount` / `-ServicePassword` | LocalSystem | Doménový service účet (doporučeno). |
-| `-Name` | `DiffPdfApi` | Název služby v SCM. |
 | `-Url` | `http://0.0.0.0:5275` | Bind adresa (`Urls` v `appsettings.Production.json`). |
-| `-Environment` | `Production` | Pouze kompatibilita se staršími příkazy; služba používá výchozí `Production`. |
+| `-PublicUrl` | `http://localhost:5275` | URL pro smoke testy a odkazy v notifikacích. |
 | `-AllowInMemoryProduction` | (vyp.) | Nouzově/laboratorně povolí produkční start bez SQL Serveru; data nejsou perzistentní. |
 | `-DependsOn` | `MSSQLSERVER` | DB služba, která má startovat dřív. `''` = bez závislosti. |
-| `-StartupType` | `delayed-auto` | `delayed-auto` / `auto` / `manual`. |
+| `-NoFirewall` | (vyp.) | Nepřidá firewall pravidlo. |
 | `-NoStart` | (vyp.) | Nainstaluje bez spuštění. |
 
 ---
@@ -402,10 +425,24 @@ automatizace „Úklid databáze". Obojí se spravuje za běhu v sekci **Automat
 Bezpečná, s automatickým rollbackem při nenaběhnutí:
 
 ```powershell
+.\setup-server.ps1 -Mode Update -Version latest
+```
+
+Nebo z už staženého ZIPu:
+
+```powershell
+.\setup-server.ps1 -Mode Update -SourceZip '.\DiffPdf-Server-1.2.3-win-x64.zip'
+```
+
+`setup-server.ps1` stáhne serverový ZIP z GitHub Releases, případně použije `-SourceZip`,
+a předá ho `update-service.ps1`.
+Low-level varianta s ručním ZIPem zůstává:
+
+```powershell
 .\update-service.ps1 -InstallDir 'C:\DiffPdf\app' -Source '.\DiffPdf-Server-1.2.3-win-x64.zip'
 ```
 
-**Co skript udělá:** zastaví službu → **zazálohuje** aktuální složku (do `..\backups\…`) →
+**Co update udělá:** zastaví službu → **zazálohuje** aktuální složku (do `..\backups\…`) →
 nakopíruje novou verzi → spustí a počká na `Running`. Když nová verze do 60 s nenaběhne,
 **vrátí zálohu** a službu nastartuje zpět. `appsettings.Production.json` update skript zachová
 celý a přenese ho do nové verze instalace.

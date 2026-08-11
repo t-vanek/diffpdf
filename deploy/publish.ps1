@@ -82,7 +82,7 @@ try {
             }
         }
         # Bundle the operational scripts alongside the server binaries.
-        foreach ($script in 'install-service.ps1', 'uninstall-service.ps1', 'update-service.ps1') {
+        foreach ($script in 'setup-server.ps1', 'install-service.ps1', 'uninstall-service.ps1', 'update-service.ps1') {
             $src = Join-Path $PSScriptRoot $script
             if (Test-Path $src) { Copy-Item $src $serverDir }
         }
