@@ -29,7 +29,13 @@ param(
     # Where timestamped backups are kept (default: <InstallDir>\..\backups).
     [string] $BackupRoot,
 
-    [int] $StartTimeoutSeconds = 60
+    [int] $StartTimeoutSeconds = 60,
+
+    # Production must normally use SQL Server. This switch permits the in-memory fallback intentionally.
+    [switch] $AllowInMemoryProduction,
+
+    # Keeps appsettings.Development.json in the install directory even when the service is not Development.
+    [switch] $KeepDevelopmentSettings
 )
 
 $ErrorActionPreference = 'Stop'
@@ -63,10 +69,34 @@ function Wait-Running {
     return ((Get-Service -Name $ServiceName).Status -eq 'Running')
 }
 
+function Get-ServiceEnvironment {
+    param([string] $ServiceName)
+
+    $serviceKey = "HKLM:\SYSTEM\CurrentControlSet\Services\$ServiceName"
+    $env = [ordered]@{}
+    $current = (Get-ItemProperty -Path $serviceKey -Name 'Environment' -ErrorAction SilentlyContinue).Environment
+    foreach ($entry in @($current)) {
+        if ($entry -match '^(.*?)=(.*)$') { $env[$matches[1]] = $matches[2] }
+    }
+    return ,$env
+}
+
 Assert-Administrator
 
 $svc = Get-Service -Name $Name -ErrorAction SilentlyContinue
 if (-not $svc) { throw "Service '$Name' is not installed. Use install-service.ps1 first." }
+
+$serviceEnv = Get-ServiceEnvironment -ServiceName $Name
+$environment = if ($serviceEnv.Contains('ASPNETCORE_ENVIRONMENT') -and -not [string]::IsNullOrWhiteSpace($serviceEnv['ASPNETCORE_ENVIRONMENT'])) { $serviceEnv['ASPNETCORE_ENVIRONMENT'] } else { 'Production' }
+$hasConn = $serviceEnv.Contains('ConnectionStrings__SqlServer') -and -not [string]::IsNullOrWhiteSpace($serviceEnv['ConnectionStrings__SqlServer'])
+
+if ($environment -eq 'Production' -and -not $hasConn -and -not $AllowInMemoryProduction) {
+    throw "Production service '$Name' has no service-scoped ConnectionStrings__SqlServer. Re-run install-service.ps1 with -ConnectionString before updating, or use -AllowInMemoryProduction only for an intentional non-persistent install."
+}
+
+if ($environment -eq 'Production' -and $hasConn -and $serviceEnv['ConnectionStrings__SqlServer'] -match '(?i)(^|;)\s*TrustServerCertificate\s*=\s*True\s*(;|$)') {
+    Write-Warning "The production connection string uses TrustServerCertificate=True. Prefer a SQL Server certificate trusted by this host and remove that flag before long-term operation."
+}
 
 $InstallDir = (Resolve-Path -LiteralPath $InstallDir).Path
 if (-not (Test-Path -LiteralPath $InstallDir -PathType Container)) { throw "InstallDir '$InstallDir' not found." }
@@ -101,6 +131,12 @@ try {
 
     Write-Host "Copying new files into '$InstallDir'." -ForegroundColor Cyan
     Invoke-Robocopy -From $sourceDir -To $InstallDir
+
+    $developmentSettings = Join-Path $InstallDir 'appsettings.Development.json'
+    if ($environment -ne 'Development' -and -not $KeepDevelopmentSettings -and (Test-Path -LiteralPath $developmentSettings -PathType Leaf)) {
+        Remove-Item -LiteralPath $developmentSettings -Force
+        Write-Host "Removed appsettings.Development.json from the non-development install directory." -ForegroundColor Cyan
+    }
 
     Write-Host "Starting service '$Name'." -ForegroundColor Cyan
     Start-Service -Name $Name

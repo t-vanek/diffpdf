@@ -16,6 +16,12 @@
 
 .EXAMPLE
     .\deploy\publish.ps1 -Version 1.2.3 -Runtime win-x64 -OutDir publish -SelfContained:$false
+
+.EXAMPLE
+    .\deploy\publish.ps1 -Version 1.2.3 -IncludeDevelopmentSettings
+
+.EXAMPLE
+    .\deploy\publish.ps1 -Version 1.2.3 -ServerOnly
 #>
 [CmdletBinding()]
 param(
@@ -24,11 +30,21 @@ param(
     [string] $OutDir = 'publish',
     [string] $Configuration = 'Release',
     # Self-contained (bundle the .NET runtime, no prerequisite) vs framework-dependent (smaller, needs runtime).
-    [bool] $SelfContained = $true
+    [bool] $SelfContained = $true,
+    # Release server artifacts should not contain development-only config such as local connection strings.
+    [switch] $IncludeDevelopmentSettings,
+    # Publish only the API / Windows Service bundle.
+    [switch] $ServerOnly,
+    # Publish only the desktop client bundle.
+    [switch] $ClientOnly
 )
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot   # deploy/ lives directly under the repo root
+
+if ($ServerOnly -and $ClientOnly) {
+    throw 'Use either -ServerOnly or -ClientOnly, not both.'
+}
 
 function Invoke-Dotnet {
     param([Parameter(Mandatory = $true)][string[]] $DotnetArgs)
@@ -42,40 +58,52 @@ try {
     $serverDir = Join-Path $out 'server'
     $clientDir = Join-Path $out 'client'
     if (Test-Path $out) { Remove-Item $out -Recurse -Force }
-    New-Item -ItemType Directory -Force -Path $serverDir, $clientDir | Out-Null
+    if (-not $ClientOnly) { New-Item -ItemType Directory -Force -Path $serverDir | Out-Null }
+    if (-not $ServerOnly) { New-Item -ItemType Directory -Force -Path $clientDir | Out-Null }
 
     $scArg = "--self-contained=$($SelfContained.ToString().ToLowerInvariant())"
 
-    Write-Host "Publishing server (API / Windows Service) -> $serverDir" -ForegroundColor Cyan
-    Invoke-Dotnet @(
-        'publish', 'src/DiffPdf.Api/DiffPdf.Api.csproj',
-        '-c', $Configuration, '-r', $Runtime, $scArg,
-        "-p:Version=$Version", '-p:PublishReadyToRun=true',
-        '-o', $serverDir
-    )
-    # Bundle the operational scripts alongside the server binaries.
-    foreach ($script in 'install-service.ps1', 'uninstall-service.ps1', 'update-service.ps1') {
-        $src = Join-Path $PSScriptRoot $script
-        if (Test-Path $src) { Copy-Item $src $serverDir }
+    if (-not $ClientOnly) {
+        Write-Host "Publishing server (API / Windows Service) -> $serverDir" -ForegroundColor Cyan
+        Invoke-Dotnet @(
+            'publish', 'src/DiffPdf.Api/DiffPdf.Api.csproj',
+            '-c', $Configuration, '-r', $Runtime, $scArg,
+            "-p:Version=$Version", '-p:PublishReadyToRun=true',
+            '-o', $serverDir
+        )
+        if (-not $IncludeDevelopmentSettings) {
+            $developmentSettings = Join-Path $serverDir 'appsettings.Development.json'
+            if (Test-Path -LiteralPath $developmentSettings -PathType Leaf) {
+                Remove-Item -LiteralPath $developmentSettings -Force
+                Write-Host "Removed appsettings.Development.json from the server artifact." -ForegroundColor Cyan
+            }
+        }
+        # Bundle the operational scripts alongside the server binaries.
+        foreach ($script in 'install-service.ps1', 'uninstall-service.ps1', 'update-service.ps1') {
+            $src = Join-Path $PSScriptRoot $script
+            if (Test-Path $src) { Copy-Item $src $serverDir }
+        }
     }
 
-    Write-Host "Publishing desktop client (single-file) -> $clientDir" -ForegroundColor Cyan
-    Invoke-Dotnet @(
-        'publish', 'src/DiffPdf.DesktopUI/DiffPdf.DesktopUI.csproj',
-        '-c', $Configuration, '-r', $Runtime, $scArg,
-        "-p:Version=$Version",
-        '-p:PublishSingleFile=true', '-p:IncludeNativeLibrariesForSelfExtract=true',
-        '-o', $clientDir
-    )
+    if (-not $ServerOnly) {
+        Write-Host "Publishing desktop client (single-file) -> $clientDir" -ForegroundColor Cyan
+        Invoke-Dotnet @(
+            'publish', 'src/DiffPdf.DesktopUI/DiffPdf.DesktopUI.csproj',
+            '-c', $Configuration, '-r', $Runtime, $scArg,
+            "-p:Version=$Version",
+            '-p:PublishSingleFile=true', '-p:IncludeNativeLibrariesForSelfExtract=true',
+            '-o', $clientDir
+        )
+    }
 
     $serverZip = Join-Path $out "DiffPdf-Server-$Version-$Runtime.zip"
     $clientZip = Join-Path $out "DiffPdf-Client-$Version-$Runtime.zip"
-    Compress-Archive -Path (Join-Path $serverDir '*') -DestinationPath $serverZip -Force
-    Compress-Archive -Path (Join-Path $clientDir '*') -DestinationPath $clientZip -Force
+    if (-not $ClientOnly) { Compress-Archive -Path (Join-Path $serverDir '*') -DestinationPath $serverZip -Force }
+    if (-not $ServerOnly) { Compress-Archive -Path (Join-Path $clientDir '*') -DestinationPath $clientZip -Force }
 
     Write-Host "`nDone. Artifacts:" -ForegroundColor Green
-    Write-Host "  $serverZip"
-    Write-Host "  $clientZip"
+    if (-not $ClientOnly) { Write-Host "  $serverZip" }
+    if (-not $ServerOnly) { Write-Host "  $clientZip" }
 }
 finally {
     Pop-Location
