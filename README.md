@@ -268,6 +268,7 @@ Server běží jako **Windows služba** (Api hostuje workery in-process; migrace
 ```powershell
 # 1. publish (na buildovacím stroji s .NET 10 SDK)
 .\deploy\publish.ps1 -Version 1.2.3          # → publish/DiffPdf-Server-1.2.3-win-x64.zip
+.\deploy\publish.ps1 -Version 1.2.3 -ClientOnly # → publish/DiffPdf-Client-1.2.3-win-x64.zip
 
 # 2. instalace služby (na serveru, elevated PowerShell, z rozbaleného zipu)
 .\install-service.ps1 -BinPath 'C:\DiffPdf\app\DiffPdf.Api.exe' `
@@ -278,6 +279,7 @@ Server běží jako **Windows služba** (Api hostuje workery in-process; migrace
 ```
 
 Tag `v*` v Gitu spustí `release.yml`, který vytvoří GitHub Release se serverovým i klientským zipem.
+Ručně lze stáhnout ZIP z Actions workflow **Server Bundle** nebo **Client Bundle**.
 
 ---
 
