@@ -22,6 +22,9 @@
 
 .EXAMPLE
     .\deploy\publish.ps1 -Version 1.2.3 -ServerOnly
+
+.EXAMPLE
+    .\deploy\publish.ps1 -Version 1.2.3 -ClientOnly
 #>
 [CmdletBinding()]
 param(

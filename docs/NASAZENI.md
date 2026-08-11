@@ -159,18 +159,21 @@ New-NetFirewallRule -DisplayName "DiffPdf discovery (UDP 5276)" -Direction Inbou
 
 ### 4.1 Release artefakty
 
-Server publikuješ na buildovacím stroji (s .NET 10 SDK) skriptem, stáhneš z GitHub Release,
-nebo ručně v GitHub Actions spustíš workflow **Server Bundle**:
+Server nebo klienta publikuješ na buildovacím stroji (s .NET 10 SDK) skriptem, stáhneš
+z GitHub Release, nebo ručně v GitHub Actions spustíš samostatný bundle workflow:
 
-1. GitHub → **Actions** → **Server Bundle** → **Run workflow**.
-2. Volitelně vyplň `version`; prázdné pole vytvoří verzi `0.0.0-admin.<run number>`.
-3. Po doběhnutí stáhni artefakt `DiffPdf-Server-...zip` ze stránky běhu workflow.
+1. GitHub → **Actions** → **Server Bundle** nebo **Client Bundle** → **Run workflow**.
+2. Volitelně vyplň `version`; prázdné pole vytvoří automatickou admin/client verzi.
+3. Po doběhnutí stáhni artefakt `DiffPdf-Server-...zip` nebo `DiffPdf-Client-...zip`
+   ze stránky běhu workflow.
 
 ```powershell
 # vytvoří publish/DiffPdf-Server-1.2.3-win-x64.zip + DiffPdf-Client-1.2.3-win-x64.zip
 .\deploy\publish.ps1 -Version 1.2.3
 # jen serverový zip pro admin deployment
 .\deploy\publish.ps1 -Version 1.2.3 -ServerOnly
+# jen klientský zip pro testery/uživatele
+.\deploy\publish.ps1 -Version 1.2.3 -ClientOnly
 ```
 
 Server zip obsahuje publikovaný `DiffPdf.Api.exe` (self-contained) + skripty
@@ -178,7 +181,8 @@ Server zip obsahuje publikovaný `DiffPdf.Api.exe` (self-contained) + skripty
 Klient zip je jeden `.exe` pro testery.
 
 > Tag `v*` v Gitu spustí workflow `release.yml`, který oba zipy připne k GitHub Release.
-> Ruční workflow `server-bundle.yml` release nevytváří; ZIP drží jako Actions artefakt 30 dní.
+> Ruční workflow `server-bundle.yml` a `client-bundle.yml` release nevytváří; ZIP drží
+> jako Actions artefakt 30 dní.
 
 ### 4.2 Instalace služby
 

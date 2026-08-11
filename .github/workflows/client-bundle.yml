@@ -1,0 +1,79 @@
+name: Client Bundle
+
+# Manual package for testers/admins: builds a self-contained desktop client bundle and uploads
+# the ZIP as a workflow artifact. It does not create a GitHub Release.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version suffix for the ZIP name; empty = 0.0.0-client.<run number>"
+        required: false
+        default: ""
+      runtime:
+        description: "Runtime identifier"
+        required: true
+        default: "win-x64"
+        type: choice
+        options:
+          - win-x64
+          - win-arm64
+      self-contained:
+        description: "Bundle the .NET runtime"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: client-bundle-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  client-bundle:
+    name: Build client ZIP
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/*.slnx') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Compute version
+        id: ver
+        shell: pwsh
+        run: |
+          $version = '${{ inputs.version }}'.Trim()
+          if ([string]::IsNullOrWhiteSpace($version)) {
+              $version = "0.0.0-client.${env:GITHUB_RUN_NUMBER}"
+          }
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Publish client bundle
+        shell: pwsh
+        run: |
+          $selfContained = [System.Convert]::ToBoolean('${{ inputs['self-contained'] }}')
+          ./deploy/publish.ps1 `
+              -Version '${{ steps.ver.outputs.version }}' `
+              -Runtime '${{ inputs.runtime }}' `
+              -OutDir publish `
+              -SelfContained:$selfContained `
+              -ClientOnly
+
+      - name: Upload client ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: DiffPdf-Client-${{ steps.ver.outputs.version }}-${{ inputs.runtime }}
+          path: publish/DiffPdf-Client-${{ steps.ver.outputs.version }}-${{ inputs.runtime }}.zip
+          if-no-files-found: error
+          retention-days: 30
