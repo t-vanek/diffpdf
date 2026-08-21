@@ -9,11 +9,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Cronos" Version="0.10.0" />
-    <PackageReference Include="WolverineFx" Version="6.3.2" />
-    <PackageReference Include="WolverineFx.EntityFrameworkCore" Version="6.3.2" />
-    <PackageReference Include="WolverineFx.SqlServer" Version="6.3.2" />
-    <PackageReference Include="WolverineFx.RuntimeCompilation" Version="6.3.2" />
+    <PackageReference Include="Cronos" Version="0.13.0" />
+    <PackageReference Include="WolverineFx" Version="6.29.2" />
+    <PackageReference Include="WolverineFx.EntityFrameworkCore" Version="6.29.2" />
+    <PackageReference Include="WolverineFx.SqlServer" Version="6.29.2" />
+    <PackageReference Include="WolverineFx.RuntimeCompilation" Version="6.29.2" />
   </ItemGroup>
 
   <PropertyGroup>

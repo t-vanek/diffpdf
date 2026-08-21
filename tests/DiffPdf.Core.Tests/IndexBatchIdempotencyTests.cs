@@ -52,6 +52,8 @@ public class IndexBatchIdempotencyTests : IDisposable
         public Task<T> InvokeForTenantAsync<T>(string tenantId, object message, CancellationToken cancellation = default, TimeSpan? timeout = default) => throw new NotImplementedException();
         public IAsyncEnumerable<TResponse> StreamAsync<TResponse>(object message, CancellationToken cancellation = default) => throw new NotImplementedException();
         public IAsyncEnumerable<TResponse> StreamAsync<TResponse>(object message, DeliveryOptions options, CancellationToken cancellation = default) => throw new NotImplementedException();
+        public Task<TResponse> StreamAsync<TRequest, TResponse>(IAsyncEnumerable<TRequest> requests, CancellationToken cancellation = default, TimeSpan? timeout = default) => throw new NotImplementedException();
+        public Task<TResponse> StreamAsync<TRequest, TResponse>(IAsyncEnumerable<TRequest> requests, DeliveryOptions options, CancellationToken cancellation = default, TimeSpan? timeout = default) => throw new NotImplementedException();
     }
 
     /// <summary>A Running job whose old/new folders hold <paramref name="pairCount"/> matching PDFs (real, for FolderPairing).</summary>
