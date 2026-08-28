@@ -6,7 +6,7 @@
 .DESCRIPTION
     Produces two artifacts under <OutDir>:
       * server/  + DiffPdf-Server-<version>-<rid>.zip  — the API published as a self-contained folder
-        (so no .NET runtime is required on the server), bundled with the install/uninstall/update scripts.
+        (so no .NET runtime is required on the server), bundled with the interactive setup script.
       * client/  + DiffPdf-Client-<version>-<rid>.zip  — the desktop client published self-contained as a
         single .exe (testers just unzip and run; no runtime prerequisite).
     Used by the Release workflow (.github/workflows/release.yml) and runnable locally for a manual release.
@@ -81,11 +81,8 @@ try {
                 Write-Host "Removed appsettings.Development.json from the server artifact." -ForegroundColor Cyan
             }
         }
-        # Bundle the operational scripts alongside the server binaries.
-        foreach ($script in 'setup-server.ps1', 'install-service.ps1', 'uninstall-service.ps1', 'update-service.ps1') {
-            $src = Join-Path $PSScriptRoot $script
-            if (Test-Path $src) { Copy-Item $src $serverDir }
-        }
+        # The interactive script is self-contained and is the only deployment script required on a server.
+        Copy-Item (Join-Path $PSScriptRoot 'setup-server.ps1') $serverDir
     }
 
     if (-not $ServerOnly) {

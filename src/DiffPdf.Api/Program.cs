@@ -33,6 +33,14 @@ using OpenTelemetry.Trace;
 using Serilog;
 using Wolverine;
 
+// The SCM-facing process must reach Running even when SQL Server is temporarily unavailable. It supervises
+// the actual API child process and performs the database wait after Windows has completed service startup.
+if (WindowsServiceBootstrap.ShouldRun(args))
+{
+    await WindowsServiceBootstrap.RunAsync(args);
+    return;
+}
+
 // Resolve the log directory to an absolute path so it is stable regardless of the process working
 // directory (a Windows Service starts in System32, not the install folder). Override with DIFFPDF_LOG_DIR.
 string logDirectory = Environment.GetEnvironmentVariable("DIFFPDF_LOG_DIR")
@@ -308,16 +316,6 @@ api.MapBranchQueueEndpoints();
 api.MapFileEndpoints();
 
 app.MapHub<JobsHub>("/hubs/jobs");
-
-// Wolverine and the EF stores require the relational database to exist and be reachable at startup
-// (Wolverine provisions its inbox/outbox in StartAsync and cannot tolerate a missing database). Rather
-// than crash-loop while the server is briefly unavailable, block here — keeping the process alive and
-// logging — until the server is reachable, then create the application database if it is missing, before
-// starting the host. Skipped for the in-memory dev/test fallback. NOTE: while waiting, Kestrel is not yet
-// listening; as a Windows Service, make the service depend on the database service
-// (sc config DiffPdfApi depend= MSSQLSERVER) and enable Recovery → Restart so a longer outage self-heals.
-if (!string.IsNullOrWhiteSpace(relational))
-    await DatabaseStartupGate.WaitAndEnsureDatabaseAsync(relational!);
 
 app.Run();
 Log.CloseAndFlush();

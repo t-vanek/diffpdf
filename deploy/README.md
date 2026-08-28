@@ -21,95 +21,66 @@ Admins can also download a ready ZIP from GitHub Actions:
 
 ## 2. Install (run from an elevated PowerShell prompt)
 
-Recommended admin entry point:
+The server ZIP contains `setup-server.ps1`. Extract the ZIP and run it without parameters:
 
 ```powershell
-.\deploy\setup-server.ps1 -Mode Install -Version latest -SqlServer SQLHOST -Database diffpdf
+.\setup-server.ps1
 ```
 
-This downloads `DiffPdf-Server-<version>-<runtime>.zip` from GitHub Releases in the configured repository.
+The script asks for the operation (`Install`, `Update`, `Repair`, `Diagnose`), release source,
+application/data directories, SQL authentication, service identity, URLs, firewall and final health check.
+It shows the complete plan before making changes. It does not call any other deployment script.
 
-If you already downloaded a server ZIP, provide the ZIP path explicitly:
+For unattended automation the same script accepts parameters:
 
 ```powershell
-.\deploy\setup-server.ps1 -Mode Install -SourceZip '.\DiffPdf-Server-1.2.3-win-x64.zip' -SqlServer SQLHOST -Database diffpdf
+.\setup-server.ps1 -NonInteractive -Mode Install `
+    -SourceZip '.\DiffPdf-Server-1.2.3-win-x64.zip' `
+    -InstallDir 'D:\DiffPdf\app' -ProgramDataDir 'D:\DiffPdf\data' `
+    -SqlServer 'SQLHOST' -Database 'DiffPdf'
 ```
 
-`-Source` is kept as a backwards-compatible alias for `-SourceZip`, but local folders are not accepted.
+`-SourceZip` accepts a local server ZIP or an expanded release directory; `-Version latest` downloads
+the newest matching GitHub release. `-Source` remains an alias for `-SourceZip`.
 
-Update from the latest server release:
+Updates preserve every installed `appsettings*.json` and `web.config`. Different incoming configs are
+saved as `.incoming` files under `config-review`; the update makes a full backup and rolls back files if
+copy, service start or liveness fails. `Repair` changes only service registration, recovery, firewall and
+legacy service environment overrides after validating the production JSON.
 
-```powershell
-.\deploy\setup-server.ps1 -Mode Update -Version latest
-```
+The local SQL service dependency is empty by default, which is correct for remote SQL Server. Specify
+`MSSQLSERVER` (or `MSSQL$INSTANCE`) only when SQL runs as a Windows service on the same machine.
 
-Update from a downloaded server ZIP:
+The SCM-facing service reaches `Running` without waiting for SQL. Its background supervisor reports a
+missing database connection to the Windows Application event log, keeps retrying, creates the database
+when permitted and then starts the API. The rolling file log remains the detailed application log.
 
-```powershell
-.\deploy\setup-server.ps1 -Mode Update -SourceZip '.\DiffPdf-Server-1.2.3-win-x64.zip'
-```
-
-Repair/diagnostics:
-
-```powershell
-.\deploy\setup-server.ps1 -Mode Repair
-.\deploy\setup-server.ps1 -Mode Diagnose
-```
-
-Low-level install remains available when files are already in place:
-
-```powershell
-.\deploy\install-service.ps1 -BinPath 'C:\DiffPdf\app\DiffPdf.Api.exe'
-```
-
-With a connection string and explicit DB dependency:
-
-```powershell
-.\deploy\install-service.ps1 -BinPath 'C:\DiffPdf\app\DiffPdf.Api.exe' `
-    -ConnectionString 'Server=.;Database=diffpdf;Trusted_Connection=True;TrustServerCertificate=True' `
-    -DependsOn 'MSSQLSERVER'
-```
-
-For `Production`, the script requires a SQL Server connection string unless you explicitly pass
-`-AllowInMemoryProduction`. This prevents an accidental non-persistent in-memory service.
-
-The service is registered with:
-
-- **Delayed automatic start** — starts on boot, after eager-auto services, giving the database time to come up.
-- **Dependency on the database service** (`-DependsOn`, default `MSSQLSERVER`) — SQL Server starts first after a reboot.
-- **Auto-restart on failure** — restarts 5s after each of the first three failures.
-
-On start the service waits for the database server, **creates the application database if missing**,
-applies EF Core migrations, then begins serving — so a not-yet-ready database makes it wait rather than crash.
-
-### Options
+### Main automation parameters
 
 | Parameter | Default | Notes |
 |---|---|---|
-| `-BinPath` | (required) | Full path to the published `DiffPdf.Api.exe`. |
-| `-Name` | `DiffPdfApi` | Service name. |
+| `-Mode` | `Install` with `-NonInteractive` | `Install`, `Update`, `Repair`, or `Diagnose`. |
+| `-Version` / `-SourceZip` | `latest` with `-NonInteractive` | GitHub version, local ZIP, or expanded release directory. |
+| `-InstallDir` | `<script>\app` | Application directory; interactive mode always shows and allows changing it. |
+| `-ProgramDataDir` | `<script>\data` | Root for data, storage, logs, backups and config review. |
+| `-SqlServer` / `-Database` | — / `DiffPdf` | Builds `ConnectionStrings:SqlServer`; Windows auth when `-SqlUser` is empty. |
+| `-ConnectionString` | — | Complete connection string alternative. |
+| `-ServiceName` / `-DisplayName` | `DiffPdfApi` / `DiffPdf API` | Internal and displayed service names. |
 | `-StartupType` | `delayed-auto` | `delayed-auto`, `auto`, or `manual`. |
-| `-DependsOn` | `MSSQLSERVER` | DB service to start first. Named instance: `MSSQL$INSTANCE`. `''` to skip. |
-| `-ConnectionString` | — | Required for `Production` unless already stored in `appsettings.Production.json` or `-AllowInMemoryProduction` is used; stored as `ConnectionStrings:SqlServer`. |
-| `-ClearConnectionString` | (off) | Clears `ConnectionStrings:SqlServer` in `appsettings.Production.json`. |
-| `-Environment` | `Production` | Compatibility parameter; Windows Service hosting uses Production by default. |
-| `-Url` | `http://0.0.0.0:5275` | Bind URL stored as `Urls` in `appsettings.Production.json`. |
-| `-AllowInMemoryProduction` | (off) | Explicitly permits production startup without SQL Server; intended only for short-lived/lab installs. |
-| `-ServiceAccount` / `-ServicePassword` | LocalSystem | Optional logon account. |
-| `-NoStart` | (off) | Install without starting. |
+| `-DependsOn` | empty | Local SQL Windows service only; keep empty for remote SQL. |
+| `-Url` / `-PublicUrl` | `0.0.0.0:5275` / `localhost:5275` | Listener and client/health/notification URLs. |
+| `-AllowInMemoryProduction` | off | Explicit non-persistent laboratory mode. |
+| `-NoFirewall` / `-NoStart` | off | Skip firewall or final service start. |
 
-### Notes
-
-- Run from an elevated prompt (the script enforces this).
-- The service account needs **`CREATE DATABASE`** permission (role `dbcreator`), or pre-create the empty
-  database and the startup gate just verifies reachability.
-- Prefer an install path without spaces (e.g. `C:\DiffPdf\app`).
-- Logs: `C:\ProgramData\DiffPdf\logs\diffpdf-*.log` by default; change `Serilog` in `appsettings.Production.json`.
-- Release artifacts created by `publish.ps1` omit `appsettings.Development.json` by default so local dev
-  connection strings are not shipped to servers. Use `-IncludeDevelopmentSettings` only for a deliberate dev artifact.
+Release artifacts omit `appsettings.Development.json` unless `-IncludeDevelopmentSettings` is explicitly
+used during publishing.
 
 ## 3. Uninstall
 
 ```powershell
-.\deploy\uninstall-service.ps1
+Stop-Service DiffPdfApi
+sc.exe delete DiffPdfApi
 ```
+
+The repository's `uninstall-service.ps1` remains a developer/admin convenience, but it is not required
+or included in the server release ZIP.

@@ -266,21 +266,23 @@ Server běží jako **Windows služba** (Api hostuje workery in-process; migrace
 ### Ve zkratce
 
 ```powershell
-# instalace serveru z posledního GitHub Release (na serveru, elevated PowerShell)
-.\deploy\setup-server.ps1 -Mode Install -Version latest -SqlServer SQLHOST -Database diffpdf
+# rozbal server ZIP a spusť průvodce (na serveru, elevated PowerShell)
+.\setup-server.ps1
 
-# instalace z již staženého server ZIPu
-.\deploy\setup-server.ps1 -Mode Install -SourceZip .\DiffPdf-Server-1.2.3-win-x64.zip -SqlServer SQLHOST -Database diffpdf
+# neinteraktivní instalace pro automatizaci
+.\setup-server.ps1 -NonInteractive -Mode Install `
+    -SourceZip .\DiffPdf-Server-1.2.3-win-x64.zip `
+    -InstallDir D:\DiffPdf\app -ProgramDataDir D:\DiffPdf\data `
+    -SqlServer SQLHOST -Database DiffPdf
 
 # aktualizace serveru z posledního GitHub Release (rollback při nenaběhnutí)
-.\deploy\setup-server.ps1 -Mode Update -Version latest
+.\setup-server.ps1 -Mode Update -Version latest
 
-# aktualizace z již staženého server ZIPu
-.\deploy\setup-server.ps1 -Mode Update -SourceZip .\DiffPdf-Server-1.2.3-win-x64.zip
-
-# diagnostika služby, configu, health endpointů a posledních logů
-.\deploy\setup-server.ps1 -Mode Diagnose
+# diagnostika služby, configu, health endpointu a posledních logů
+.\setup-server.ps1 -Mode Diagnose
 ```
+
+Server ZIP obsahuje `setup-server.ps1`; další install/update skripty na serveru nejsou potřeba.
 
 Tag `v*` v Gitu spustí `release.yml`, který vytvoří GitHub Release se serverovým i klientským zipem.
 Ručně spuštěné workflow **Server Bundle** a **Client Bundle** také vytvoří položku v GitHub Releases.

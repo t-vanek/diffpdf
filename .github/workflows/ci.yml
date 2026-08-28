@@ -44,6 +44,10 @@ jobs:
       - name: Test
         run: dotnet test DiffPdf.slnx -c Release --no-build --verbosity normal
 
+      - name: Test Windows Server setup script
+        shell: powershell
+        run: ./deploy/test-setup-server.ps1
+
   client:
     name: Build & test desktop client
     # The desktop client (Avalonia, WinExe) is excluded from DiffPdf.slnx, so the job above never
