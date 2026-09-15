@@ -1,5 +1,6 @@
 using DiffPdf.Core.Comparison;
 using DiffPdf.Core.Models;
+using DiffPdf.Core.Storage;
 using Microsoft.Extensions.Options;
 
 namespace DiffPdf.Core.Network;
@@ -62,6 +63,26 @@ public sealed class NetworkShareResolver(IOptions<NetworkOptions> options) : INe
 
             // A share supplies a default credential profile when the caller did not pick one.
             credentialProfile ??= def.CredentialProfile;
+        }
+        else if (UncPath.IsUnc(folder))
+        {
+            // Equivalence is configuration-owned: never infer a drive mapping from a server name.
+            string unc = folder.Replace('/', '\\').TrimEnd('\\');
+            var mapped = _options.Shares
+                .Where(p => !string.IsNullOrWhiteSpace(p.Value.Root) && !string.IsNullOrWhiteSpace(p.Value.LocalMountPath))
+                .Select(p => (p.Key, Definition: p.Value, Root: p.Value.Root!.Replace('/', '\\').TrimEnd('\\')))
+                .Where(p => string.Equals(unc, p.Root, StringComparison.OrdinalIgnoreCase)
+                    || unc.StartsWith(p.Root + "\\", StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(p => p.Root.Length)
+                .ThenBy(p => p.Key, StringComparer.OrdinalIgnoreCase)
+                .FirstOrDefault();
+            if (mapped.Definition is not null)
+            {
+                string suffix = unc.Length == mapped.Root.Length ? "" : unc[(mapped.Root.Length + 1)..];
+                path = CombineRoot(mapped.Definition.LocalMountPath!, suffix);
+                shareName = mapped.Key;
+                credentialProfile ??= mapped.Definition.CredentialProfile;
+            }
         }
 
         var credentials = ResolveCredentials(inlineCredentials, credentialProfile);
@@ -148,6 +169,9 @@ public sealed class NetworkShareResolver(IOptions<NetworkOptions> options) : INe
     {
         if (string.IsNullOrEmpty(subPath))
             return root;
+        if (!VirtualPath.TryNormalize(subPath, out string? normalized))
+            throw new NetworkConfigurationException("Share subpath must stay inside the configured share root.");
+        subPath = normalized;
 
         if (UncPath.IsUnc(root))
         {

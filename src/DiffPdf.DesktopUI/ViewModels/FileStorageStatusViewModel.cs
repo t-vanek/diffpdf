@@ -16,8 +16,9 @@ public partial class FileStorageStatusViewModel : ViewModelBase
 {
     /// <summary>Shown above the card so the "where do I change this" question never arises.</summary>
     public const string Hint =
-        "Úložiště se nastavuje na serveru v souboru appsettings.json — klíč FileManager:RootPath "
-        + "(když je prázdný, použije se ScopeSync:RootPath). Změna vyžaduje restart služby DiffPdf API; "
+        "Úložiště se nastavuje na serveru v souboru appsettings.json — klíč DataRoot. "
+        + "Správa souborů a instance používají jeho podsložku data. Starší konfigurace používá FileManager:RootPath "
+        + "nebo ScopeSync:RootPath. Změna vyžaduje restart služby DiffPdf API; "
         + "z klienta se záměrně měnit nedá.";
 
     private readonly ServerSession _session;
@@ -57,6 +58,10 @@ public partial class FileStorageStatusViewModel : ViewModelBase
                 (string?)null),
             { RootExists: false } => (
                 "Kořenová složka úložiště není dostupná.",
+                Palette.Bad,
+                status.Error),
+            { Readable: false } => (
+                "Kořenová složka existuje, ale nelze zobrazit její obsah.",
                 Palette.Bad,
                 status.Error),
             { Writable: false } => (

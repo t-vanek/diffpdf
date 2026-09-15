@@ -22,6 +22,8 @@ public sealed record TransferRequest(
 public partial class TransferItemViewModel(TransferRequest request) : ObservableObject
 {
     public TransferRequest Request { get; } = request;
+    internal IFileBackend Source { get; } = request.Source.Capture();
+    internal IFileBackend Target { get; } = request.Target.Capture();
     public string FileName => Request.FileName;
 
     /// <summary>Set after the user confirms the overwrite dialog; the retry then replaces the file.</summary>
@@ -71,9 +73,11 @@ public partial class TransferItemViewModel(TransferRequest request) : Observable
 public partial class TransferQueueViewModel : ObservableObject
 {
     private bool _pumping;
+    private long _batchId;
 
     /// <summary>How long a fully successful batch stays visible before self-clearing (tests shorten it).</summary>
     internal TimeSpan CleanupDelay { get; set; } = TimeSpan.FromSeconds(2.5);
+    internal Func<TimeSpan, Task> WaitForCleanupAsync { get; set; } = Task.Delay;
 
     /// <summary>Asked when a file already exists at the target (the overwrite dialog). Set by the manager.</summary>
     public Func<TransferItemViewModel, Task<OverwriteDecision>>? OverwriteResolver { get; set; }
@@ -95,7 +99,10 @@ public partial class TransferQueueViewModel : ObservableObject
     {
         // A fresh batch replaces the previous batch's finished rows (failures included — the user has seen them).
         if (!_pumping)
+        {
+            _batchId++;
             Items.Clear();
+        }
 
         foreach (var request in requests)
         {
@@ -174,12 +181,12 @@ public partial class TransferQueueViewModel : ObservableObject
                 await StreamOnceAsync(item);
             }
 
-            touched.Add((request.Target, request.TargetDirectory));
+            touched.Add((request.Target.Identity, request.TargetDirectory));
             if (request.Move)
             {
                 // The file landed — now remove the original (its folder changed too, so refresh it).
-                await request.Source.DeleteAsync(request.SourcePath, recursive: false);
-                touched.Add((request.Source, request.Source.GetParent(request.SourcePath)));
+                await item.Source.DeleteAsync(request.SourcePath, recursive: false);
+                touched.Add((request.Source.Identity, request.Source.GetParent(request.SourcePath)));
             }
 
             item.Progress = 1;
@@ -201,8 +208,8 @@ public partial class TransferQueueViewModel : ObservableObject
     {
         var request = item.Request;
         var progress = new Progress<double>(p => item.Progress = p);
-        await using var source = await request.Source.OpenReadAsync(request.SourcePath, item.Cancellation.Token);
-        await request.Target.WriteFileAsync(
+        await using var source = await item.Source.OpenReadAsync(request.SourcePath, item.Cancellation.Token);
+        await item.Target.WriteFileAsync(
             request.TargetDirectory, request.FileName, source, request.SizeBytes,
             item.Overwrite, progress, item.Cancellation.Token);
     }
@@ -210,10 +217,12 @@ public partial class TransferQueueViewModel : ObservableObject
     /// <summary>A fully successful batch disappears on its own; anything else stays for the user to read.</summary>
     private async Task ClearWhenCleanAsync()
     {
+        long batchId = _batchId;
         if (Items.Any(i => i.State is not (TransferState.Done or TransferState.Skipped)))
             return;
-        await Task.Delay(CleanupDelay);
-        if (_pumping) return; // a new batch started meanwhile
+        await WaitForCleanupAsync(CleanupDelay);
+        if (_pumping || batchId != _batchId
+            || Items.Any(i => i.State is not (TransferState.Done or TransferState.Skipped))) return;
         Items.Clear();
         HasItems = false;
         UpdateSummary();

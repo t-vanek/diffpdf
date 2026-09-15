@@ -22,6 +22,7 @@ public sealed class FileManagerApiFactory : WebApplicationFactory<Program>
         builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["ConnectionStrings:SqlServer"] = "",
+            ["DataRoot"] = "",
             ["ScopeSync:RootPath"] = "",
             ["ScopeSync:Enabled"] = "false",
             ["Auth:Enabled"] = "false",
@@ -65,6 +66,44 @@ public sealed class FileEndpointsTests : IClassFixture<FileManagerApiFactory>
         var list = await _client.ListFilesAsync();
         Assert.Equal("", list.CurrentPath);
         Assert.Null(list.ParentPath);
+    }
+
+    [Fact]
+    public async Task UnifiedDataRoot_ExposesInstances_AndProtectsTheirStructure()
+    {
+        string root = Path.Combine(_factory.Root, "unified-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(root, "data", "Alfa", "instance", "old"));
+        using var factory = _factory.WithWebHostBuilder(builder => builder.ConfigureAppConfiguration((_, config) =>
+            config.AddInMemoryCollection(new Dictionary<string, string?> { ["DataRoot"] = root })));
+        var client = new DiffPdfClient(factory.CreateClient());
+        var status = await client.GetFileManagerStatusAsync();
+        Assert.Equal("DataRoot", status.ResolvedFrom);
+        Assert.Equal(Path.Combine(root, "data"), status.RootPath);
+        Assert.True(status.Readable);
+        Assert.Equal("Alfa", Assert.Single((await client.ListFilesAsync()).Items).Name);
+        var error = await Assert.ThrowsAsync<DiffPdfApiException>(() => client.DeleteFileAsync("Alfa/instance", true));
+        Assert.Equal(HttpStatusCode.Forbidden, error.StatusCode);
+    }
+
+    [Fact]
+    public async Task ManagedInstanceMutations_ReturnForbiddenAndPreserveDirectory()
+    {
+        using var factory = _factory.WithWebHostBuilder(builder => builder.ConfigureAppConfiguration((_, config) =>
+            config.AddInMemoryCollection(new Dictionary<string, string?> { ["ScopeSync:RootPath"] = _factory.Root })));
+        var client = new DiffPdfClient(factory.CreateClient());
+        string branch = "protected-" + Guid.NewGuid().ToString("N");
+        string instance = branch + "/instance";
+        string physical = Path.Combine(_factory.Root, branch, "instance");
+        Directory.CreateDirectory(Path.Combine(physical, "old"));
+        Directory.CreateDirectory(Path.Combine(_factory.Root, "destination"));
+
+        var rename = await Assert.ThrowsAsync<DiffPdfApiException>(() => client.RenameFileAsync(new RenameFileRequest(instance, "changed")));
+        var move = await Assert.ThrowsAsync<DiffPdfApiException>(() => client.MoveFileAsync(new MoveFileRequest(instance, "destination")));
+        var delete = await Assert.ThrowsAsync<DiffPdfApiException>(() => client.DeleteFileAsync(instance, true));
+        Assert.Equal(HttpStatusCode.Forbidden, rename.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, move.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, delete.StatusCode);
+        Assert.True(Directory.Exists(physical));
     }
 
     [Fact]

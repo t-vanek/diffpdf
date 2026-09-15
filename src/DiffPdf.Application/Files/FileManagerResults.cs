@@ -18,6 +18,8 @@ public enum FileOpStatus
     NotAFile,
     /// <summary>The path addresses a file where a folder is required (400).</summary>
     NotAFolder,
+    /// <summary>A managed branch, instance or required folder cannot be renamed, moved or deleted (403).</summary>
+    ProtectedLocation,
 }
 
 /// <summary>One listed item. <see cref="Path"/> is the virtual path relative to the manager root.</summary>
@@ -51,13 +53,14 @@ public sealed record FileManagerStatus
 {
     public required bool Configured { get; init; }
 
-    /// <summary>Which configuration key supplied the root: "FileManager:RootPath" or "ScopeSync:RootPath"; null when unconfigured.</summary>
+    /// <summary>Which key supplied the root: "DataRoot", "FileManager:RootPath" or "ScopeSync:RootPath"; null when unconfigured.</summary>
     public string? ResolvedFrom { get; init; }
 
     public string? RootPath { get; init; }
 
-    /// <summary>The root folder exists (it is auto-created on first use, so this probe creates it too).</summary>
+    /// <summary>The root folder exists; probing never creates it.</summary>
     public bool RootExists { get; init; }
+    public bool Readable { get; init; }
 
     /// <summary>A probe file could be created and deleted inside the root.</summary>
     public bool Writable { get; init; }

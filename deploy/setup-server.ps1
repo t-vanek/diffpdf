@@ -454,10 +454,9 @@ function New-ProductionConfig {
             })
         }
         Notifications = [ordered]@{ BaseUrl = $PublicUrl }
-        Storage = [ordered]@{ RootPath = Join-Path $ProgramDataDir 'storage' }
-        FileManager = [ordered]@{ RootPath = Join-Path $ProgramDataDir 'storage' }
+        # One opt-in base path; the API derives data/ and storage/ from it.
+        DataRoot = $ProgramDataDir
         ScopeSync = [ordered]@{
-            RootPath = Join-Path $ProgramDataDir 'data'
             AutoRegister = $true
             AutoCreateFolders = $true
         }

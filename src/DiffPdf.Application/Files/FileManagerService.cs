@@ -1,13 +1,15 @@
 using DiffPdf.Application.Abstractions;
 using DiffPdf.Core.Comparison;
 using DiffPdf.Core.Storage;
+using DiffPdf.Core.Abstractions;
+using DiffPdf.Core.Network;
 using Microsoft.Extensions.Options;
 
 namespace DiffPdf.Application.Files;
 
 /// <summary>
 /// PDF file manager over a single configured filesystem subtree (the desktop "Správa souborů" page).
-/// Pure file management — it knows nothing about comparisons; the tree is just folders and PDFs.
+/// Lists folders and PDFs; destructive operations protect the configured branch/instance structure.
 /// All paths crossing this boundary are virtual ('/'-separated, root-relative) and are resolved via
 /// <see cref="VirtualPath"/>, so no operation can address anything outside the root. Listing shows
 /// folders and <c>*.pdf</c> only, but delete/conflict semantics see the folder's real content.
@@ -56,13 +58,16 @@ public interface IFileManagerService
 
 public sealed class FileManagerService(
     IOptions<FileManagerOptions> options,
-    IOptions<ScopeSyncOptions> scopeSync) : IFileManagerService
+    IOptions<ScopeSyncOptions> scopeSync,
+    INetworkShareResolver? networkResolver = null,
+    INetworkShareConnector? networkConnector = null) : IFileManagerService, IDisposable
 {
     private const string PdfExtension = ".pdf";
     private static readonly byte[] PdfMagic = "%PDF-"u8.ToArray();
 
     private readonly FileManagerOptions _options = options.Value;
     private readonly ScopeSyncOptions _scopeSync = scopeSync.Value;
+    private readonly Dictionary<(string Path, string? Profile), NetworkShareConnection> _connections = [];
 
     /// <summary>The effective root (FileManager:RootPath, else ScopeSync:RootPath), or null when unconfigured.</summary>
     private string? Root
@@ -70,8 +75,26 @@ public sealed class FileManagerService(
         get
         {
             string? root = !string.IsNullOrWhiteSpace(_options.RootPath) ? _options.RootPath : _scopeSync.RootPath;
-            return string.IsNullOrWhiteSpace(root) ? null : root;
+            return string.IsNullOrWhiteSpace(root) ? null : ConnectRoot(root,
+                string.IsNullOrWhiteSpace(_options.RootPath) ? _scopeSync.CredentialProfile : _options.CredentialProfile);
         }
+    }
+
+    private string ConnectRoot(string root, string? profile)
+    {
+        if (_connections.TryGetValue((root, profile), out var existing)) return existing.Path;
+        var resolved = networkResolver?.Resolve(root, credentialProfile: profile);
+        var connection = networkConnector?.Connect(resolved?.Path ?? root, resolved?.Credentials)
+            ?? new NetworkShareConnection(resolved?.Path ?? root);
+        _connections.Add((root, profile), connection);
+        return connection.Path;
+    }
+
+    // The scoped service keeps authenticated shares/mounts alive through streaming HTTP responses.
+    public void Dispose()
+    {
+        foreach (var connection in _connections.Values) connection.Dispose();
+        _connections.Clear();
     }
 
     public FileListResult List(string? path)
@@ -130,6 +153,8 @@ public sealed class FileManagerService(
             return Soft(name, FileUploadErrorCodes.NotPdf, "Only .pdf files are accepted.");
 
         string finalPath = Path.Combine(absDir!, name);
+        if (FileSystemPathSafety.ContainsLink(finalPath))
+            return Soft(name, FileUploadErrorCodes.InvalidName, "Symbolic links and junctions are not supported.");
         if (!overwrite && (File.Exists(finalPath) || Directory.Exists(finalPath)))
             return Soft(name, FileUploadErrorCodes.Exists, $"'{name}' already exists.");
         if (Directory.Exists(finalPath))
@@ -206,6 +231,7 @@ public sealed class FileManagerService(
             return new FileEntryResult(FileOpStatus.InvalidName, Detail: $"Invalid folder name: '{name}'.");
 
         string target = Path.Combine(absParent!, name);
+        if (FileSystemPathSafety.ContainsLink(target)) return new FileEntryResult(FileOpStatus.InvalidPath);
         if (File.Exists(target) || Directory.Exists(target))
             return new FileEntryResult(FileOpStatus.Conflict, Detail: $"'{name}' already exists.");
 
@@ -225,6 +251,7 @@ public sealed class FileManagerService(
             return new FileDeleteResult(FileOpStatus.Ok);
         }
         if (!Directory.Exists(abs)) return new FileDeleteResult(FileOpStatus.NotFound);
+        if (IsManagedDirectory(abs!)) return new FileDeleteResult(FileOpStatus.ProtectedLocation);
 
         var dir = new DirectoryInfo(abs!);
         // The conflict check sees ALL content (including files the PDF-only listing hides) — silently
@@ -244,6 +271,7 @@ public sealed class FileManagerService(
 
         bool isFile = File.Exists(abs);
         if (!isFile && !Directory.Exists(abs)) return new FileEntryResult(FileOpStatus.NotFound);
+        if (!isFile && IsManagedDirectory(abs!)) return new FileEntryResult(FileOpStatus.ProtectedLocation);
 
         string name = newName?.Trim() ?? string.Empty;
         if (!VirtualPath.IsValidName(name))
@@ -257,6 +285,7 @@ public sealed class FileManagerService(
             return new FileEntryResult(FileOpStatus.Ok, ToEntry(Info(abs!, isFile), parentVirtual)); // no-op
 
         string target = Path.Combine(Path.GetDirectoryName(abs!)!, name);
+        if (FileSystemPathSafety.ContainsLink(target)) return new FileEntryResult(FileOpStatus.InvalidPath);
         // A case-only rename targets "itself" on a case-insensitive filesystem — allow it; everything
         // else colliding with an existing name is a conflict.
         bool caseOnly = string.Equals(oldName, name, StringComparison.OrdinalIgnoreCase);
@@ -273,6 +302,8 @@ public sealed class FileManagerService(
     {
         var transfer = PrepareTransfer(sourcePath, targetDirectory, overwrite);
         if (transfer.Error is { } error) return error;
+        if (!transfer.SourceIsFile && IsManagedDirectory(transfer.SourceAbs))
+            return new FileEntryResult(FileOpStatus.ProtectedLocation);
 
         if (transfer.SourceIsFile)
         {
@@ -315,7 +346,7 @@ public sealed class FileManagerService(
         {
             IgnoreInaccessible = true, // an unreadable subfolder must not kill the whole search
             RecurseSubdirectories = recursive,
-            AttributesToSkip = FileAttributes.Hidden | FileAttributes.System,
+            AttributesToSkip = FileAttributes.Hidden | FileAttributes.System | FileAttributes.ReparsePoint,
         };
 
         var items = new List<FileSystemEntry>();
@@ -352,9 +383,10 @@ public sealed class FileManagerService(
     public FileManagerStatus GetStatus()
     {
         string? resolvedFrom =
+            _options.RootConfigurationKey ?? (
             !string.IsNullOrWhiteSpace(_options.RootPath) ? "FileManager:RootPath"
             : !string.IsNullOrWhiteSpace(_scopeSync.RootPath) ? "ScopeSync:RootPath"
-            : null;
+            : null);
 
         var status = new FileManagerStatus
         {
@@ -364,16 +396,23 @@ public sealed class FileManagerService(
             ValidatePdfMagicBytes = _options.ValidatePdfMagicBytes,
             MaxSearchResults = _options.MaxSearchResults,
         };
-        if (Root is not { } root)
-            return status;
+        string? root;
+        try { root = Root; }
+        catch (Exception ex) when (ex is NetworkConfigurationException or IOException or UnauthorizedAccessException)
+        {
+            return status with { Error = $"Root folder is not reachable: {ex.Message}" };
+        }
+        if (root is null) return status;
 
         string rootFull;
         try
         {
-            // Mirror Resolve(): the root is auto-created on first use, so the status probe answers the
-            // real question — "will the first operation work?" — by doing the same.
+            // Diagnostics must not turn a mistyped root into a new, apparently healthy empty store.
             rootFull = Path.GetFullPath(root);
-            Directory.CreateDirectory(rootFull);
+            if (FileSystemPathSafety.ContainsLink(rootFull))
+                return status with { RootPath = rootFull, Error = "Symbolic links and junctions are not supported in the storage path." };
+            if (!Directory.Exists(rootFull))
+                return status with { RootPath = rootFull, Error = "Root folder does not exist or is not accessible." };
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
@@ -382,6 +421,15 @@ public sealed class FileManagerService(
 
         bool writable;
         string? error = null;
+        try
+        {
+            using var entries = Directory.EnumerateFileSystemEntries(rootFull).GetEnumerator();
+            _ = entries.MoveNext();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return status with { RootPath = rootFull, RootExists = true, Error = $"Root folder cannot be listed: {ex.Message}" };
+        }
         string probePath = Path.Combine(rootFull, $"~probe-{Guid.NewGuid():N}.tmp");
         try
         {
@@ -414,6 +462,7 @@ public sealed class FileManagerService(
         {
             RootPath = rootFull,
             RootExists = true,
+            Readable = true,
             Writable = writable,
             FreeSpaceBytes = freeSpace,
             TotalSpaceBytes = totalSpace,
@@ -423,13 +472,33 @@ public sealed class FileManagerService(
 
     // ---------------- plumbing ----------------
 
-    /// <summary>Resolves a virtual path against the effective root (created on demand, like StorageOptions).</summary>
+    private bool IsManagedDirectory(string absolutePath)
+    {
+        if (string.IsNullOrWhiteSpace(_scopeSync.RootPath)) return false;
+        string scopeRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(ConnectRoot(_scopeSync.RootPath, _scopeSync.CredentialProfile)));
+        string path = Path.TrimEndingDirectorySeparator(Path.GetFullPath(absolutePath));
+        string prefix = Path.EndsInDirectorySeparator(path) ? path : path + Path.DirectorySeparatorChar;
+        // Also protect an ancestor when the file manager exposes a broader tree than ScopeSync.
+        if (string.Equals(path, scopeRoot, StringComparison.OrdinalIgnoreCase)
+            || scopeRoot.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return true;
+
+        string relative = Path.GetRelativePath(scopeRoot, path);
+        if (Path.IsPathRooted(relative) || relative == ".." || relative.StartsWith(".." + Path.DirectorySeparatorChar)) return false;
+        string[] parts = relative.Split(Path.DirectorySeparatorChar);
+        return parts.Length <= 2 || parts.Length == 3
+            && (parts[2].Equals("old", StringComparison.OrdinalIgnoreCase)
+                || parts[2].Equals("new", StringComparison.OrdinalIgnoreCase)
+                || parts[2].Equals("reports", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>Resolves a virtual path against the existing root; configuration typos never create a new store.</summary>
     private (FileOpStatus Status, string? Absolute, string? Normalized) Resolve(string? path)
     {
         if (Root is not { } root) return (FileOpStatus.RootNotConfigured, null, null);
         if (!VirtualPath.TryResolve(root, path, out string? abs, out string? normalized))
             return (FileOpStatus.InvalidPath, null, null);
-        Directory.CreateDirectory(Path.GetFullPath(root));
+        if (FileSystemPathSafety.ContainsLink(abs)) return (FileOpStatus.InvalidPath, null, null);
+        if (!Directory.Exists(root)) return (FileOpStatus.NotFound, null, null);
         return (FileOpStatus.Ok, abs, normalized);
     }
 
@@ -463,6 +532,8 @@ public sealed class FileManagerService(
 
         string name = Path.GetFileName(srcAbs!);
         string targetAbs = Path.Combine(dstDirAbs!, name);
+        if (FileSystemPathSafety.ContainsLink(targetAbs))
+            return new TransferPlan(new FileEntryResult(FileOpStatus.InvalidPath));
         if (string.Equals(VirtualPath.Combine(dstDirNorm!, name), srcNorm, StringComparison.OrdinalIgnoreCase))
             return new TransferPlan(new FileEntryResult(FileOpStatus.Conflict, Detail: "Source and target are the same."));
 
@@ -479,6 +550,8 @@ public sealed class FileManagerService(
     /// <summary>Recursive folder copy of what the manager shows: subfolders + PDFs (hidden/system skipped).</summary>
     private static void CopyPdfTree(DirectoryInfo source, string targetAbs, CancellationToken ct)
     {
+        if (FileSystemPathSafety.ContainsLink(source.FullName) || FileSystemPathSafety.ContainsLink(targetAbs))
+            throw new IOException("Symbolic links and junctions are not supported.");
         Directory.CreateDirectory(targetAbs);
         foreach (var file in source.EnumerateFiles())
         {
@@ -505,7 +578,7 @@ public sealed class FileManagerService(
         isFile ? new FileInfo(absolutePath) : new DirectoryInfo(absolutePath);
 
     private static bool IsHiddenOrSystem(FileSystemInfo info) =>
-        (info.Attributes & (FileAttributes.Hidden | FileAttributes.System)) != 0;
+        (info.Attributes & (FileAttributes.Hidden | FileAttributes.System | FileAttributes.ReparsePoint)) != 0;
 
     private static bool IsPdfName(string name) =>
         name.EndsWith(PdfExtension, StringComparison.OrdinalIgnoreCase)

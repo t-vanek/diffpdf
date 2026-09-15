@@ -48,6 +48,48 @@ saved as `.incoming` files under `config-review`; the update makes a full backup
 copy, service start or liveness fails. `Repair` changes only service registration, recovery, firewall and
 legacy service environment overrides after validating the production JSON.
 
+### Missing branches or instances in the client's file manager
+
+New installations configure a single absolute `DataRoot` (`<ProgramDataDir>`). The API derives
+`data` for branches, instances and the file manager, and `storage` for comparison artifacts.
+A nonempty `DataRoot` overrides all three legacy root settings, including environment overrides of
+those legacy keys. Set `DataRoot` itself (or the `DataRoot` environment variable) to change the base.
+When `DataRoot` is absent or empty, legacy configuration is preserved: the file manager uses
+`FileManager:RootPath`, falling back to `ScopeSync:RootPath` when empty.
+Earlier versions of `setup-server.ps1` incorrectly pointed the file manager at `storage`.
+
+For an existing installation, check **Konfigurace → Správa souborů** in the client
+(or `GET /api/v1/files/status`) for the effective root and its configuration source.
+If it points at `storage` while the branches live under `ScopeSync:RootPath`, back up the installed
+`appsettings.Production.json` and set `FileManager:RootPath` to `""`. Keep `ScopeSync:RootPath`
+pointing at the existing branch/instance tree. Restart the API service and refresh the server panel
+at its root (empty path). A custom file-manager root should only be changed if the managed instance
+tree is the intended location. Instance paths outside that tree are not exposed by the file manager.
+
+Updating the binaries or running `Repair` preserves the installed configuration, so it does not fix
+this setting on an existing server. To adopt `DataRoot`, first verify that the existing instance tree
+is exactly `<DataRoot>\data` and artifacts are under `<DataRoot>\storage`, then back up the config,
+set `DataRoot`, restart, and check `/api/v1/files/status`. This does not move files or rewrite stored
+instance BasePath values. Custom layouts can continue using the legacy settings with empty `DataRoot`.
+
+The status endpoint probes both directory listing (`readable`) and writing (`writable`). Missing
+roots are reported as unavailable; diagnostics and file-manager requests do not create them.
+ScopeSync with AutoCreateFolders enabled still provisions its configured tree during an apply run.
+
+For an existing UNC BasePath that represents the same location as a server-local root, explicitly
+configure both `Network:Shares:<name>:Root` (UNC) and `LocalMountPath` (local absolute path).
+For example, map `\\d3s-diffpdf\DiffPdfData` to the verified server-local directory backing that share.
+The resolver matches complete directory boundaries, prefers the longest matching root, and uses
+the local mount for both share aliases and matching UNC paths. It never infers a mapping from the
+hostname. This preserves stored instance identities and makes managed-folder protection consistent.
+
+The file manager resolves configured share aliases through the same network resolver as ScopeSync.
+When using the ScopeSync fallback it also inherits `ScopeSync:CredentialProfile`; an explicit
+file-manager root can use `FileManager:CredentialProfile` or the alias's default profile.
+Managed branch/instance folders and their required `old`, `new`, and `reports` directories cannot
+be renamed, moved or deleted through the file manager (HTTP 403). Existing symbolic links and
+junctions are rejected in file-manager paths and skipped in listings, search and copies.
+
 The local SQL service dependency is empty by default, which is correct for remote SQL Server. Specify
 `MSSQLSERVER` (or `MSSQL$INSTANCE`) only when SQL runs as a Windows service on the same machine.
 

@@ -88,7 +88,7 @@ public static class VirtualPath
         string candidate;
         try
         {
-            rootFull = Path.GetFullPath(rootPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            rootFull = Path.TrimEndingDirectorySeparator(Path.GetFullPath(rootPath));
             candidate = normalized.Length == 0
                 ? rootFull
                 : Path.GetFullPath(Path.Combine(rootFull, normalized.Replace('/', Path.DirectorySeparatorChar)));
@@ -101,7 +101,7 @@ public static class VirtualPath
 
         // Defence in depth: segments are already whitelisted, but verify the canonical result anyway.
         if (candidate.Length > rootFull.Length
-            && !candidate.StartsWith(rootFull + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            && !candidate.StartsWith(Path.EndsInDirectorySeparator(rootFull) ? rootFull : rootFull + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
         {
             normalized = null;
             return false;

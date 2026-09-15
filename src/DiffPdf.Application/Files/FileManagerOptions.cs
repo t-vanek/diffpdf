@@ -15,6 +15,10 @@ public sealed class FileManagerOptions
     /// comparisons use. When neither is configured the file endpoints return 503.
     /// </summary>
     public string? RootPath { get; set; }
+    internal string? RootConfigurationKey { get; set; }
+
+    /// <summary>Credential profile for an explicit file-manager root. A ScopeSync fallback uses its own profile.</summary>
+    public string? CredentialProfile { get; set; }
 
     /// <summary>Per-file upload cap. Also raises the endpoint's request-body limit accordingly.</summary>
     public int MaxUploadSizeMB { get; set; } = 256;

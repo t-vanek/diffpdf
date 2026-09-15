@@ -88,11 +88,13 @@ public sealed record FileManagerStatusResponse
 {
     public required bool Configured { get; init; }
 
-    /// <summary>Which appsettings key supplied the root ("FileManager:RootPath" / "ScopeSync:RootPath"); null when unconfigured.</summary>
+    /// <summary>Which key supplied the root ("DataRoot", "FileManager:RootPath" or "ScopeSync:RootPath"); null when unconfigured.</summary>
     public string? ResolvedFrom { get; init; }
 
     public string? RootPath { get; init; }
     public bool RootExists { get; init; }
+    /// <summary>Null for older servers that did not probe directory enumeration.</summary>
+    public bool? Readable { get; init; }
     public bool Writable { get; init; }
     public long? FreeSpaceBytes { get; init; }
     public long? TotalSpaceBytes { get; init; }

@@ -21,6 +21,7 @@ public sealed class InMemoryApiFactory : WebApplicationFactory<Program>
         builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["ConnectionStrings:SqlServer"] = "",
+            ["DataRoot"] = "",
             ["ScopeSync:RootPath"] = "",
             ["ScopeSync:Enabled"] = "false",
             ["Auth:Enabled"] = "false",

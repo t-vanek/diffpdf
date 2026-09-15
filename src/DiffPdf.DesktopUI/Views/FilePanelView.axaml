@@ -63,6 +63,8 @@
       </Border>
 
       <!-- Per-panel status strip -->
+      <TextBlock DockPanel.Dock="Bottom" Text="{Binding Error}" TextWrapping="Wrap"
+                 Foreground="{DynamicResource Bad}" Margin="2,6,2,0"/>
       <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusText}" Foreground="{DynamicResource InkDim}"
                  FontSize="12" Margin="2,6,2,0"/>
 
@@ -115,6 +117,9 @@
         <TextBlock Text="Prázdná složka — přetáhni sem PDF, nebo použij „Nahrát“."
                    Foreground="{DynamicResource InkFaint}" HorizontalAlignment="Center" VerticalAlignment="Center"
                    IsVisible="{Binding IsEmpty}"/>
+        <TextBlock Text="Filtru neodpovídá žádná položka. Vymaž text filtru."
+                   Foreground="{DynamicResource InkFaint}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                   IsVisible="{Binding IsFilteredEmpty}"/>
         <StackPanel Spacing="12" MaxWidth="420" HorizontalAlignment="Center" VerticalAlignment="Center"
                     IsVisible="{Binding BlockedMessage, Converter={x:Static ObjectConverters.IsNotNull}}">
           <TextBlock Text="🛈" FontSize="26" HorizontalAlignment="Center" Foreground="{DynamicResource InkDim}"/>

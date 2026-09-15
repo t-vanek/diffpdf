@@ -61,26 +61,84 @@ public sealed class FileManagerServiceTests : IDisposable
         Assert.Equal(FileOpStatus.RootNotConfigured, service.Delete("x", recursive: false).Status);
     }
 
-    [Fact]
-    public void FallsBackToScopeSyncRoot()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" ")]
+    public void FallsBackToScopeSyncRoot(string? fileManagerRoot)
     {
-        var service = CreateService(rootPath: "", scopeSyncRoot: _root);
-        WriteFile("fallback.pdf");
+        var service = CreateService(rootPath: fileManagerRoot, scopeSyncRoot: _root);
+        WriteFile("branch/instance/old/fallback.pdf");
         var list = service.List("");
         Assert.Equal(FileOpStatus.Ok, list.Status);
-        Assert.Contains(list.Items!, i => i.Name == "fallback.pdf");
+        Assert.Equal("branch", Assert.Single(list.Items!).Path);
+        Assert.True(Assert.Single(list.Items!).IsDirectory);
+
+        var branch = service.List("branch");
+        Assert.Equal(FileOpStatus.Ok, branch.Status);
+        Assert.Equal("branch/instance", Assert.Single(branch.Items!).Path);
+        Assert.True(Assert.Single(branch.Items!).IsDirectory);
+
+        var files = service.List("branch/instance/old");
+        Assert.Equal(FileOpStatus.Ok, files.Status);
+        Assert.Equal("fallback.pdf", Assert.Single(files.Items!).Name);
+
+        var status = service.GetStatus();
+        Assert.Equal("ScopeSync:RootPath", status.ResolvedFrom);
+        Assert.Equal(_root, status.RootPath);
     }
 
     [Fact]
-    public void MissingRootFolder_IsCreatedOnDemand()
+    public void MissingRootFolder_IsReportedWithoutCreatingIt()
     {
         string root = Path.Combine(_root, "lazy-root");
         var service = CreateService(root);
-        Assert.Equal(FileOpStatus.Ok, service.List("").Status);
-        Assert.True(Directory.Exists(root));
+        Assert.Equal(FileOpStatus.NotFound, service.List("").Status);
+        Assert.False(Directory.Exists(root));
     }
 
     // ---------------- listing ----------------
+
+    [Theory]
+    [InlineData("branch")]
+    [InlineData("branch/instance")]
+    [InlineData("branch/instance/old")]
+    [InlineData("branch/instance/new")]
+    [InlineData("branch/instance/reports")]
+    public void ManagedStructure_CannotBeRenamedMovedOrDeleted(string path)
+    {
+        Directory.CreateDirectory(Abs(path));
+        Directory.CreateDirectory(Abs("destination"));
+        var service = CreateService(_root, _root);
+
+        Assert.Equal(FileOpStatus.ProtectedLocation, service.Rename(path, "renamed").Status);
+        Assert.Equal(FileOpStatus.ProtectedLocation, service.Move(path, "destination", false).Status);
+        Assert.Equal(FileOpStatus.ProtectedLocation, service.Delete(path, true).Status);
+        Assert.True(Directory.Exists(Abs(path)));
+    }
+
+    [Fact]
+    public void ManagedStructure_AllowsPdfOperationsAndUserSubfolders()
+    {
+        WriteFile("branch/instance/old/doc.pdf");
+        Directory.CreateDirectory(Abs("branch/instance/new"));
+        var service = CreateService(_root, _root);
+        Assert.Equal(FileOpStatus.Ok, service.Rename("branch/instance/old/doc.pdf", "renamed.pdf").Status);
+        Assert.Equal(FileOpStatus.Ok, service.Move("branch/instance/old/renamed.pdf", "branch/instance/new", false).Status);
+        Assert.Equal(FileOpStatus.Ok, service.Delete("branch/instance/new/renamed.pdf", false).Status);
+        Assert.Equal(FileOpStatus.Ok, service.CreateFolder("branch/instance/old", "archive").Status);
+        Assert.Equal(FileOpStatus.Ok, service.Delete("branch/instance/old/archive", false).Status);
+    }
+
+    [Fact]
+    public void BroaderManagerRoot_ProtectsScopeRootAndItsAncestors()
+    {
+        string scope = Abs("container/data");
+        Directory.CreateDirectory(scope);
+        var service = CreateService(_root, scope);
+        Assert.Equal(FileOpStatus.ProtectedLocation, service.Delete("container", true).Status);
+        Assert.Equal(FileOpStatus.ProtectedLocation, service.Rename("container/data", "other").Status);
+    }
 
     [Fact]
     public void List_ShowsFoldersFirst_HidesNonPdfAndHidden()
@@ -616,12 +674,14 @@ public sealed class FileManagerServiceTests : IDisposable
     }
 
     [Fact]
-    public void GetStatus_MissingRootFolder_IsCreatedLikeFirstUse()
+    public void GetStatus_MissingRootFolder_DoesNotCreateIt()
     {
         string root = Path.Combine(_root, "lazy-status-root");
         var status = CreateService(root).GetStatus();
-        Assert.True(status.RootExists); // the probe mirrors Resolve(): auto-created on demand
-        Assert.True(Directory.Exists(root));
+        Assert.False(status.RootExists);
+        Assert.False(status.Readable);
+        Assert.NotNull(status.Error);
+        Assert.False(Directory.Exists(root));
     }
 
     // ---------------- upload directory validation ----------------

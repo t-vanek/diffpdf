@@ -96,6 +96,19 @@ public class VirtualPathTests
         Assert.Equal("faktury/2026/smlouva.pdf", normalized);
     }
 
+    [Theory]
+    [InlineData(@"C:\")]
+    [InlineData(@"D:\")]
+    [InlineData(@"\\server\share\")]
+    public void TryResolve_PreservesVolumeRoot(string root)
+    {
+        Assert.True(VirtualPath.TryResolve(root, "", out var actual, out _));
+        Assert.Equal(Path.TrimEndingDirectorySeparator(Path.GetFullPath(root)), actual);
+        Assert.True(Path.IsPathFullyQualified(actual));
+        Assert.True(VirtualPath.TryResolve(root, "folder/doc.pdf", out actual, out _));
+        Assert.Equal(Path.Combine(root, "folder", "doc.pdf"), actual);
+    }
+
     [Fact]
     public void TryResolve_TrailingSeparatorOnRootIsHarmless()
     {

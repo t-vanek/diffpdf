@@ -18,6 +18,10 @@ public sealed class FileBackendConflictException(string message) : Exception(mes
 /// </summary>
 public interface IFileBackend
 {
+    /// <summary>Captures the connection for a multi-step operation; local backends are already stable.</summary>
+    IFileBackend Capture() => this;
+    IFileBackend Identity => this;
+
     BackendKind Kind { get; }
 
     /// <summary>Path a panel opens when it switches to this backend.</summary>
@@ -59,10 +63,24 @@ public interface IFileBackend
 /// <summary>The diffpdf server's managed storage, via the typed REST client (409 → conflict exception).</summary>
 public sealed class ServerFileBackend(ServerSession session) : IFileBackend
 {
+    private DiffPdfClient? _capturedClient;
+    private IFileBackend? _identity;
+
+    public IFileBackend Identity => _identity ?? this;
+    public IFileBackend Capture() => new ServerFileBackend(session) { _capturedClient = Client, _identity = Identity };
+
     public BackendKind Kind => BackendKind.Server;
     public string DefaultPath => "";
 
-    private DiffPdfClient Client => session.Require();
+    private DiffPdfClient Client
+    {
+        get
+        {
+            if (_capturedClient is { } captured && !ReferenceEquals(captured, session.Client))
+                throw new InvalidOperationException("Připojení k serveru se změnilo. Přenos byl zastaven; zkontroluj zdroj i cíl před opakováním.");
+            return _capturedClient ?? session.Require();
+        }
+    }
 
     public bool CanWriteTo(string? path) => true; // the whole managed tree accepts uploads/folders
 
@@ -144,9 +162,13 @@ public sealed class LocalFileBackend(bool useRecycleBin = true) : IFileBackend
     }
 
     public Task<FileListResponse> ListAsync(string? path, CancellationToken ct = default)
+        => Task.Run(() => List(path, ct), ct);
+
+    private FileListResponse List(string? path, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         if (string.IsNullOrEmpty(path))
-            return Task.FromResult(ListDrives());
+            return ListDrives();
 
         string full = NormalizeDirectory(path);
         var dir = new DirectoryInfo(full);
@@ -157,18 +179,18 @@ public sealed class LocalFileBackend(bool useRecycleBin = true) : IFileBackend
         items.AddRange(dir.EnumerateDirectories()
             .Where(d => !IsHiddenOrSystem(d))
             .OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(ToDto));
+            .Select(d => { ct.ThrowIfCancellationRequested(); return ToDto(d); }));
         items.AddRange(dir.EnumerateFiles()
             .Where(f => !IsHiddenOrSystem(f) && IsPdfName(f.Name))
             .OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(ToDto));
+            .Select(f => { ct.ThrowIfCancellationRequested(); return ToDto(f); }));
 
-        return Task.FromResult(new FileListResponse
+        return new FileListResponse
         {
             CurrentPath = full,
             ParentPath = GetParent(full),
             Items = items,
-        });
+        };
     }
 
     private static FileListResponse ListDrives() => new()
@@ -194,6 +216,9 @@ public sealed class LocalFileBackend(bool useRecycleBin = true) : IFileBackend
     }
 
     public Task<FileSearchResponse> SearchAsync(string? path, string query, bool recursive, CancellationToken ct = default)
+        => Task.Run(() => Search(path, query, recursive, ct), ct);
+
+    private static FileSearchResponse Search(string? path, string query, bool recursive, CancellationToken ct)
     {
         if (string.IsNullOrEmpty(path))
             throw new InvalidOperationException("Hledat lze až uvnitř disku nebo složky.");
@@ -203,7 +228,7 @@ public sealed class LocalFileBackend(bool useRecycleBin = true) : IFileBackend
         {
             IgnoreInaccessible = true,
             RecurseSubdirectories = recursive,
-            AttributesToSkip = FileAttributes.Hidden | FileAttributes.System,
+            AttributesToSkip = FileAttributes.Hidden | FileAttributes.System | FileAttributes.ReparsePoint,
         };
 
         var items = new List<FileItemDto>();
@@ -218,7 +243,7 @@ public sealed class LocalFileBackend(bool useRecycleBin = true) : IFileBackend
         }
         items.Sort((a, b) => string.Compare(a.Path, b.Path, StringComparison.OrdinalIgnoreCase));
 
-        return Task.FromResult(new FileSearchResponse { Query = query, SearchPath = full, Items = items, Truncated = truncated });
+        return new FileSearchResponse { Query = query, SearchPath = full, Items = items, Truncated = truncated };
     }
 
     public Task<FileItemDto> CreateFolderAsync(string? parentPath, string folderName, CancellationToken ct = default)
@@ -294,11 +319,14 @@ public sealed class LocalFileBackend(bool useRecycleBin = true) : IFileBackend
     }
 
     public Task<FileItemDto> CopyAsync(string sourcePath, string targetDirectory, bool overwrite, CancellationToken ct = default)
+        => Task.Run(() => Copy(sourcePath, targetDirectory, overwrite, ct), ct);
+
+    private static FileItemDto Copy(string sourcePath, string targetDirectory, bool overwrite, CancellationToken ct)
     {
         var (sourceAbs, targetAbs, isFile) = PrepareTransfer(sourcePath, targetDirectory, overwrite);
         if (isFile) File.Copy(sourceAbs, targetAbs, overwrite);
         else CopyPdfTree(new DirectoryInfo(sourceAbs), targetAbs, ct);
-        return Task.FromResult(ToDto(Info(targetAbs, isFile)));
+        return ToDto(Info(targetAbs, isFile));
     }
 
     public Task<Stream> OpenReadAsync(string path, CancellationToken ct = default) =>
@@ -431,7 +459,7 @@ public sealed class LocalFileBackend(bool useRecycleBin = true) : IFileBackend
     };
 
     private static bool IsHiddenOrSystem(FileSystemInfo info) =>
-        (info.Attributes & (FileAttributes.Hidden | FileAttributes.System)) != 0;
+        (info.Attributes & (FileAttributes.Hidden | FileAttributes.System | FileAttributes.ReparsePoint)) != 0;
 
     private static bool IsPdfName(string name) =>
         name.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) && name.Length > 4;

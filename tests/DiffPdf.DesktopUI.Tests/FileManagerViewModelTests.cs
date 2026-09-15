@@ -71,6 +71,136 @@ public class FileManagerViewModelTests
     // ---------------- panel ----------------
 
     [Fact]
+    public void Panel_navigation_clears_filter_but_refresh_keeps_it()
+    {
+        AsyncPump.Run(async () =>
+        {
+            var panel = ServerPanel(FilesApiByPath(path => path == ""
+                ? Listing("", null, Folder("Alfa"))
+                : Listing("Alfa", "", Folder("Alfa/Instance"))));
+            await panel.LoadAsync("");
+            panel.FilterText = "Alfa";
+            await panel.RefreshAsync();
+            Assert.Equal("Alfa", panel.FilterText);
+            await panel.LoadAsync("Alfa");
+            Assert.Equal("", panel.FilterText);
+            Assert.Single(panel.ItemsView.Cast<object>());
+            panel.FilterText = "no-match";
+            Assert.False(panel.IsEmpty);
+            Assert.True(panel.IsFilteredEmpty);
+        });
+    }
+
+    [Fact]
+    public void Panel_failed_backend_switch_clears_old_rows_path_and_selection()
+    {
+        AsyncPump.Run(async () =>
+        {
+            var panel = ServerPanel(FilesApi(() => Listing("Alfa", "", Folder("Alfa/Instance"))));
+            await panel.LoadAsync("Alfa");
+            panel.SelectedItem = panel.Items.Single();
+            panel.SetSelection([panel.SelectedItem]);
+            await panel.SetBackendAsync(new LocalFileBackend(false), Path.Combine(TempDir(), "missing"));
+            Assert.False(panel.IsServer);
+            Assert.False(panel.HasLoaded);
+            Assert.Empty(panel.Items);
+            Assert.Empty(panel.SelectedItems);
+            Assert.Null(panel.SelectedItem);
+            Assert.Equal("", panel.CurrentPath);
+            Assert.NotNull(panel.Error);
+            Assert.False(panel.IsEmpty);
+        });
+    }
+
+    [Fact]
+    public void Manager_disconnect_invalidates_server_rows_and_reconnect_loads_new_root()
+    {
+        AsyncPump.Run(async () =>
+        {
+            var session = Session(FilesApi(() => Listing("", null, Folder("serverA"))));
+            var manager = new FileManagerViewModel(session, null!, new ClientSettingsStore(Path.Combine(TempDir(), "settings.json")));
+            await manager.ActivateAsync();
+            Assert.Equal("serverA", manager.RightPanel.Items.Single().Name);
+            session.Disconnect();
+            Assert.Empty(manager.RightPanel.Items);
+            Assert.False(manager.RightPanel.HasLoaded);
+            session.Client = Session(FilesApi(() => Listing("", null, Folder("serverB")))).Client;
+            await manager.ActivateAsync();
+            Assert.Equal("serverB", manager.RightPanel.Items.Single().Name);
+        });
+    }
+
+    [Fact]
+    public void Queue_server_change_during_move_never_deletes_on_new_server()
+    {
+        AsyncPump.Run(async () =>
+        {
+            int newServerCalls = 0, originalDeletes = 0;
+            var other = Session(new FakeApi { Custom = _ => { newServerCalls++; return new HttpResponseMessage(System.Net.HttpStatusCode.NoContent); } }).Client;
+            var session = new ServerSession();
+            session.Client = Session(new FakeApi { Custom = request =>
+            {
+                if (request.Method == HttpMethod.Delete) originalDeletes++;
+                session.Client = other; // switch while the original download is completing
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                { Content = new StringContent(PdfContent) };
+            } }).Client;
+            var queue = new TransferQueueViewModel { CleanupDelay = TimeSpan.Zero };
+            string destination = TempDir();
+            queue.Enqueue([new TransferRequest(new ServerFileBackend(session), "doc.pdf", "doc.pdf", null,
+                new LocalFileBackend(false), destination, Move: true)]);
+            var item = queue.Items.Single();
+            while (item.IsRunning) await Task.Delay(10);
+            Assert.Equal(TransferState.Failed, item.State);
+            Assert.Contains("Připojení", item.Error);
+            Assert.Equal(0, newServerCalls);
+            Assert.Equal(0, originalDeletes);
+            Assert.True(File.Exists(Path.Combine(destination, "doc.pdf"))); // original must be kept after session change
+        });
+    }
+
+    [Fact]
+    public void Queue_waiting_uploads_do_not_follow_a_changed_session()
+    {
+        AsyncPump.Run(async () =>
+        {
+            int calls = 0, otherCalls = 0;
+            var session = new ServerSession();
+            var other = Session(new FakeApi { Custom = _ => { otherCalls++; return UploadOk("doc.pdf"); } }).Client;
+            session.Client = Session(new FakeApi { Custom = _ => { calls++; session.Client = other; return UploadOk("first.pdf"); } }).Client;
+            var server = new ServerFileBackend(session);
+            var queue = new TransferQueueViewModel { CleanupDelay = TimeSpan.Zero };
+            queue.Enqueue([LocalToServer(server, TempPdf("first.pdf"), ""), LocalToServer(server, TempPdf("second.pdf"), "")]);
+            var items = queue.Items.ToList();
+            while (items.Any(i => i.IsRunning)) await Task.Delay(10);
+            Assert.Equal(1, calls);
+            Assert.Equal(0, otherCalls);
+            Assert.Equal(TransferState.Failed, items[1].State);
+        });
+    }
+
+    [Fact]
+    public void Queue_previous_cleanup_does_not_erase_a_new_failed_batch()
+    {
+        AsyncPump.Run(async () =>
+        {
+            var cleanup = new TaskCompletionSource();
+            var queue = new TransferQueueViewModel { WaitForCleanupAsync = _ => cleanup.Task };
+            queue.Enqueue([LocalToLocal(TempPdf("first.pdf"), TempDir())]);
+            var first = queue.Items.Single();
+            while (first.IsRunning) await Task.Delay(10);
+            queue.Enqueue([LocalToServer(ServerBackend(new FakeApi()), TempPdf("failed.pdf"), "")]);
+            var failed = queue.Items.Single();
+            while (failed.IsRunning) await Task.Delay(10);
+            Assert.Equal(TransferState.Failed, failed.State);
+            cleanup.SetResult();
+            await Task.Yield();
+            Assert.Same(failed, Assert.Single(queue.Items));
+            Assert.True(queue.HasItems);
+        });
+    }
+
+    [Fact]
     public void Panel_load_populates_items_parent_and_status()
     {
         AsyncPump.Run(async () =>
@@ -223,6 +353,22 @@ public class FileManagerViewModelTests
 
         vm.Apply(Status(writable: false, error: "Root folder is not writable: ..."));
         Assert.Contains("nelze do ní zapisovat", vm.StateText);
+    }
+
+    [Fact]
+    public void StorageStatus_UnreadableRoot_ShowsListingError()
+    {
+        var vm = new FileStorageStatusViewModel(null!);
+        vm.Apply(new FileManagerStatusResponse
+        {
+            Configured = true, RootExists = true, Readable = false, Writable = false,
+            Error = "Root folder cannot be listed: access denied",
+        });
+        Assert.Contains("nelze zobrazit její obsah", vm.StateText);
+        Assert.Contains("access denied", vm.DetailText);
+        // Existing Status() fixtures omit Readable, as responses from older servers do.
+        vm.Apply(Status());
+        Assert.Contains("připravené", vm.StateText);
     }
 
     // ---------------- manager (active panel) ----------------

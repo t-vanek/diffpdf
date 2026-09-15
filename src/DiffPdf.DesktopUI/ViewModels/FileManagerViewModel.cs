@@ -22,6 +22,7 @@ public partial class FileManagerViewModel : PageViewModel
     private readonly ServerFileBackend _serverBackend;
     private bool _initialised;
     private bool _stateRestoreDone;
+    private bool _serverChanged;
 
     public override string Title => "Správa souborů";
     public override string Icon => "🗂";
@@ -48,6 +49,14 @@ public partial class FileManagerViewModel : PageViewModel
         // Default layout per the spec: my computer on the left, the server on the right.
         LeftPanel = new FilePanelViewModel(_localBackend);
         RightPanel = new FilePanelViewModel(_serverBackend);
+        session.StateChanged += (_, _) =>
+        {
+            _initialised = false;
+            _stateRestoreDone = false;
+            _serverChanged = true;
+            foreach (var panel in new[] { LeftPanel, RightPanel })
+                if (panel.IsServer) panel.Reset();
+        };
         _activePanel = LeftPanel;
         LeftPanel.IsActive = true;
 
@@ -87,6 +96,7 @@ public partial class FileManagerViewModel : PageViewModel
             RestorePanelAsync(LeftPanel, saved?.Left),
             RestorePanelAsync(RightPanel, saved?.Right));
         _stateRestoreDone = true; // only now start persisting, so the restore itself can't clobber the saved state
+        _serverChanged = false;
         PersistPanelState();
     }
 
@@ -102,7 +112,9 @@ public partial class FileManagerViewModel : PageViewModel
         IFileBackend backend = Enum.TryParse<BackendKind>(state.Backend, out var kind) && kind == BackendKind.Server
             ? _serverBackend
             : _localBackend;
-        string target = await CanListAsync(backend, state.Path) ? state.Path : backend.DefaultPath;
+        string target = backend.Kind == BackendKind.Server && _serverChanged
+            ? backend.DefaultPath
+            : await CanListAsync(backend, state.Path) ? state.Path : backend.DefaultPath;
 
         if (backend != panel.Backend) await panel.SetBackendAsync(backend, target);
         else await panel.LoadAsync(target);
@@ -161,8 +173,8 @@ public partial class FileManagerViewModel : PageViewModel
 
     // ---------------- toolbar actions (target the active panel) ----------------
 
-    private bool HasSelection => ActivePanel.SelectedItems.Count > 0;
-    private bool HasSingleSelection => ActivePanel.PrimaryItem is not null;
+    private bool HasSelection => ActivePanel.HasLoaded && ActivePanel.SelectedItems.Count > 0;
+    private bool HasSingleSelection => ActivePanel.HasLoaded && ActivePanel.PrimaryItem is not null;
     private bool HasServerFileSelection => ActivePanel.IsServer && ActivePanel.SelectedItems.Any(i => !i.IsFolder);
     private bool CanTransfer => HasSelection && OppositePanel.HasLoaded;
 
@@ -206,7 +218,11 @@ public partial class FileManagerViewModel : PageViewModel
     [RelayCommand]
     private Task CreateFolderAsync() => RunAsync(async () =>
     {
-        if (!ActivePanel.Backend.CanWriteTo(ActivePanel.CurrentPath))
+        var panel = ActivePanel;
+        if (!panel.HasLoaded) return;
+        var backend = panel.Backend.Capture();
+        string directory = panel.CurrentPath;
+        if (!backend.CanWriteTo(directory))
         {
             _dialogs.ShowToast("Na úrovni disků nelze vytvořit složku — otevři nejdřív disk.", ToastKind.Info);
             return;
@@ -216,25 +232,28 @@ public partial class FileManagerViewModel : PageViewModel
         await _dialogs.ShowFileOperationAsync(dialog);
         if (!dialog.Confirmed) return;
 
-        var created = await ActivePanel.Backend.CreateFolderAsync(ActivePanel.CurrentPath, dialog.ResultName);
+        var created = await backend.CreateFolderAsync(directory, dialog.ResultName);
         _dialogs.ShowToast($"Složka „{created.Name}“ vytvořena.", ToastKind.Success);
 
-        await RefreshPanelsShowingAsync(ActivePanel.Backend, ActivePanel.CurrentPath);
-        ActivePanel.SelectByPath(created.Path);
+        await RefreshPanelsShowingAsync(backend, directory);
+        panel.SelectByPath(created.Path);
     });
 
     [RelayCommand(CanExecute = nameof(HasSingleSelection))]
     private Task RenameAsync() => RunAsync(async () =>
     {
         if (ActivePanel.PrimaryItem is not { } item) return;
+        var panel = ActivePanel;
+        var backend = panel.Backend.Capture();
+        string directory = panel.CurrentPath;
 
         var dialog = FileOperationDialogViewModel.ForRename(item.Name, isFile: !item.IsFolder);
         await _dialogs.ShowFileOperationAsync(dialog);
         if (!dialog.Confirmed || dialog.ResultName == item.Name) return;
 
-        var renamed = await ActivePanel.Backend.RenameAsync(item.Path, dialog.ResultName);
-        await RefreshPanelsShowingAsync(ActivePanel.Backend, ActivePanel.CurrentPath);
-        ActivePanel.SelectByPath(renamed.Path);
+        var renamed = await backend.RenameAsync(item.Path, dialog.ResultName);
+        await RefreshPanelsShowingAsync(backend, directory);
+        panel.SelectByPath(renamed.Path);
     });
 
     /// <summary>Zkopíruje úplnou cestu označené položky aktivního panelu (kontextové menu) —
@@ -248,6 +267,8 @@ public partial class FileManagerViewModel : PageViewModel
     {
         var selection = ActivePanel.SelectedItems.ToList();
         if (selection.Count == 0) return;
+        var backend = ActivePanel.Backend.Capture();
+        string directory = ActivePanel.CurrentPath;
 
         string what = selection.Count == 1
             ? $"„{selection[0].Name}“"
@@ -256,7 +277,6 @@ public partial class FileManagerViewModel : PageViewModel
         if (!await _dialogs.ConfirmAsync("Smazat", $"Smaže se {what} {where}.", confirmText: "Smazat", danger: true))
             return;
 
-        var backend = ActivePanel.Backend;
         var nonEmptyFolders = new List<FileListItemViewModel>();
         int deleted = 0, failed = 0;
 
@@ -295,7 +315,7 @@ public partial class FileManagerViewModel : PageViewModel
                         await backend.DeleteAsync(folder.Path, recursive: true);
                         deleted++;
                     }
-                    catch (Exception ex) when (ex is DiffPdfApiException or IOException or UnauthorizedAccessException)
+                    catch (Exception ex) when (ex is DiffPdfApiException or IOException or UnauthorizedAccessException or InvalidOperationException)
                     {
                         failed++;
                         _dialogs.ShowToast($"{folder.Name}: {(ex as DiffPdfApiException)?.Detail ?? ex.Message}", ToastKind.Error);
@@ -309,7 +329,7 @@ public partial class FileManagerViewModel : PageViewModel
                 ? $"Smazáno: {deleted}."
                 : $"Smazáno: {deleted}, chyb: {failed}.", failed == 0 ? ToastKind.Success : ToastKind.Error);
 
-        await RefreshPanelsShowingAsync(ActivePanel.Backend, ActivePanel.CurrentPath);
+        await RefreshPanelsShowingAsync(backend, directory);
     });
 
     /// <summary>Saves server PDFs to disk (1 file = save dialog, more = folder picker). Local-panel
@@ -319,7 +339,7 @@ public partial class FileManagerViewModel : PageViewModel
     {
         var files = ActivePanel.SelectedItems.Where(i => !i.IsFolder).ToList();
         if (files.Count == 0 || !ActivePanel.IsServer) return;
-        var backend = ActivePanel.Backend;
+        var backend = ActivePanel.Backend.Capture();
 
         if (files.Count == 1)
         {
@@ -393,7 +413,7 @@ public partial class FileManagerViewModel : PageViewModel
     private async Task SameBackendTransferAsync(
         FilePanelViewModel source, FilePanelViewModel target, List<FileListItemViewModel> selection, bool move)
     {
-        var backend = source.Backend;
+        var backend = source.Backend.Capture();
         string targetDir = target.CurrentPath;
         string verb = move ? "Přesunuto" : "Zkopírováno";
         int done = 0, skipped = 0, failed = 0;
@@ -470,6 +490,8 @@ public partial class FileManagerViewModel : PageViewModel
     private async Task CrossBackendTransferAsync(
         FilePanelViewModel source, FilePanelViewModel target, List<FileListItemViewModel> selection, bool move)
     {
+        var sourceBackend = source.Backend.Capture();
+        var targetBackend = target.Backend.Capture();
         var requests = new List<TransferRequest>();
         int refusedFolderMoves = 0, conflictFolders = 0;
 
@@ -483,13 +505,13 @@ public partial class FileManagerViewModel : PageViewModel
                     continue;
                 }
                 conflictFolders += await ExpandFolderAsync(
-                    source.Backend, item.Path, item.Name, target.Backend, target.CurrentPath, requests);
+                    sourceBackend, item.Path, item.Name, targetBackend, target.CurrentPath, requests);
             }
             else
             {
                 requests.Add(new TransferRequest(
-                    source.Backend, item.Path, item.Name, item.Item.SizeBytes,
-                    target.Backend, target.CurrentPath, move));
+                    sourceBackend, item.Path, item.Name, item.Item.SizeBytes,
+                    targetBackend, target.CurrentPath, move));
             }
         }
 
@@ -542,6 +564,7 @@ public partial class FileManagerViewModel : PageViewModel
     /// <summary>Refreshes every panel currently showing <paramref name="directory"/> on <paramref name="backend"/>.</summary>
     private async Task RefreshPanelsShowingAsync(IFileBackend backend, string directory)
     {
+        backend = backend.Identity;
         if (LeftPanel.Backend == backend && LeftPanel.Shows(directory)) await LeftPanel.RefreshAsync();
         if (RightPanel.Backend == backend && RightPanel.Shows(directory)) await RightPanel.RefreshAsync();
     }

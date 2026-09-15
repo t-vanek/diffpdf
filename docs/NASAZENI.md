@@ -128,10 +128,23 @@ service účet** (`CORP\svc_diffpdf`), který má:
 
 ### 3.4 Úložiště PDF
 
-Server pracuje se stromem `<root>/<větev>/<instance>/{old,new,reports}`. Kořen nastavíš v
-`ScopeSync:RootPath` v `appsettings.Production.json`. Když je kořen
-nastavený, **`basePath` instancí se odvodí automaticky** a server složky `old/new/reports`
-sám založí a opraví. Do `reports/` aplikace **zapisuje**, `old/new` jen **čte**.
+Nová instalace používá jednu absolutní cestu `DataRoot` v `appsettings.Production.json`.
+Pod ní jsou `data/<větev>/<instance>/{old,new,reports}` pro instance a správce souborů
+a `storage` pro artefakty porovnání. Instalátor nastaví `DataRoot` na `ProgramDataDir`.
+Neprázdný `DataRoot` má přednost před všemi staršími klíči `ScopeSync:RootPath`,
+`FileManager:RootPath` a `Storage:RootPath`, včetně jejich hodnot z proměnných prostředí.
+Bez `DataRoot` se starší konfigurace chová dosavadním způsobem.
+
+Při přechodu ověř skutečná umístění obou podsložek a zálohuj konfiguraci.
+Nastavení samo nepřesouvá data ani nemění `BasePath` existujících instancí.
+Odlišná uložená cesta se při synchronizaci hlásí jako `OutOfRoot`.
+Ekvivalentní UNC a lokální cesty lze sjednotit výslovným mapováním
+`Network:Shares:<název>:Root` a `LocalMountPath` na tutéž skutečnou složku.
+
+Nové instance dostanou odvozenou `basePath`; provisioning vytvoří potřebnou strukturu.
+Diagnostika `/api/v1/files/status` uvádí zdroj kořene, dostupnost, čitelnost i zapisovatelnost.
+Chybějící kořen při pouhém výpisu nebo diagnostice nevytváří. Porovnání čte `old/new`
+a zapisuje do `reports`; správce souborů umožňuje nahrávat PDF i do `old/new`.
 
 ### 3.5 Firewall a porty
 
@@ -274,7 +287,8 @@ chceš-li jinam, uprav `path` v tom souboru.
 | `ConnectionStrings:SqlServer` | — (dev: in-memory) | SQL Server. Bez něj jede neperzistentní dev režim — **v produkci povinné**. |
 | `Urls` | `http://0.0.0.0:5275` | Bind adresa(y) serveru. |
 | `Auth:Enabled` | `false` | Zapne OAuth2 (vyžaduje DB). Viz [§6](#6-zabezpečení). |
-| `ScopeSync:RootPath` | `D:\diffpdf` | Kořen úložiště `old/new/reports`. |
+| `DataRoot` | `<ProgramDataDir>` (instalátor) | Jediný absolutní základ; odvozuje podsložky `data` a `storage`. |
+| `ScopeSync:RootPath` | starší konfigurace | Kořen stromu instancí; použije se při prázdném/nepřítomném `DataRoot`. |
 | `ScopeSync:AutoRegister` | `true` | Automaticky registruje větve/instance nalezené na disku. |
 | `Network` | — | Profily credentialů a aliasy sdílení (viz §5.3). |
 | `Notifications:BaseUrl` | `http://localhost:8080` | URL pro odkazy v e-mailech — **nastav na reálnou adresu serveru**. |
@@ -284,7 +298,7 @@ chceš-li jinam, uprav `path` v tom souboru.
 | `Automation:AutoProvision:Enabled` | `true` | Auto-zakládání standardních automatizací (zdraví, readiness, retence, structure-sync). |
 | `Automation:AutoProvision:RetentionDays` | `30` | Stáří, po kterém se mažou artefakty reportů. |
 | `Discovery:Enabled` / `Port` | `true` / `5276` | LAN auto-discovery (UDP). |
-| `FileManager:RootPath` | (prázdné → ScopeSync) | Kořen pro „Správa souborů" v klientovi. |
+| `FileManager:RootPath` | (prázdné → ScopeSync) | Starší samostatný kořen správce souborů; s `DataRoot` se ignoruje. |
 | `FileManager:MaxUploadSizeMB` | `256` | Limit uploadu jednoho souboru. |
 | `StuckJobWatchdog:Enabled` | `true` | Hlídač zaseknutých úloh (alert, nezasahuje). |
 | `StuckJobWatchdog:StallThresholdMinutes` | `30` | Práh „bez postupu" pro alert. |

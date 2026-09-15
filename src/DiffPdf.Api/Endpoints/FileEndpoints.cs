@@ -110,6 +110,7 @@ public static class FileEndpoints
         })
         .WithSummary("Delete a file or folder (a non-empty folder requires recursive=true)")
         .Produces(StatusCodes.Status204NoContent)
+        .ProducesProblem(StatusCodes.Status403Forbidden)
         .ProducesProblem(StatusCodes.Status400BadRequest)
         .ProducesProblem(StatusCodes.Status404NotFound)
         .ProducesProblem(StatusCodes.Status409Conflict);
@@ -126,6 +127,7 @@ public static class FileEndpoints
         })
         .WithSummary("Rename a file or folder (files must keep the .pdf extension)")
         .Produces<FileItemDto>()
+        .ProducesProblem(StatusCodes.Status403Forbidden)
         .ProducesProblem(StatusCodes.Status400BadRequest)
         .ProducesProblem(StatusCodes.Status404NotFound)
         .ProducesProblem(StatusCodes.Status409Conflict);
@@ -141,6 +143,7 @@ public static class FileEndpoints
         })
         .WithSummary("Move a file or folder into a target folder (name kept; folder collisions are never merged)")
         .Produces<FileItemDto>()
+        .ProducesProblem(StatusCodes.Status403Forbidden)
         .ProducesProblem(StatusCodes.Status400BadRequest)
         .ProducesProblem(StatusCodes.Status404NotFound)
         .ProducesProblem(StatusCodes.Status409Conflict);
@@ -213,7 +216,7 @@ public static class FileEndpoints
     private static IResult Problem(FileOpStatus status, string? detail = null) => status switch
     {
         FileOpStatus.RootNotConfigured => Results.Problem(
-            "File manager root is not configured (FileManager:RootPath or ScopeSync:RootPath).",
+            "File manager root is not configured (DataRoot, or legacy FileManager:RootPath / ScopeSync:RootPath).",
             statusCode: StatusCodes.Status503ServiceUnavailable),
         FileOpStatus.InvalidPath => Results.Problem(detail ?? "Invalid path.", statusCode: StatusCodes.Status400BadRequest),
         FileOpStatus.InvalidName => Results.Problem(detail ?? "Invalid name.", statusCode: StatusCodes.Status400BadRequest),
@@ -221,6 +224,9 @@ public static class FileEndpoints
         FileOpStatus.Conflict => Results.Problem(detail ?? "The name already exists.", statusCode: StatusCodes.Status409Conflict),
         FileOpStatus.NotAFile => Results.Problem("The path is a folder, not a file.", statusCode: StatusCodes.Status400BadRequest),
         FileOpStatus.NotAFolder => Results.Problem("The path is a file, not a folder.", statusCode: StatusCodes.Status400BadRequest),
+        FileOpStatus.ProtectedLocation => Results.Problem(
+            "This folder belongs to the managed branch/instance structure and cannot be renamed, moved or deleted through the file manager.",
+            statusCode: StatusCodes.Status403Forbidden),
         _ => Results.Problem("File operation failed.", statusCode: StatusCodes.Status500InternalServerError),
     };
 }

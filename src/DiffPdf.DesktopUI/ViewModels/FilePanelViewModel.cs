@@ -61,6 +61,7 @@ public partial class FilePanelViewModel : ViewModelBase
     [ObservableProperty] private FileListItemViewModel? _selectedItem;
     [ObservableProperty] private string _statusText = "";
     [ObservableProperty] private bool _isEmpty;
+    [ObservableProperty] private bool _isFilteredEmpty;
 
     /// <summary>The list shows subtree-search results instead of the folder; any navigation exits it.</summary>
     [ObservableProperty] private bool _isSearchMode;
@@ -117,10 +118,28 @@ public partial class FilePanelViewModel : ViewModelBase
         try { SelectedBackend = BackendOptions.First(o => o.Kind == backend.Kind); }
         finally { _suppressBackendEvent = false; }
 
-        HasLoaded = false;
-        FilterText = "";
+        Reset();
         OnPropertyChanged(nameof(IsServer));
         return LoadAsync(startPath ?? backend.DefaultPath);
+    }
+
+    /// <summary>Invalidates rows and in-flight loads when their storage identity changes.</summary>
+    public void Reset()
+    {
+        _loadCts?.Cancel();
+        HasLoaded = false;
+        Items.Clear();
+        SelectedItem = null;
+        CurrentPath = "";
+        ParentPath = null;
+        PathInput = "";
+        FilterText = "";
+        IsSearchMode = false;
+        SearchInfo = null;
+        BlockedMessage = null;
+        Error = null;
+        ItemsView.Refresh();
+        SetSelection([]);
     }
 
     [RelayCommand]
@@ -139,6 +158,8 @@ public partial class FilePanelViewModel : ViewModelBase
             BlockedMessage = null;
             IsSearchMode = false;
             SearchInfo = null;
+            if (!string.Equals(CurrentPath, list.CurrentPath, StringComparison.OrdinalIgnoreCase))
+                FilterText = "";
             CurrentPath = list.CurrentPath;
             ParentPath = list.ParentPath;
             PathInput = list.CurrentPath;
@@ -154,22 +175,25 @@ public partial class FilePanelViewModel : ViewModelBase
             HasLoaded = true;
             ItemsView.Refresh();
             UpdateStatusText();
+            SelectionChanged?.Invoke();
         }
         catch (OperationCanceledException) when (cts.IsCancellationRequested)
         {
             // superseded by a newer navigation — not an error
         }
+        catch (Exception) when (cts.IsCancellationRequested)
+        {
+            // An obsolete backend must not replace the new panel's state with its failure.
+        }
         catch (DiffPdfApiException ex) when (ex.StatusCode == HttpStatusCode.ServiceUnavailable)
         {
             // The server has no storage root configured — onboarding, not a red error + toast.
-            Items.Clear();
-            ItemsView.Refresh();
-            IsEmpty = false;
+            Reset();
             StatusText = "";
             BlockedMessage =
                 "Server nemá nakonfigurované úložiště souborů.\n\n"
-                + "V souboru appsettings.json na serveru nastav FileManager:RootPath "
-                + "(nebo ScopeSync:RootPath) a restartuj službu DiffPdf API.\n\n"
+                + "V souboru appsettings.json na serveru nastav DataRoot "
+                + "(starší konfigurace: FileManager:RootPath nebo ScopeSync:RootPath) a restartuj službu DiffPdf API.\n\n"
                 + "Podrobný stav najdeš v Konfigurace → Správa souborů.";
         }
     });
@@ -273,7 +297,8 @@ public partial class FilePanelViewModel : ViewModelBase
             if (row.IsFolder) folders++;
             else files++;
         }
-        IsEmpty = HasLoaded && folders == 0 && files == 0;
+        IsEmpty = HasLoaded && Items.Count == 0;
+        IsFilteredEmpty = HasLoaded && Items.Count > 0 && folders == 0 && files == 0;
 
         string text = $"{Format.Plural(folders, "složka", "složky", "složek")} · {files} PDF";
         if (SelectedItems.Count > 0)

@@ -66,6 +66,7 @@ public sealed class ScopeSyncService(
             var dbBranches = await branches.ListAsync(ct);
             var dbBranchByKey = dbBranches.ToDictionary(b => b.Key, StringComparer.OrdinalIgnoreCase);
             var seen = new HashSet<(string Branch, string Instance)>();
+            var outOfRoot = new List<InstanceSyncResult>();
 
             // ---- Disk pass: discover branch/instance folders and reconcile + ensure structure. ----
             var branchResults = new List<BranchSyncResult>();
@@ -129,6 +130,15 @@ public sealed class ScopeSyncService(
                     ComparisonInstance? newlyRegistered = null;
                     if (existing is not null)
                     {
+                        if (!PathsEqual(existing.BasePath, basePath))
+                        {
+                            var mismatch = new InstanceSyncResult(instanceName, instanceName, existing.BasePath,
+                                InstanceSyncState.OutOfRoot, null,
+                                $"{branchName}: registered base path differs from the discovered folder ({basePath}).");
+                            instanceResults.Add(mismatch);
+                            outOfRoot.Add(mismatch);
+                            continue; // Never provision a different location under an existing instance identity.
+                        }
                         state = InstanceSyncState.Existing;
                     }
                     else if (!opt.AutoRegister)
@@ -156,7 +166,6 @@ public sealed class ScopeSyncService(
 
             // ---- DB pass: registered instances not found on disk this scan. ----
             var missingFolders = new List<InstanceSyncResult>();
-            var outOfRoot = new List<InstanceSyncResult>();
             foreach (var dbBranch in dbBranches)
             {
                 foreach (var inst in await instances.ListAsync(dbBranch.Id, ct))
@@ -211,14 +220,15 @@ public sealed class ScopeSyncService(
 
     private IEnumerable<string> SafeGetDirectories(string path)
     {
-        try { return Directory.GetDirectories(path); }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Could not enumerate directories under {Path}", path);
-            return [];
-        }
+        // Failure must abort reconciliation: an unreadable directory is not an empty one.
+        return new DirectoryInfo(path).GetDirectories()
+            .Where(d => (d.Attributes & FileAttributes.ReparsePoint) == 0)
+            .Select(d => d.FullName);
     }
 
-    private static bool PathsEqual(string a, string b) =>
-        string.Equals(a.TrimEnd('\\', '/'), b.TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase);
+    private bool PathsEqual(string a, string b) =>
+        string.Equals(
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(resolver.Resolve(a).Path)),
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(resolver.Resolve(b).Path)),
+            StringComparison.OrdinalIgnoreCase);
 }

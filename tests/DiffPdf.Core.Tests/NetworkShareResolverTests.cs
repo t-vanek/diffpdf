@@ -30,6 +30,48 @@ public class NetworkShareResolverTests
         Assert.Null(resolved.ShareName);
     }
 
+    [Theory]
+    [InlineData(@"\\fileserver\reports", "")]
+    [InlineData(@"\\FILESERVER\REPORTS\", "")]
+    [InlineData(@"\\fileserver\reports\Alfa\instance", "Alfa/instance")]
+    [InlineData("//fileserver/reports/Alfa/instance", "Alfa/instance")]
+    public void ExplicitUncMapping_UsesLocalMount(string input, string suffix)
+    {
+        var options = SampleOptions();
+        string local = Path.Combine(Path.GetTempPath(), "mapped-reports");
+        options.Shares["reports"].LocalMountPath = local;
+        var resolved = Resolver(options).Resolve(input);
+        Assert.Equal(Path.Combine(local, suffix.Replace('/', Path.DirectorySeparatorChar)).TrimEnd(Path.DirectorySeparatorChar), resolved.Path);
+        Assert.Equal("reports", resolved.ShareName);
+        Assert.Null(resolved.Credentials);
+    }
+
+    [Fact]
+    public void ExplicitUncMapping_ChoosesLongestRoot_AndRespectsDirectoryBoundary()
+    {
+        var options = SampleOptions();
+        options.Shares["reports"].LocalMountPath = Path.GetTempPath();
+        string nested = Path.Combine(Path.GetTempPath(), "nested");
+        options.Shares["nested"] = new NetworkShareDefinition { Root = @"\\fileserver\reports\Alfa", LocalMountPath = nested };
+        var resolver = Resolver(options);
+        Assert.Equal(Path.Combine(nested, "instance"), resolver.Resolve(@"\\fileserver\reports\Alfa\instance").Path);
+        var sibling = resolver.Resolve(@"\\fileserver\reports-other\instance");
+        Assert.Equal(@"\\fileserver\reports-other\instance", sibling.Path);
+        Assert.Null(sibling.ShareName);
+    }
+
+    [Theory]
+    [InlineData("share:reports/../outside")]
+    [InlineData("share:mounted/a/../../outside")]
+    [InlineData("share:reports/C:/outside")]
+    [InlineData(@"\\fileserver\reports\..\outside")]
+    public void ShareSubpath_CannotEscapeConfiguredRoot(string input)
+    {
+        var options = SampleOptions();
+        options.Shares["reports"].LocalMountPath = Path.GetTempPath();
+        Assert.Throws<NetworkConfigurationException>(() => Resolver(options).Resolve(input));
+    }
+
     [Fact]
     public void ShareAlias_ExpandsUncRoot_AndAttachesProfileCredentials()
     {

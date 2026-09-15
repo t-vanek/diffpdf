@@ -82,6 +82,7 @@ public sealed record FileManagerStatusResponse
     public string? ResolvedFrom { get; init; }
     public string? RootPath { get; init; }
     public bool RootExists { get; init; }
+    public bool Readable { get; init; }
     public bool Writable { get; init; }
     public long? FreeSpaceBytes { get; init; }
     public long? TotalSpaceBytes { get; init; }
@@ -96,6 +97,7 @@ public sealed record FileManagerStatusResponse
         ResolvedFrom = s.ResolvedFrom,
         RootPath = s.RootPath,
         RootExists = s.RootExists,
+        Readable = s.Readable,
         Writable = s.Writable,
         FreeSpaceBytes = s.FreeSpaceBytes,
         TotalSpaceBytes = s.TotalSpaceBytes,

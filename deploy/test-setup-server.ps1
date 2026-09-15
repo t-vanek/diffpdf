@@ -27,7 +27,8 @@ try {
     Set-Content -LiteralPath (Join-Path $releaseDir 'DiffPdf.Api.exe') -Value 'new binary'
     Set-Content -LiteralPath (Join-Path $releaseDir 'appsettings.json') -Value '{ "release": true }'
     Set-Content -LiteralPath (Join-Path $releaseDir 'web.config') -Value '<release />'
-    Set-Content -LiteralPath (Join-Path $InstallDir 'DiffPdf.Api.exe') -Value 'old binary'
+    # Different sizes keep Robocopy from treating rapidly created fixtures as identical.
+    Set-Content -LiteralPath (Join-Path $InstallDir 'DiffPdf.Api.exe') -Value 'old binary from previous release'
     Set-Content -LiteralPath (Join-Path $InstallDir 'appsettings.json') -Value '{ "installed": true }'
     Set-Content -LiteralPath (Join-Path $InstallDir 'web.config') -Value '<installed />'
 
@@ -40,9 +41,10 @@ try {
     $production = Get-Content -LiteralPath (Join-Path $InstallDir 'appsettings.Production.json') -Raw | ConvertFrom-Json
     if ($production.Urls -ne $Url) { throw 'New-ProductionConfig did not write Urls.' }
     if ($production.ConnectionStrings.SqlServer -ne $ConnectionString) { throw 'New-ProductionConfig did not write the SQL connection string.' }
-    if ($production.Storage.RootPath -ne (Join-Path $ProgramDataDir 'storage')) { throw 'Storage:RootPath is incorrect.' }
-    if ($production.FileManager.RootPath -ne (Join-Path $ProgramDataDir 'storage')) { throw 'FileManager:RootPath is incorrect.' }
-    if ($production.ScopeSync.RootPath -ne (Join-Path $ProgramDataDir 'data')) { throw 'ScopeSync:RootPath is incorrect.' }
+    if ($production.DataRoot -ne $ProgramDataDir) { throw 'DataRoot is incorrect.' }
+    if ($production.PSObject.Properties['Storage'] -or $production.PSObject.Properties['FileManager'] -or $production.ScopeSync.PSObject.Properties['RootPath']) {
+        throw 'New installations must configure only DataRoot, without duplicate storage roots.'
+    }
     if ($production.Notifications.BaseUrl -ne $PublicUrl) { throw 'Notifications:BaseUrl is incorrect.' }
 
     $installedAppSettings = Get-Content -LiteralPath (Join-Path $InstallDir 'appsettings.json') -Raw

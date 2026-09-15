@@ -14,11 +14,11 @@ public class ScopeSyncServiceTests : IDisposable
     private readonly InMemoryBranchStore _branches = new();
     private readonly InMemoryInstanceStore _instances = new();
 
-    private ScopeSyncService Service(Action<ScopeSyncOptions>? configure = null)
+    private ScopeSyncService Service(Action<ScopeSyncOptions>? configure = null, NetworkOptions? network = null)
     {
         var opt = new ScopeSyncOptions { RootPath = _root };
         configure?.Invoke(opt);
-        var net = Options.Create(new NetworkOptions());
+        var net = Options.Create(network ?? new NetworkOptions());
         var resolver = new NetworkShareResolver(net);
         var connector = new PlatformShareConnector(net, NullLogger<PlatformShareConnector>.Instance);
         var structure = new InstanceStructureService(resolver, connector, NullLogger<InstanceStructureService>.Instance);
@@ -153,5 +153,74 @@ public class ScopeSyncServiceTests : IDisposable
     {
         try { if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true); }
         catch (IOException) { /* best effort */ }
+    }
+
+    [Fact]
+    public async Task EnumerationAccessDenied_IsAnErrorNotAnEmptySuccessfulScan()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        Directory.CreateDirectory(_root);
+        var branch = await _branches.CreateAsync("branchA", "branchA");
+        await _instances.CreateAsync(branch.Id, "inst1", "inst1", ConventionBase("branchA", "inst1"), null);
+        var directory = new DirectoryInfo(_root);
+        var original = System.IO.FileSystemAclExtensions.GetAccessControl(directory);
+        var restricted = System.IO.FileSystemAclExtensions.GetAccessControl(directory);
+        restricted.AddAccessRule(new System.Security.AccessControl.FileSystemAccessRule(
+            System.Security.Principal.WindowsIdentity.GetCurrent().User!,
+            System.Security.AccessControl.FileSystemRights.ListDirectory,
+            System.Security.AccessControl.AccessControlType.Deny));
+        try
+        {
+            System.IO.FileSystemAclExtensions.SetAccessControl(directory, restricted);
+            var report = await Service().SynchronizeAsync(apply: true);
+            Assert.False(report.Ok);
+            Assert.NotNull(report.Error);
+            Assert.Empty(report.MissingFolders);
+        }
+        finally
+        {
+            var restored = new System.Security.AccessControl.DirectorySecurity();
+            restored.SetSecurityDescriptorBinaryForm(original.GetSecurityDescriptorBinaryForm(), System.Security.AccessControl.AccessControlSections.Access);
+            System.IO.FileSystemAclExtensions.SetAccessControl(directory, restored);
+        }
+        Assert.False(Directory.Exists(ConventionBase("branchA", "inst1")));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExistingKeysWithDifferentBasePath_AreReportedWithoutProvisioning(bool apply)
+    {
+        MakeInstanceFolders("branchA", "inst1", "old");
+        var branch = await _branches.CreateAsync("branchA", "branchA");
+        string oldPath = Path.Combine(_root, "previous-location");
+        await _instances.CreateAsync(branch.Id, "inst1", "inst1", oldPath, null);
+
+        var report = await Service().SynchronizeAsync(apply);
+
+        var mismatch = Assert.Single(report.OutOfRoot);
+        Assert.Equal(oldPath, mismatch.BasePath);
+        Assert.Equal(InstanceSyncState.OutOfRoot, Assert.Single(Assert.Single(report.Branches).Instances).State);
+        Assert.Empty(report.MissingFolders);
+        Assert.False(Directory.Exists(oldPath));
+        Assert.False(Directory.Exists(Path.Combine(ConventionBase("branchA", "inst1"), "reports")));
+        Assert.Equal(oldPath, (await _instances.GetByKeyAsync(branch.Id, "inst1"))!.BasePath);
+    }
+
+    [Fact]
+    public async Task ExistingUncBasePath_WithExplicitLocalMapping_IsTheSameInstance()
+    {
+        MakeInstanceFolders("branchA", "inst1", "old", "new", "reports");
+        var branch = await _branches.CreateAsync("branchA", "branchA");
+        string unc = @"\\server\data\branchA\inst1";
+        await _instances.CreateAsync(branch.Id, "inst1", "inst1", unc, null);
+        var network = new NetworkOptions();
+        network.Shares["data"] = new NetworkShareDefinition { Root = @"\\server\data", LocalMountPath = _root };
+        var report = await Service(network: network).SynchronizeAsync(apply: true);
+        Assert.True(report.Ok);
+        Assert.Empty(report.OutOfRoot);
+        Assert.Empty(report.MissingFolders);
+        Assert.Equal(0, report.RegisteredInstances);
+        Assert.Equal(unc, (await _instances.GetByKeyAsync(branch.Id, "inst1"))!.BasePath);
     }
 }

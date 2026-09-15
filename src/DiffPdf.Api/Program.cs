@@ -247,6 +247,7 @@ builder.Services.AddScoped<IFilePairRequeueDispatcher, FilePairRequeueDispatcher
 builder.Services.AddDiffPdfApplication();
 builder.Services.AddDiffPdfBranchQueue();
 builder.Services.AddDiffPdfScopeSync(builder.Configuration);
+builder.Services.AddUnifiedDataRoot(() => builder.Configuration["DataRoot"]);
 
 // Unified control/monitoring mechanism: runtime-configured checks (readiness, health, structure-sync,
 // retention) executed on a cadence by one leader-gated runner. Idle until checks are created via the API.
